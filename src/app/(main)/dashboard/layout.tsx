@@ -1,0 +1,201 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import {
+  Link2,
+  BarChart3,
+  MousePointerClick,
+  ChevronRight,
+  ExternalLink,
+  Calculator,
+  PanelsTopLeft,
+  TrendingUp,
+} from "lucide-react";
+import { usePathname } from "next/navigation";
+
+const LS_KEY = "hasSeenCaptureFeature";
+
+const sidebarNavItems = [
+  {
+    title: "Análise de Comissões",
+    href: "/dashboard",
+    icon: <BarChart3 className="h-5 w-5" />,
+  },
+  {
+    title: "Análise de Cliques",
+    href: "/dashboard/cliques",
+    icon: <MousePointerClick className="h-5 w-5" />,
+  },
+  {
+    title: "Meus Links",
+    href: "/dashboard/links",
+    icon: <Link2 className="h-5 w-5" />,
+  },
+  {
+    title: "Site de Captura",
+    href: "/dashboard/captura",
+    icon: <PanelsTopLeft className="h-5 w-5" />,
+  },
+  {
+    title: "Calculadora GPL",
+    href: "/dashboard/gpl",
+    icon: <Calculator className="h-5 w-5" />,
+  },
+  {
+    title: "Tráfego Inteligente (ATI)",
+    href: "/dashboard/ati",
+    icon: <TrendingUp className="h-5 w-5" />,
+  },
+];
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+
+  // Badge "NOVO"
+  const [showCaptureBadge, setShowCaptureBadge] = useState(false);
+
+  useEffect(() => {
+    try {
+      const seen = localStorage.getItem(LS_KEY) === "true";
+      setShowCaptureBadge(!seen);
+    } catch {
+      setShowCaptureBadge(false);
+    }
+  }, []);
+
+  const markCaptureAsSeen = useCallback(() => {
+    try {
+      localStorage.setItem(LS_KEY, "true");
+    } catch {
+      // ignore
+    }
+    setShowCaptureBadge(false);
+  }, []);
+
+  // Fechar com Escape e focar o primeiro link ao abrir
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && isSidebarOpen) {
+        setIsSidebarOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isSidebarOpen]);
+
+  useEffect(() => {
+    if (isSidebarOpen && sidebarRef.current) {
+      const firstLink =
+        sidebarRef.current.querySelector<HTMLAnchorElement>("a[href]");
+      firstLink?.focus();
+    }
+  }, [isSidebarOpen]);
+
+  function handleItemClick(href: string) {
+    setIsSidebarOpen(false);
+    if (href === "/dashboard/captura") {
+      markCaptureAsSeen();
+    }
+  }
+
+  return (
+    <div className="bg-dark-bg min-h-[calc(100vh-8rem)] flex text-text-primary">
+      <button
+        onClick={() => setIsSidebarOpen(true)}
+        className={`lg:hidden fixed top-1/2 -translate-y-1/2 left-0 z-50
+                    bg-shopee-orange p-2 pr-1 rounded-r-full border-y border-r border-shopee-orange
+                    shadow-lg transition-all duration-300 ease-in-out
+                    ${isSidebarOpen ? "-translate-x-24" : "translate-x-0"}`}
+        aria-label="Abrir menu de navegação"
+        aria-expanded={isSidebarOpen}
+        aria-controls="sidebar-nav"
+        type="button"
+      >
+        <ChevronRight className="h-6 w-6 text-white" />
+      </button>
+
+      {isSidebarOpen && (
+        <div
+          onClick={() => setIsSidebarOpen(false)}
+          className="lg:hidden fixed inset-0 bg-black/60 z-30 backdrop-blur-sm"
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        id="sidebar-nav"
+        ref={sidebarRef}
+        className={`fixed lg:static top-0 left-0 h-full lg:h-auto z-40 lg:z-auto w-64 flex-shrink-0 bg-dark-card border-r border-dark-border p-4
+                    transform transition-transform duration-300 ease-in-out
+                    ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}
+                    lg:translate-x-0`}
+      >
+        <nav
+          role="navigation"
+          aria-label="Navegação do dashboard"
+          className="flex flex-col space-y-2"
+        >
+          {sidebarNavItems.map((item) => {
+            const isActive = pathname === item.href;
+            const isCapture = item.href === "/dashboard/captura";
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => handleItemClick(item.href)}
+                aria-current={isActive ? "page" : undefined}
+                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-shopee-orange text-text-primary"
+                    : "text-text-secondary hover:bg-dark-bg hover:text-text-primary"
+                }`}
+              >
+                {item.icon}
+
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="truncate">{item.title}</span>
+
+                  {isCapture && showCaptureBadge && (
+                    <span
+                      className="px-2 py-0.5 rounded-full text-[10px] leading-none font-semibold bg-red-600/90 text-white border border-white/15"
+                      aria-label="Nova funcionalidade"
+                      title="Nova funcionalidade"
+                    >
+                      NOVO
+                    </span>
+                  )}
+                </span>
+              </Link>
+            );
+          })}
+
+          <div className="h-3" aria-hidden="true"></div>
+
+          <Link
+            href="https://www.youtube.com/playlist?list=PLt2etInlvKH1mUwYrUMOp8mBNcNsFh3WO"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors bg-dark-border text-text-primary hover:bg-dark-bg hover:text-link border border-dark-border"
+            onClick={() => setIsSidebarOpen(false)}
+            aria-label="Acessar Tutorial (abre em nova guia)"
+          >
+            <ExternalLink className="h-5 w-5" />
+            Acessar Tutorial
+          </Link>
+        </nav>
+      </aside>
+
+      <main className="flex-grow p-6 md:p-8 overflow-auto lg:ml-[-256px]">
+        <div className="lg:ml-64">{children}</div>
+      </main>
+    </div>
+  );
+}

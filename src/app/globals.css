@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+@theme {
+  --color-shopee-orange: #EE4D2D;
+  --color-dark-bg: #18181B;        
+  --color-dark-card: #27272A;     
+  --color-dark-border: #27272A; 
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #E9E9E9;
+  --color-dark-tooltip: #303033;
+  --color-shopee-orange-transparent: rgba(238, 77, 45, 0);
+  --color-text-tertiary: #f7814b;
+  --color-border-secondary: #afa19e;
+  --color-border-houver: #F48A5A;
+  
+  --font-heading: 'Poppins', sans-serif;
+  --font-body: 'Inter', sans-serif;
+
+  /* Animações customizadas para o modal */
+  --animate-fade-in: fade-in 200ms ease-out;
+  --animate-zoom-in-95: zoom-in-95 200ms ease-out;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+:root {
+  --background: #FFFFFF;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+/* Remove o outline do gráfico do Recharts */
+.recharts-wrapper:focus,
+.recharts-wrapper *:focus {
+  outline: none !important;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Estilos para o Carrossel Embla */
+.embla {
+  overflow: hidden;
+}
+.embla__container {
+  display: flex;
+}
+.embla__slide {
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
+@media (min-width: 768px) {
+  .embla__slide {
+    flex: 0 0 33.33%;
+  }
+}
+
+/* Animações para o Modal de Confirmação */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes zoom-in-95 {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Classes de animação */
+.animate-fade-in {
+  animation: fade-in 200ms ease-out;
+}
+
+.animate-zoom-in-95 {
+  animation: zoom-in-95 200ms ease-out;
+}
+
+/* Melhoria visual nos dropdowns - scrollbar customizado */
+select::-webkit-scrollbar {
+  width: 8px;
+}
+
+select::-webkit-scrollbar-track {
+  background: var(--color-dark-bg);
+  border-radius: 4px;
+}
+
+select::-webkit-scrollbar-thumb {
+  background: var(--color-dark-border);
+  border-radius: 4px;
+}
+
+select::-webkit-scrollbar-thumb:hover {
+  background: var(--color-shopee-orange);
+}
