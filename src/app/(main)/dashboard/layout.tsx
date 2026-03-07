@@ -11,6 +11,7 @@ import {
   Calculator,
   PanelsTopLeft,
   TrendingUp,
+  Megaphone,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 
@@ -46,6 +47,11 @@ const sidebarNavItems = [
     title: "Tráfego Inteligente (ATI)",
     href: "/dashboard/ati",
     icon: <TrendingUp className="h-5 w-5" />,
+  },
+  {
+    title: "Criar Campanha Meta",
+    href: "/dashboard/meta-ads",
+    icon: <Megaphone className="h-5 w-5" />,
   },
 ];
 
