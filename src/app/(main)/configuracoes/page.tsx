@@ -3,8 +3,7 @@ import { ArrowLeft, ExternalLink, MessageSquare } from "lucide-react";
 import { redirect } from "next/navigation";
 import { createClient } from "../../../../utils/supabase/server";
 import ChangePasswordClient from "../../components/account/ChangePasswordClient";
-import ShopeeApiSettingsCard from "../configuracoes/ShopeeIntegrationCard";
-import MetaIntegrationCard from "../configuracoes/MetaIntegrationCard";
+import ConfiguracoesClient from "./ConfiguracoesClient";
 
 const kiwifyLoginUrl = "https://dashboard.kiwify.com/login?lang=pt";
 const whatsappUrl = "https://wa.me/5579999407366";
@@ -55,19 +54,14 @@ export default async function ConfiguracoesPage() {
           </Link>
         </div>
 
-        {/* Dados já carregados no servidor — sem flash de loading */}
-        <ShopeeApiSettingsCard
+        {/* Cards: Shopee, Meta Ads, Evolution API — ao clicar abre o conteúdo */}
+        <ConfiguracoesClient
           initialAppId={profile.shopee_app_id ?? ""}
           initialHasKey={!!profile.shopee_api_key_last4}
           initialLast4={profile.shopee_api_key_last4 ?? null}
+          metaHasToken={metaHasToken}
+          metaLast4={metaLast4}
         />
-
-        <div className="mt-6">
-          <MetaIntegrationCard
-            initialHasToken={metaHasToken}
-            initialLast4={metaLast4}
-          />
-        </div>
 
         <div className="mt-8 mb-8 rounded-lg border border-dark-border bg-dark-card p-6 shadow-sm">
           <h2 className="mb-4 text-xl font-semibold text-text-primary font-heading">

@@ -12,6 +12,10 @@ import {
   AlertCircle,
   Info,
   ArrowRight,
+  MessageCircle,
+  Search,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
 import LoadingOverlay from "@/app/components/ui/LoadingOverlay";
@@ -168,6 +172,9 @@ type GplApiRangeCache = {
   toApplied: string;
 };
 
+type EvolutionInstanceItem = { id: string; nome_instancia: string; numero_whatsapp: string | null };
+type WhatsAppGroup = { id: string; nome: string; qtdMembros: number };
+
 // ✅ chave para persistir o resultado da checagem (evita voltar pra "checking")
 const LS_API_CHECK_KEY = "gpl_api_check_state_v1";
 
@@ -237,6 +244,16 @@ export default function GplCalculatorPage() {
   const [draftDays, setDraftDays] = useState<number>(0);
   const [showShortPeriodWarning, setShowShortPeriodWarning] = useState(false);
   const [showMaxPeriodWarning, setShowMaxPeriodWarning] = useState(false);
+
+  // Instâncias Evolution + grupos WhatsApp (n8n buscar_grupo)
+  const [evolutionInstances, setEvolutionInstances] = useState<EvolutionInstanceItem[]>([]);
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string>("");
+  const [groupsCache, setGroupsCache] = useState<Record<string, WhatsAppGroup[]>>({});
+  const [groups, setGroups] = useState<WhatsAppGroup[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
+  const [groupNameFilter, setGroupNameFilter] = useState("");
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
 
   // 1) Checar chaves — reaproveita cache; e não volta a "checking" em toda entrada
   useEffect(() => {
@@ -534,6 +551,91 @@ export default function GplCalculatorPage() {
     setMonthlyRevenue(gplMonth * groupNum);
   }, [groupSize, totalProfit, daysInPeriod]);
 
+  // Instâncias Evolution: carregar ao montar
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/evolution/instances")
+      .then((r) => r.json())
+      .then((data) => {
+        if (alive && Array.isArray(data.instances)) setEvolutionInstances(data.instances);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  const selectedInstance = evolutionInstances.find((i) => i.id === selectedInstanceId);
+  const selectedInstanceName = selectedInstance?.nome_instancia ?? "";
+
+  // Grupos: cache por instância; buscar ao selecionar só se ainda não tiver cache
+  const fetchGroupsForInstance = async (instanceId: string, nomeInstancia: string) => {
+    setGroupsLoading(true);
+    setGroupsError(null);
+    try {
+      const res = await fetch("/api/evolution/n8n-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipoAcao: "buscar_grupo", nomeInstancia }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Falha ao buscar grupos");
+      const lista = json?.grupos ?? [];
+      const normalized: WhatsAppGroup[] = lista.map((g: { id?: string; nome?: string; subject?: string; name?: string; qtdMembros?: number; size?: number; participants?: unknown[] }) => ({
+        id: String(g.id ?? ""),
+        nome: String(g.nome ?? g.subject ?? g.name ?? "Sem nome"),
+        qtdMembros: Number(g.qtdMembros ?? g.size ?? (Array.isArray(g.participants) ? g.participants.length : 0)),
+      }));
+      setGroupsCache((prev) => ({ ...prev, [instanceId]: normalized }));
+      setGroups(normalized);
+    } catch (e) {
+      setGroups([]);
+      setGroupsError(e instanceof Error ? e.message : "Erro ao buscar grupos");
+      setGroupsCache((prev) => ({ ...prev, [instanceId]: [] }));
+    } finally {
+      setGroupsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedInstanceId || !selectedInstanceName) {
+      setGroups([]);
+      setGroupsError(null);
+      return;
+    }
+    const cached = groupsCache[selectedInstanceId];
+    if (cached !== undefined) {
+      setGroups(cached);
+      setGroupsError(null);
+      return;
+    }
+    fetchGroupsForInstance(selectedInstanceId, selectedInstanceName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchGroupsForInstance está definido no componente
+  }, [selectedInstanceId, selectedInstanceName]);
+
+  const filteredGroups = useMemo(() => {
+    if (!groupNameFilter.trim()) return groups;
+    const q = normalizeStr(groupNameFilter);
+    return groups.filter((g) => normalizeStr(g.nome).includes(q));
+  }, [groups, groupNameFilter]);
+
+  const totalMembersSelected = useMemo(() => {
+    return groups
+      .filter((g) => selectedGroupIds.has(g.id))
+      .reduce((acc, g) => acc + g.qtdMembros, 0);
+  }, [groups, selectedGroupIds]);
+
+  useEffect(() => {
+    if (totalMembersSelected > 0) setGroupSize(String(totalMembersSelected));
+  }, [totalMembersSelected]);
+
+  const toggleGroupSelection = (id: string) => {
+    setSelectedGroupIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const getPerformanceBadge = () => {
     if (gplMonthly >= 1.5) {
       return {
@@ -599,6 +701,9 @@ export default function GplCalculatorPage() {
     });
 
     setApiFetchTick((t) => t + 1);
+    if (selectedInstanceId && selectedInstanceName) {
+      fetchGroupsForInstance(selectedInstanceId, selectedInstanceName);
+    }
   }
 
   return (
@@ -637,6 +742,45 @@ export default function GplCalculatorPage() {
         <p className="text-xs text-text-secondary mt-1">
           Métricas dos canais <span className="text-text-primary">{channelsLabel}</span>
         </p>
+        {evolutionInstances.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <MessageCircle className="h-3.5 w-3.5 text-emerald-500/80 shrink-0" />
+            <span className="text-xs text-text-secondary">Instância WhatsApp:</span>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedInstanceId("");
+                  setSelectedGroupIds(new Set());
+                }}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  !selectedInstanceId
+                    ? "bg-shopee-orange text-white border border-shopee-orange"
+                    : "bg-dark-bg text-text-secondary border border-dark-border hover:border-dark-border hover:text-text-primary"
+                }`}
+              >
+                Nenhuma
+              </button>
+              {evolutionInstances.map((inst) => (
+                <button
+                  key={inst.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedInstanceId(inst.id);
+                    setSelectedGroupIds(new Set());
+                  }}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    selectedInstanceId === inst.id
+                      ? "bg-shopee-orange text-white border border-shopee-orange"
+                      : "bg-dark-bg text-text-secondary border border-dark-border hover:border-dark-border hover:text-text-primary"
+                  }`}
+                >
+                  {inst.nome_instancia}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {apiError && (
@@ -710,6 +854,7 @@ export default function GplCalculatorPage() {
           </div>
         </div>
       ) : (
+        <>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Coluna Esquerda */}
           <div className="bg-dark-card p-6 rounded-lg border border-dark-border">
@@ -930,6 +1075,91 @@ export default function GplCalculatorPage() {
             )}
           </div>
         </div>
+
+        {selectedInstanceId && (
+          <div className="mt-8 bg-dark-card p-5 rounded-lg border border-dark-border">
+            <h3 className="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
+              <Users className="h-4 w-4 text-emerald-500/80" />
+              Grupos desta instância
+            </h3>
+            <p className="text-xs text-text-secondary mb-3">
+              Selecione um ou mais grupos para preencher automaticamente &quot;Pessoas no grupo&quot; com a soma dos membros.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 mb-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
+                <input
+                  type="text"
+                  placeholder="Filtrar por nome do grupo"
+                  value={groupNameFilter}
+                  onChange={(e) => setGroupNameFilter(e.target.value)}
+                  className="w-full pl-8 pr-3 py-2 rounded-md border border-dark-border bg-dark-bg text-text-primary text-sm placeholder-text-secondary/60 focus:outline-none focus:border-shopee-orange"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => selectedInstanceId && selectedInstanceName && fetchGroupsForInstance(selectedInstanceId, selectedInstanceName)}
+                disabled={groupsLoading}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-shopee-orange text-white text-sm font-semibold hover:bg-shopee-orange/90 disabled:opacity-50 transition-opacity shrink-0"
+              >
+                {groupsLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Atualizar
+              </button>
+              {totalMembersSelected > 0 && (
+                <p className="text-sm text-emerald-400 font-medium flex items-center gap-1 self-center">
+                  <Users className="h-4 w-4" />
+                  Total: {totalMembersSelected.toLocaleString("pt-BR")} pessoas
+                </p>
+              )}
+            </div>
+            {groupsError && (
+              <p className="text-sm text-red-400 mb-3">{groupsError}</p>
+            )}
+            {groupsLoading ? (
+              <div className="flex items-center gap-2 py-6 text-text-secondary">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Carregando grupos...
+              </div>
+            ) : filteredGroups.length === 0 ? (
+              <p className="text-sm text-text-secondary py-4">
+                Nenhum grupo encontrado.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {filteredGroups.map((g) => (
+                  <label
+                    key={g.id}
+                    className={`flex flex-col p-4 rounded-lg border cursor-pointer transition-colors ${
+                      selectedGroupIds.has(g.id)
+                        ? "bg-shopee-orange/10 border-shopee-orange/50"
+                        : "bg-dark-bg/50 border-dark-border hover:bg-dark-bg"
+                    }`}
+                  >
+                    <div className="flex items-start gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedGroupIds.has(g.id)}
+                        onChange={() => toggleGroupSelection(g.id)}
+                        className="mt-0.5 rounded border-dark-border text-shopee-orange focus:ring-shopee-orange"
+                      />
+                      <span className="text-sm font-medium text-text-primary line-clamp-2 flex-1" title={g.nome}>
+                        {g.nome}
+                      </span>
+                    </div>
+                    <p className="text-xs text-text-secondary pl-6">
+                      {g.qtdMembros.toLocaleString("pt-BR")} membros
+                    </p>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        </>
       )}
     </div>
   );
