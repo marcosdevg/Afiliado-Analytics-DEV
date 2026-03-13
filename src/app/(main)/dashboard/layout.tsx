@@ -12,6 +12,7 @@ import {
   PanelsTopLeft,
   TrendingUp,
   Megaphone,
+  ShoppingBag,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 
@@ -52,6 +53,11 @@ const sidebarNavItems = [
     title: "Criar Campanha Meta",
     href: "/dashboard/meta-ads",
     icon: <Megaphone className="h-5 w-5" />,
+  },
+  {
+    title: "Gerador de Links Shopee",
+    href: "/dashboard/gerador-links-shopee",
+    icon: <ShoppingBag className="h-5 w-5" />,
   },
 ];
 
