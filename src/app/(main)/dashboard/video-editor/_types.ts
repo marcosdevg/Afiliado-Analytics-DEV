@@ -42,6 +42,14 @@ export type SubtitleStyle = {
   position: "bottom" | "center" | "top";
   bold: boolean;
   outline: boolean;
+  /** Exibir texto em MAIÚSCULAS */
+  uppercase?: boolean;
+  /** Opacidade do plano de fundo (0-1). Quando definido, combina com bgColor em hex. */
+  bgOpacity?: number;
+  /** Cor da borda/contorno da fonte (ex: #000000) */
+  outlineColor?: string;
+  /** Largura da borda em pixels */
+  outlineWidth?: number;
 };
 
 export const SUBTITLE_TEMPLATES: { name: string; style: SubtitleStyle }[] = [

@@ -101,6 +101,12 @@ export default function VideoEditorPage() {
   const [subtitleFontSize, setSubtitleFontSize] = useState(28);
   const [subtitlePosition, setSubtitlePosition] = useState<"bottom" | "center" | "top">("bottom");
   const [subtitleMaxWords, setSubtitleMaxWords] = useState(3);
+  const [subtitleUppercase, setSubtitleUppercase] = useState(false);
+  const [subtitleFontColor, setSubtitleFontColor] = useState("#FFFFFF");
+  const [subtitleBgColor, setSubtitleBgColor] = useState("#000000");
+  const [subtitleBgOpacity, setSubtitleBgOpacity] = useState(0.7);
+  const [subtitleOutlineColor, setSubtitleOutlineColor] = useState("#000000");
+  const [subtitleOutlineWidth, setSubtitleOutlineWidth] = useState(1);
 
   // FFmpeg
   const [exporting, setExporting] = useState(false);
@@ -399,7 +405,17 @@ export default function VideoEditorPage() {
     if (chunks.length === 0) { setGeneratingSubtitles(false); return; }
     const totalChars = chunks.reduce((sum, c) => sum + c.length, 0);
     const baseStyle = SUBTITLE_TEMPLATES[subtitleTemplate]?.style;
-    const style: SubtitleStyle = { ...baseStyle, fontSize: subtitleFontSize, position: subtitlePosition };
+    const style: SubtitleStyle = {
+      ...baseStyle,
+      fontSize: subtitleFontSize,
+      position: subtitlePosition,
+      color: subtitleFontColor,
+      bgColor: subtitleBgColor,
+      bgOpacity: subtitleBgOpacity,
+      uppercase: subtitleUppercase,
+      outlineColor: subtitleOutlineColor,
+      outlineWidth: subtitleOutlineWidth,
+    };
     const newClips: ClipItem[] = [];
     let timeOffset = audioStart;
     for (const chunk of chunks) {
@@ -415,7 +431,7 @@ export default function VideoEditorPage() {
     }
     setTracks((prev) => prev.map((t, i) => i === 3 ? { ...t, clips: newClips } : t));
     setGeneratingSubtitles(false);
-  }, [tracks, ttsText, generatedCopy, subtitleTemplate, subtitleFontSize, subtitlePosition, subtitleMaxWords]);
+  }, [tracks, ttsText, generatedCopy, subtitleTemplate, subtitleFontSize, subtitlePosition, subtitleMaxWords, subtitleUppercase, subtitleFontColor, subtitleBgColor, subtitleBgOpacity, subtitleOutlineColor, subtitleOutlineWidth]);
 
   // Delete selected clip
   const deleteSelectedClip = useCallback(() => {
@@ -478,31 +494,53 @@ export default function VideoEditorPage() {
       const ffmpeg = await loadFFmpeg();
 
       const videoTrack = tracks[0];
-      if (videoTrack.clips.length === 0) throw new Error("Nenhum clipe de vídeo na timeline");
+      if (!videoTrack?.clips.length) throw new Error("Nenhum clipe na faixa de vídeo. Adicione um vídeo ou imagem.");
 
       const firstClip = videoTrack.clips[0];
-      const response = await fetch(firstClip.blobUrl);
-      const data = await response.arrayBuffer();
-      await ffmpeg.writeFile("input.mp4", new Uint8Array(data));
+      if (!firstClip.blobUrl) throw new Error("Clipe sem mídia. Remova e importe novamente.");
 
-      const args = ["-i", "input.mp4"];
-      if (firstClip.trimStart > 0) args.push("-ss", String(firstClip.trimStart));
-      const effectiveDur = firstClip.duration - firstClip.trimStart - firstClip.trimEnd;
-      if (firstClip.trimEnd > 0) args.push("-t", String(effectiveDur));
+      let response: Response;
+      try {
+        response = await fetch(firstClip.blobUrl);
+      } catch {
+        throw new Error("Não foi possível acessar o arquivo do clipe. Tente importar o vídeo novamente.");
+      }
+      if (!response.ok) throw new Error("Arquivo do clipe inacessível ou expirado.");
+      const data = await response.arrayBuffer();
+
+      const effectiveDur = Math.max(0.1, firstClip.duration - firstClip.trimStart - firstClip.trimEnd);
+      const isImage = firstClip.type === "image";
+      const ext = isImage ? (firstClip.blobUrl.toLowerCase().includes(".png") ? "png" : "jpg") : "mp4";
+      const inputName = `input.${ext}`;
+      await ffmpeg.writeFile(inputName, new Uint8Array(data));
 
       const audioClips = tracks.filter((t) => t.type === "audio" && !t.muted).flatMap((t) => t.clips);
-      if (audioClips.length > 0) {
-        const audioRes = await fetch(audioClips[0].blobUrl);
-        const audioData = await audioRes.arrayBuffer();
-        await ffmpeg.writeFile("audio.mp3", new Uint8Array(audioData));
-        args.push("-i", "audio.mp3", "-map", "0:v", "-map", "1:a", "-shortest");
+      let args: string[];
+
+      if (isImage) {
+        args = ["-loop", "1", "-i", inputName, "-t", String(effectiveDur), "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-pix_fmt", "yuv420p", "-r", "30"];
+        if (audioClips.length > 0) {
+          const audioRes = await fetch(audioClips[0].blobUrl);
+          const audioData = await audioRes.arrayBuffer();
+          await ffmpeg.writeFile("audio.mp3", new Uint8Array(audioData));
+          args.push("-i", "audio.mp3", "-map", "0:v", "-map", "1:a", "-shortest");
+        }
+        args.push("-c:v", "libx264", "-preset", "fast", "-crf", "23", "-c:a", "aac", "output.mp4");
+      } else {
+        args = ["-i", inputName];
+        if (firstClip.trimStart > 0) args.push("-ss", String(firstClip.trimStart));
+        if (firstClip.trimEnd > 0) args.push("-t", String(effectiveDur));
+        if (audioClips.length > 0) {
+          const audioRes = await fetch(audioClips[0].blobUrl);
+          const audioData = await audioRes.arrayBuffer();
+          await ffmpeg.writeFile("audio.mp3", new Uint8Array(audioData));
+          args.push("-i", "audio.mp3", "-map", "0:v", "-map", "1:a", "-shortest");
+        }
+        if (videoTrack.muted && audioClips.length === 0) args.push("-an");
+        if (audioClips.length > 0) args.push("-c:a", "aac");
+        args.push("-c:v", "libx264", "-preset", "fast", "-crf", "23", "output.mp4");
       }
 
-      if (videoTrack.muted && audioClips.length === 0) {
-        args.push("-an");
-      }
-
-      args.push("-c:v", "libx264", "-preset", "fast", "-crf", "23", "output.mp4");
       await ffmpeg.exec(args);
 
       const output = await ffmpeg.readFile("output.mp4");
@@ -511,7 +549,9 @@ export default function VideoEditorPage() {
       const a = document.createElement("a");
       a.href = url;
       a.download = `video_editado_${Date.now()}.mp4`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro ao exportar";
@@ -765,7 +805,7 @@ export default function VideoEditorPage() {
                   <div className="bg-dark-bg border border-dark-border rounded-lg p-3">
                     <p className="text-xs text-text-primary leading-relaxed whitespace-pre-wrap">{generatedCopy}</p>
                     <button
-                      onClick={() => { setTtsText(generatedCopy); setActivePanel("tts"); }}
+                      onClick={() => { setTtsText(generatedCopy); setActivePanel("tts"); loadVoices(); }}
                       className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-shopee-orange text-white text-xs font-semibold hover:opacity-90"
                     >
                       <Mic className="h-3.5 w-3.5" /> Usar como texto para Voz IA
@@ -820,10 +860,10 @@ export default function VideoEditorPage() {
 
             {/* SUBTITLE PANEL */}
             {activePanel === "subtitle" && (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-xs text-text-secondary font-medium mb-1">Estilo de legenda</label>
-                  <div className="grid grid-cols-3 gap-1.5 max-h-40 overflow-y-auto pr-1">
+                  <p className="text-[11px] font-medium text-text-primary mb-2">Estilo base</p>
+                  <div className="grid grid-cols-3 gap-1.5 max-h-32 overflow-y-auto pr-1">
                     {SUBTITLE_TEMPLATES.map((tpl, i) => (
                       <button
                         key={tpl.name}
@@ -831,71 +871,107 @@ export default function VideoEditorPage() {
                           setSubtitleTemplate(i);
                           setSubtitleFontSize(tpl.style.fontSize);
                           setSubtitlePosition(tpl.style.position);
+                          setSubtitleFontColor(tpl.style.color);
+                          const bg = tpl.style.bgColor;
+                          if (bg === "transparent") {
+                            setSubtitleBgColor("#000000");
+                            setSubtitleBgOpacity(0);
+                          } else if (bg.startsWith("rgba")) {
+                            const m = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+                            if (m) setSubtitleBgColor(`#${Number(m[1]).toString(16).padStart(2,"0")}${Number(m[2]).toString(16).padStart(2,"0")}${Number(m[3]).toString(16).padStart(2,"0")}`);
+                            const am = bg.match(/,\s*([\d.]+)\)/);
+                            setSubtitleBgOpacity(am ? Number(am[1]) : 0.7);
+                          } else {
+                            setSubtitleBgColor(bg);
+                            setSubtitleBgOpacity(1);
+                          }
+                          setSubtitleUppercase(!!tpl.style.uppercase);
+                          setSubtitleOutlineColor(tpl.style.outlineColor ?? "#000000");
+                          setSubtitleOutlineWidth(tpl.style.outlineWidth ?? 1);
                         }}
-                        className={`px-1.5 py-2 rounded-lg border text-xs text-center transition-colors ${
+                        className={`px-1.5 py-1.5 rounded-md border text-[10px] text-center transition-all ${
                           subtitleTemplate === i
-                            ? "border-shopee-orange bg-shopee-orange/10 text-shopee-orange"
-                            : "border-dark-border text-text-secondary hover:border-shopee-orange/50"
+                            ? "border-shopee-orange bg-shopee-orange/15 text-shopee-orange ring-1 ring-shopee-orange/30"
+                            : "border-dark-border/80 text-text-secondary hover:border-dark-border hover:bg-dark-bg/50"
                         }`}
                       >
-                        <span
-                          className="block truncate"
-                          style={{
-                            fontFamily: tpl.style.fontFamily,
-                            color: tpl.style.color,
-                            fontWeight: tpl.style.bold ? "bold" : "normal",
-                            fontSize: "10px",
-                            WebkitTextStroke: tpl.style.outline ? "0.5px black" : "none",
-                          }}
-                        >
+                        <span className="block truncate" style={{ fontFamily: tpl.style.fontFamily, color: tpl.style.color, fontWeight: tpl.style.bold ? "bold" : "normal", WebkitTextStroke: tpl.style.outline ? "0.5px #000" : "none" }}>
                           {tpl.name}
                         </span>
                       </button>
                     ))}
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="block text-[10px] text-text-secondary mb-1">Tamanho</label>
-                    <input
-                      type="number"
-                      min={12}
-                      max={72}
-                      value={subtitleFontSize}
-                      onChange={(e) => setSubtitleFontSize(Number(e.target.value))}
-                      className="w-full px-2 py-1 rounded-lg border border-dark-border bg-dark-bg text-text-primary text-xs focus:outline-none focus:border-shopee-orange"
-                    />
+
+                <div className="rounded-lg bg-dark-bg/60 border border-dark-border/80 p-3 space-y-3">
+                  <p className="text-[11px] font-medium text-text-primary">Layout</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-text-secondary/90 mb-0.5">Tamanho</label>
+                      <input type="number" min={12} max={72} value={subtitleFontSize} onChange={(e) => setSubtitleFontSize(Number(e.target.value))} className="w-full px-2 py-1.5 rounded-md border border-dark-border bg-dark-card text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-shopee-orange/50 focus:border-shopee-orange/50" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-text-secondary/90 mb-0.5">Posição</label>
+                      <select value={subtitlePosition} onChange={(e) => setSubtitlePosition(e.target.value as "bottom" | "center" | "top")} className="w-full px-2 py-1.5 rounded-md border border-dark-border bg-dark-card text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-shopee-orange/50">
+                        <option value="bottom">Baixo</option>
+                        <option value="center">Centro</option>
+                        <option value="top">Topo</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-text-secondary/90 mb-0.5">Máx. palavras</label>
+                      <input type="number" min={1} max={10} value={subtitleMaxWords} onChange={(e) => setSubtitleMaxWords(Number(e.target.value))} className="w-full px-2 py-1.5 rounded-md border border-dark-border bg-dark-card text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-shopee-orange/50" />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[10px] text-text-secondary mb-1">Posição</label>
-                    <select
-                      value={subtitlePosition}
-                      onChange={(e) => setSubtitlePosition(e.target.value as "bottom" | "center" | "top")}
-                      className="w-full px-2 py-1 rounded-lg border border-dark-border bg-dark-bg text-text-primary text-xs focus:outline-none focus:border-shopee-orange"
-                    >
-                      <option value="bottom">Baixo</option>
-                      <option value="center">Centro</option>
-                      <option value="top">Topo</option>
-                    </select>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input type="checkbox" checked={subtitleUppercase} onChange={(e) => setSubtitleUppercase(e.target.checked)} className="rounded border-dark-border bg-dark-card text-shopee-orange focus:ring-shopee-orange/50" />
+                    <span className="text-xs text-text-secondary">Exibir em MAIÚSCULAS</span>
+                  </label>
+                </div>
+
+                <div className="rounded-lg bg-dark-bg/60 border border-dark-border/80 p-3 space-y-3">
+                  <p className="text-[11px] font-medium text-text-primary">Cores</p>
+                  <div className="flex flex-wrap gap-4">
+                    <div className="flex items-center gap-2">
+                      <label className="text-[10px] text-text-secondary/90 w-14">Texto</label>
+                      <input type="color" value={subtitleFontColor} onChange={(e) => setSubtitleFontColor(e.target.value)} className="w-9 h-9 rounded-md border border-dark-border cursor-pointer p-0.5 bg-dark-card" title={subtitleFontColor} />
+                      <input type="text" value={subtitleFontColor} onChange={(e) => setSubtitleFontColor(e.target.value)} className="w-16 px-1.5 py-1 rounded-md border border-dark-border bg-dark-card text-[10px] font-mono text-text-primary focus:outline-none focus:ring-1 focus:ring-shopee-orange/50" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-[10px] text-text-secondary/90 w-14">Fundo</label>
+                      <input type="color" value={subtitleBgColor} onChange={(e) => setSubtitleBgColor(e.target.value)} className="w-9 h-9 rounded-md border border-dark-border cursor-pointer p-0.5 bg-dark-card" title={subtitleBgColor} />
+                      <input type="text" value={subtitleBgColor} onChange={(e) => setSubtitleBgColor(e.target.value)} className="w-16 px-1.5 py-1 rounded-md border border-dark-border bg-dark-card text-[10px] font-mono text-text-primary focus:outline-none focus:ring-1 focus:ring-shopee-orange/50" />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[10px] text-text-secondary mb-1">Máx palavras</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={10}
-                      value={subtitleMaxWords}
-                      onChange={(e) => setSubtitleMaxWords(Number(e.target.value))}
-                      className="w-full px-2 py-1 rounded-lg border border-dark-border bg-dark-bg text-text-primary text-xs focus:outline-none focus:border-shopee-orange"
-                    />
+                  <div className="flex items-center gap-3">
+                    <label className="text-[10px] text-text-secondary/90 shrink-0">Opacidade fundo</label>
+                    <input type="range" min={0} max={100} value={Math.round(subtitleBgOpacity * 100)} onChange={(e) => setSubtitleBgOpacity(Number(e.target.value) / 100)} className="flex-1 h-1.5 rounded-full bg-dark-border accent-shopee-orange" />
+                    <span className="text-[10px] text-text-secondary tabular-nums w-8">{Math.round(subtitleBgOpacity * 100)}%</span>
                   </div>
                 </div>
-                <div className="border-t border-dark-border pt-3">
-                  <p className="text-[10px] text-text-secondary mb-2">Gerar automaticamente a partir do áudio na faixa Áudio 1 + texto da Copy/TTS.</p>
+
+                <div className="rounded-lg bg-dark-bg/60 border border-dark-border/80 p-3 space-y-3">
+                  <p className="text-[11px] font-medium text-text-primary">Borda</p>
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <label className="text-[10px] text-text-secondary/90">Cor</label>
+                      <input type="color" value={subtitleOutlineColor} onChange={(e) => setSubtitleOutlineColor(e.target.value)} className="w-9 h-9 rounded-md border border-dark-border cursor-pointer p-0.5 bg-dark-card" title={subtitleOutlineColor} />
+                      <input type="text" value={subtitleOutlineColor} onChange={(e) => setSubtitleOutlineColor(e.target.value)} className="w-16 px-1.5 py-1 rounded-md border border-dark-border bg-dark-card text-[10px] font-mono text-text-primary focus:outline-none focus:ring-1 focus:ring-shopee-orange/50" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-[10px] text-text-secondary/90">Largura</label>
+                      <input type="number" min={0} max={8} value={subtitleOutlineWidth} onChange={(e) => setSubtitleOutlineWidth(Number(e.target.value))} className="w-12 px-1.5 py-1 rounded-md border border-dark-border bg-dark-card text-text-primary text-xs text-center focus:outline-none focus:ring-1 focus:ring-shopee-orange/50" />
+                      <span className="text-[10px] text-text-secondary/80">px</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-1">
+                  <p className="text-[10px] text-text-secondary/80 mb-2">A partir do áudio na faixa Áudio 1 + texto da Copy/TTS.</p>
                   <button
                     onClick={handleAutoSubtitle}
                     disabled={generatingSubtitles || tracks[1]?.clips.length === 0 || (!ttsText.trim() && !generatedCopy.trim())}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-500 disabled:opacity-50"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-500 disabled:opacity-50 transition-colors"
                   >
                     {generatingSubtitles ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
                     Gerar Legenda Automática
@@ -940,33 +1016,46 @@ export default function VideoEditorPage() {
               />
             )}
             {/* Subtitle overlay */}
-            {activeSubtitle?.text && activeSubtitle.subtitleStyle && (
-              <div
-                className="absolute left-0 right-0 flex justify-center px-4"
-                style={{
-                  top: activeSubtitle.subtitleStyle.position === "top" ? "8%" : activeSubtitle.subtitleStyle.position === "center" ? "45%" : undefined,
-                  bottom: activeSubtitle.subtitleStyle.position === "bottom" ? "8%" : undefined,
-                }}
-              >
-                <span
+            {activeSubtitle?.text && activeSubtitle.subtitleStyle && (() => {
+              const s = activeSubtitle.subtitleStyle;
+              let bg = s.bgColor;
+              if (s.bgOpacity != null) {
+                if (s.bgOpacity === 0) bg = "transparent";
+                else if (/^#[0-9A-Fa-f]{6}$/.test(s.bgColor)) {
+                  const r = parseInt(s.bgColor.slice(1, 3), 16), g = parseInt(s.bgColor.slice(3, 5), 16), b = parseInt(s.bgColor.slice(5, 7), 16);
+                  bg = `rgba(${r},${g},${b},${s.bgOpacity})`;
+                }
+              }
+              const stroke = s.outline ? `${s.outlineWidth ?? 1}px ${s.outlineColor ?? "#000000"}` : "none";
+              return (
+                <div
+                  className="absolute left-0 right-0 flex justify-center px-4"
                   style={{
-                    fontFamily: activeSubtitle.subtitleStyle.fontFamily,
-                    fontSize: `${activeSubtitle.subtitleStyle.fontSize}px`,
-                    color: activeSubtitle.subtitleStyle.color,
-                    background: activeSubtitle.subtitleStyle.bgColor,
-                    fontWeight: activeSubtitle.subtitleStyle.bold ? "bold" : "normal",
-                    WebkitTextStroke: activeSubtitle.subtitleStyle.outline ? "1px black" : "none",
-                    padding: "4px 12px",
-                    borderRadius: "6px",
-                    textAlign: "center",
-                    maxWidth: "90%",
-                    wordBreak: "break-word",
+                    top: s.position === "top" ? "8%" : s.position === "center" ? "45%" : undefined,
+                    bottom: s.position === "bottom" ? "8%" : undefined,
                   }}
                 >
-                  {activeSubtitle.text}
-                </span>
-              </div>
-            )}
+                  <span
+                    style={{
+                      fontFamily: s.fontFamily,
+                      fontSize: `${s.fontSize}px`,
+                      color: s.color,
+                      background: bg,
+                      fontWeight: s.bold ? "bold" : "normal",
+                      WebkitTextStroke: stroke,
+                      textTransform: s.uppercase ? "uppercase" : "none",
+                      padding: "4px 12px",
+                      borderRadius: "6px",
+                      textAlign: "center",
+                      maxWidth: "90%",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {activeSubtitle.text}
+                  </span>
+                </div>
+              );
+            })()}
             {tracks[0]?.clips.length === 0 && (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-text-secondary/40">
                 <Upload className="h-12 w-12 mb-2" />
