@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
 import {
   CalendarDays,
@@ -25,6 +25,7 @@ import {
   Trash2,
   CopyPlus,
   Plus,
+  BadgePercent,
 } from "lucide-react";
 import type { ATICreativeRow } from "@/lib/ati/types";
 import type { MetricLevel } from "@/lib/ati/types";
@@ -41,17 +42,42 @@ function formatPct(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
-/** Monta o link final com utm_content=adId, substituindo qualquer utm_content já existente. */
-function buildLinkWithUtmContent(baseLink: string, adId: string): string {
-  const trimmed = baseLink.trim();
-  if (!trimmed || !adId) return trimmed;
-  try {
-    const url = new URL(trimmed);
-    url.searchParams.set("utm_content", adId);
-    return url.toString();
-  } catch {
-    return trimmed.includes("?") ? `${trimmed}&utm_content=${adId}` : `${trimmed}?utm_content=${adId}`;
-  }
+/** Afiliado Shopee: valor da venda ≠ comissão. ROAS e lucro líquido usam comissão. */
+const ATI_HINT = {
+  custo:
+    "Afiliado Shopee: quanto você gastou em anúncio no Meta (Facebook) neste anúncio — lifetime. Não tem relação com o valor do produto na Shopee.",
+  valorVendas:
+    "Soma do que os clientes pagaram nos pedidos (Valor de Compra no relatório Shopee), com seu Sub ID no período. Ex.: produto sai R$ 50 — aqui entra R$ 50. Isso NÃO é o que cai na sua conta; sua grana é a comissão.",
+  comissao:
+    "Sua comissão líquida da Shopee nos pedidos com este Sub ID (ex.: venda R$ 50, você ganha R$ 13,69 — aqui aparece R$ 13,69). É o que a Shopee paga a você de fato.",
+  lucro:
+    "Lucro líquido = Comissão Shopee − Custo no Meta. Ex.: R$ 13,69 de comissão − R$ 10 de tráfego = R$ 3,69. É o que sobra depois de pagar o anúncio.",
+  roas:
+    "ROAS de afiliado = Comissão Shopee ÷ Custo Meta. Ex.: R$ 13,69 de comissão ÷ R$ 10 de ads = 1,37. Mede retorno sobre o que VOCÊ ganhou (comissão), não sobre o preço cheio do produto.",
+  pedidos:
+    "Quantidade de pedidos no relatório Shopee com o Sub ID deste anúncio, no período escolhido.",
+  cpa:
+    "Custo Meta ÷ pedidos com Sub ID. Quanto você gastou em média em anúncio para cada venda atribuída.",
+  cliques:
+    "Chamamos de Cliques Shopee: são os cliques no seu anúncio que abrem o link da Shopee. O número vem do Meta (lifetime), pois é quem conta o clique no anúncio — na prática é o tráfego que foi para a Shopee.",
+} as const;
+
+function MetricHint({
+  icon: Icon,
+  label,
+  hint,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <div className="flex items-start gap-1.5 text-text-secondary text-xs mb-0.5 cursor-help group" title={hint}>
+      <Icon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+      <span className="leading-snug flex-1 min-w-0">{label}</span>
+      <HelpCircle className="h-3 w-3 shrink-0 text-text-secondary/40 group-hover:text-shopee-orange/70 mt-0.5" />
+    </div>
+  );
 }
 
 type Grouped = {
@@ -137,6 +163,7 @@ function AdAccordionItem({
   onAdStatusToggle,
   adTogglingId,
   onEditAd,
+  onReloadAti,
 }: {
   row: ATICreativeRow;
   dateLabel: string;
@@ -153,8 +180,17 @@ function AdAccordionItem({
   onAdStatusToggle?: (adId: string) => void;
   adTogglingId?: string | null;
   onEditAd?: (r: ATICreativeRow) => void;
+  onReloadAti: () => Promise<void>;
 }) {
   const isOpen = expandedId === row.adId;
+  const [shopeeSubDraft, setShopeeSubDraft] = useState(() => row.shopeeSubId ?? row.subId ?? "");
+  const [shopeeSubBusy, setShopeeSubBusy] = useState(false);
+  const [shopeeSubFeedback, setShopeeSubFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    setShopeeSubDraft(row.shopeeSubId ?? row.subId ?? "");
+    setShopeeSubFeedback(null);
+  }, [row.adId, row.shopeeSubId, row.subId]);
 
   useEffect(() => {
     if (isOpen && row) onExpandedFetchLink(row);
@@ -199,6 +235,83 @@ function AdAccordionItem({
 
       {isOpen && (
         <div className="border-t border-dark-border bg-dark-bg/30 p-4 space-y-4">
+          <div className="rounded-lg border border-dark-border/80 bg-dark-card/50 p-3 space-y-2">
+            <p className="text-xs font-semibold text-text-primary flex items-center gap-1.5">
+              <ShoppingBag className="h-3.5 w-3.5 text-shopee-orange" />
+              Sub ID Shopee (Sub1 do gerador) — cruzamento com vendas
+            </p>
+            <p className="text-[11px] text-text-secondary leading-relaxed">
+              Gere o link no <strong className="text-text-primary">Gerador de links</strong> com o mesmo código em <strong>Sub ID 1</strong> e cole aqui. Deve bater com o que aparece no relatório da Shopee.
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex-1 min-w-[140px]">
+                <label className="block text-[10px] text-text-secondary mb-0.5">Sub ID 1</label>
+                <input
+                  type="text"
+                  value={shopeeSubDraft}
+                  onChange={(e) => setShopeeSubDraft(e.target.value)}
+                  placeholder="ex: meta_camp1_a1"
+                  className="w-full rounded-lg border border-dark-border bg-dark-bg py-1.5 px-2.5 text-xs text-text-primary placeholder-text-secondary/50 focus:outline-none focus:border-shopee-orange"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={shopeeSubBusy || shopeeSubDraft.trim().length < 2}
+                onClick={async () => {
+                  setShopeeSubBusy(true);
+                  setShopeeSubFeedback(null);
+                  try {
+                    const res = await fetch("/api/ati/ad-shopee-sub", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ adId: row.adId, shopeeSubId: shopeeSubDraft.trim() }),
+                    });
+                    const j = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(j?.error ?? "Erro ao salvar");
+                    setShopeeSubFeedback("Salvo.");
+                    await onReloadAti();
+                  } catch (e) {
+                    setShopeeSubFeedback(e instanceof Error ? e.message : "Erro");
+                  } finally {
+                    setShopeeSubBusy(false);
+                  }
+                }}
+                className="rounded-lg bg-shopee-orange px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {shopeeSubBusy ? "…" : "Salvar"}
+              </button>
+              {(row.shopeeSubId || row.subId) && (
+                <button
+                  type="button"
+                  disabled={shopeeSubBusy}
+                  onClick={async () => {
+                    setShopeeSubBusy(true);
+                    setShopeeSubFeedback(null);
+                    try {
+                      const res = await fetch(`/api/ati/ad-shopee-sub?adId=${encodeURIComponent(row.adId)}`, { method: "DELETE" });
+                      const j = await res.json().catch(() => ({}));
+                      if (!res.ok) throw new Error(j?.error ?? "Erro");
+                      setShopeeSubDraft("");
+                      setShopeeSubFeedback("Removido.");
+                      await onReloadAti();
+                    } catch (e) {
+                      setShopeeSubFeedback(e instanceof Error ? e.message : "Erro");
+                    } finally {
+                      setShopeeSubBusy(false);
+                    }
+                  }}
+                  className="rounded-lg border border-dark-border px-3 py-1.5 text-xs text-text-secondary hover:text-red-400 hover:border-red-500/40 disabled:opacity-50"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+            {shopeeSubFeedback && (
+              <p className={`text-[11px] ${shopeeSubFeedback === "Salvo." || shopeeSubFeedback === "Removido." ? "text-emerald-400" : "text-red-400"}`}>
+                {shopeeSubFeedback}
+              </p>
+            )}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -212,12 +325,12 @@ function AdAccordionItem({
               {hasExistingLink === true ? (
                 <>
                   <CheckCircle className="h-3.5 w-3.5" />
-                  Editado com Sucesso
+                  Link no anúncio
                 </>
               ) : (
                 <>
                   <Link2 className="h-3.5 w-3.5" />
-                  Gerar link de anúncio
+                  Colocar link no anúncio
                 </>
               )}
             </button>
@@ -249,58 +362,44 @@ function AdAccordionItem({
             </button>
           </div>
           {/* Cards de resumo (estilo print) */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
             <div className="rounded-lg bg-dark-card border border-dark-border p-3">
-              <div className="flex items-center gap-2 text-text-secondary text-xs mb-0.5">
-                <DollarSign className="h-3.5 w-3.5" />
-                Custo Total
-              </div>
+              <MetricHint icon={DollarSign} label="Custo Meta" hint={ATI_HINT.custo} />
               <p className="text-red-400 font-bold text-sm">{formatBRL(row.cost)}</p>
+              <p className="text-[10px] text-text-secondary">Tráfego Facebook</p>
             </div>
             <div className="rounded-lg bg-dark-card border border-dark-border p-3">
-              <div className="flex items-center gap-2 text-text-secondary text-xs mb-0.5">
-                <TrendingUp className="h-3.5 w-3.5" />
-                Receita Total
-              </div>
-              <p className="text-emerald-400 font-bold text-sm">{formatBRL(row.revenue)}</p>
+              <MetricHint icon={TrendingUp} label="Valor das vendas" hint={ATI_HINT.valorVendas} />
+              <p className="text-sky-300 font-bold text-sm">{formatBRL(row.revenue)}</p>
+              <p className="text-[10px] text-text-secondary">Total pago pelos clientes</p>
+            </div>
+            <div className="rounded-lg bg-dark-card border border-shopee-orange/25 p-3">
+              <MetricHint icon={BadgePercent} label="Comissão Shopee" hint={ATI_HINT.comissao} />
+              <p className="text-shopee-orange font-bold text-sm">{formatBRL(row.commission)}</p>
+              <p className="text-[10px] text-text-secondary">Seu ganho na Shopee</p>
             </div>
             <div className="rounded-lg bg-dark-card border border-dark-border p-3">
-              <div className="flex items-center gap-2 text-text-secondary text-xs mb-0.5">
-                <Wallet className="h-3.5 w-3.5" />
-                Lucro
-              </div>
+              <MetricHint icon={Wallet} label="Lucro líquido" hint={ATI_HINT.lucro} />
               <p className={`font-bold text-sm ${isProfitPositive ? "text-emerald-400" : "text-red-400"}`}>
                 {formatBRL(profit)}
               </p>
-              <p className="text-[10px] text-text-secondary">{isProfitPositive ? "Lucro" : "Prejuízo"}</p>
+              <p className="text-[10px] text-text-secondary">Comissão − custo Meta</p>
             </div>
             <div className="rounded-lg bg-dark-card border border-dark-border p-3">
-              <div className="flex items-center gap-2 text-text-secondary text-xs mb-0.5">
-                <BarChart3 className="h-3.5 w-3.5" />
-                ROAS
-              </div>
+              <MetricHint icon={BarChart3} label="ROAS" hint={ATI_HINT.roas} />
               <p className="text-text-primary font-bold text-sm">{row.roas.toFixed(2)}</p>
-              <p className="text-[10px] text-text-secondary">Retorno sobre gasto</p>
+              <p className="text-[10px] text-text-secondary">Comissão ÷ custo Meta</p>
             </div>
             <div className="rounded-lg bg-dark-card border border-dark-border p-3">
-              <div className="flex items-center gap-2 text-text-secondary text-xs mb-0.5">
-                <ShoppingBag className="h-3.5 w-3.5" />
-                Pedidos
-              </div>
+              <MetricHint icon={ShoppingBag} label="Pedidos" hint={ATI_HINT.pedidos} />
               <p className="text-text-primary font-bold text-sm">{row.orders}</p>
             </div>
             <div className="rounded-lg bg-dark-card border border-dark-border p-3">
-              <div className="flex items-center gap-2 text-text-secondary text-xs mb-0.5">
-                <Target className="h-3.5 w-3.5" />
-                CPA Médio
-              </div>
+              <MetricHint icon={Target} label="CPA médio" hint={ATI_HINT.cpa} />
               <p className="text-text-primary font-bold text-sm">{formatBRL(row.cpa)}</p>
             </div>
             <div className="rounded-lg bg-dark-card border border-dark-border p-3">
-              <div className="flex items-center gap-2 text-text-secondary text-xs mb-0.5">
-                <MousePointerClick className="h-3.5 w-3.5" />
-                Cliques Shopee
-              </div>
+              <MetricHint icon={MousePointerClick} label="Cliques Shopee" hint={ATI_HINT.cliques} />
               <p className="text-text-primary font-bold text-sm">{row.clicksShopee || row.clicksMeta}</p>
             </div>
           </div>
@@ -313,16 +412,16 @@ function AdAccordionItem({
                 <thead>
                   <tr className="bg-dark-card border-b border-dark-border text-text-secondary">
                     <th className="text-left py-2 px-3 font-semibold">Período</th>
-                    <th className="text-right py-2 px-2 font-semibold">Custo Tráfego</th>
-                    <th className="text-right py-2 px-2 font-semibold">Cliques Meta</th>
+                    <th className="text-right py-2 px-2 font-semibold cursor-help" title={ATI_HINT.custo}>Custo Tráfego</th>
+                    <th className="text-right py-2 px-2 font-semibold cursor-help" title={ATI_HINT.cliques}>Cliques Shopee</th>
                     <th className="text-right py-2 px-2 font-semibold">CPC Meta (R$)</th>
                     <th className="text-right py-2 px-2 font-semibold">CTR</th>
-                    <th className="text-right py-2 px-2 font-semibold">Cliques Shopee</th>
-                    <th className="text-right py-2 px-2 font-semibold">Pedidos</th>
-                    <th className="text-right py-2 px-2 font-semibold">CPA (R$)</th>
-                    <th className="text-right py-2 px-2 font-semibold">Receita (R$)</th>
-                    <th className="text-right py-2 px-2 font-semibold">Lucro (R$)</th>
-                    <th className="text-right py-2 px-2 font-semibold">ROAS</th>
+                    <th className="text-right py-2 px-2 font-semibold cursor-help" title={ATI_HINT.pedidos}>Pedidos</th>
+                    <th className="text-right py-2 px-2 font-semibold cursor-help" title={ATI_HINT.cpa}>CPA (R$)</th>
+                    <th className="text-right py-2 px-2 font-semibold cursor-help" title={ATI_HINT.valorVendas}>Valor vendas</th>
+                    <th className="text-right py-2 px-2 font-semibold cursor-help" title={ATI_HINT.comissao}>Comissão</th>
+                    <th className="text-right py-2 px-2 font-semibold cursor-help" title={ATI_HINT.lucro}>Lucro líq.</th>
+                    <th className="text-right py-2 px-2 font-semibold cursor-help" title={ATI_HINT.roas}>ROAS</th>
                     <th className="text-right py-2 px-2 font-semibold">EPC (R$)</th>
                   </tr>
                 </thead>
@@ -330,13 +429,13 @@ function AdAccordionItem({
                   <tr className="bg-dark-bg/50 border-b border-dark-border text-text-primary">
                     <td className="py-2 px-3">{dateLabel}</td>
                     <td className="text-right py-2 px-2 text-red-400">{formatBRL(row.cost)}</td>
-                    <td className="text-right py-2 px-2">{row.clicksMeta}</td>
+                    <td className="text-right py-2 px-2">{row.clicksShopee || row.clicksMeta}</td>
                     <td className="text-right py-2 px-2">{formatBRL(row.cpcMeta)}</td>
                     <td className="text-right py-2 px-2">{row.ctrMeta.toFixed(2)}%</td>
-                    <td className="text-right py-2 px-2">{row.clicksShopee || row.clicksMeta}</td>
                     <td className="text-right py-2 px-2">{row.orders}</td>
                     <td className="text-right py-2 px-2">{formatBRL(row.cpa)}</td>
-                    <td className="text-right py-2 px-2 text-emerald-400">{formatBRL(row.revenue)}</td>
+                    <td className="text-right py-2 px-2 text-sky-300/90">{formatBRL(row.revenue)}</td>
+                    <td className="text-right py-2 px-2 text-shopee-orange">{formatBRL(row.commission)}</td>
                     <td className={`text-right py-2 px-2 ${isProfitPositive ? "text-emerald-400" : "text-red-400"}`}>{formatBRL(profit)}</td>
                     <td className="text-right py-2 px-2">{row.roas.toFixed(2)}</td>
                     <td className="text-right py-2 px-2">{formatBRL(row.epc)}</td>
@@ -473,6 +572,7 @@ export default function ATIClient() {
   const [adDuplicateModal, setAdDuplicateModal] = useState<{ adId: string; adName: string } | null>(null);
   const [adDuplicateCount, setAdDuplicateCount] = useState("5");
   const [adDuplicateSaving, setAdDuplicateSaving] = useState(false);
+  const [shopeeWarning, setShopeeWarning] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -488,6 +588,7 @@ export default function ATIClient() {
       setAdSetList(Array.isArray(json.adSetList) ? json.adSetList : []);
       setAdSetStatusMap((json.adSetStatusMap as Record<string, string>) ?? {});
       setAdStatusMap((json.adStatusMap as Record<string, string>) ?? {});
+      setShopeeWarning(typeof json.shopeeWarning === "string" ? json.shopeeWarning : null);
       const tagsRes = await fetch("/api/ati/campaign-tags?tag=Tráfego%20para%20Grupos", { cache: "no-store" });
       if (tagsRes.ok) {
         const tagsJson = (await tagsRes.json()) as { campaignIds?: string[] };
@@ -505,6 +606,7 @@ export default function ATIClient() {
       setAdSetStatusMap({});
       setAdStatusMap({});
       setCampaignIdsTraficoGrupos([]);
+      setShopeeWarning(null);
     } finally {
       setLoading(false);
     }
@@ -1002,11 +1104,12 @@ export default function ATIClient() {
     return tree;
   }, [creatives, campaignsList, adSetList, filterCampaign, filterAdSet, filterAd]);
 
-  const dateLabel = `${new Date(start).toLocaleDateString("pt-BR")} a ${new Date(end).toLocaleDateString("pt-BR")}`;
+  const shopeePeriodLabel = `${new Date(start).toLocaleDateString("pt-BR")} – ${new Date(end).toLocaleDateString("pt-BR")}`;
+  const dateLabel = `Meta: gasto/cliques lifetime · Vendas Shopee: ${shopeePeriodLabel}`;
 
   return (
     <>
-      {loading && <LoadingOverlay message="Carregando dados Meta e Shopee..." />}
+      {loading && <LoadingOverlay message="Carregando campanhas Meta e vendas Shopee…" />}
 
       {/* ── Header ── */}
       <div className="mb-5">
@@ -1019,12 +1122,16 @@ export default function ATIClient() {
             </div>
             <div className="min-w-0">
               <h1 className="text-base font-bold text-text-primary leading-tight truncate">Advanced Traffic Intelligence</h1>
-              <p className="text-[11px] text-text-secondary/70 mt-px">Cruzamento Meta Ads × Shopee por criativo</p>
+              <p className="text-[11px] text-text-secondary/70 mt-px">
+                Feito para <strong className="text-shopee-orange/90">afiliados Shopee</strong>: valor das vendas ≠ comissão. ROAS = comissão ÷ custo Meta. Período abaixo = só vendas Shopee.
+              </p>
             </div>
           </div>
 
-          {/* Período + botão */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Período vendas Shopee + botão */}
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <span className="text-[10px] text-text-secondary/80 font-medium uppercase tracking-wide">Período das vendas Shopee</span>
+            <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 bg-dark-card border border-dark-border rounded-xl px-3 py-1.5">
               <CalendarDays className="h-3.5 w-3.5 text-text-secondary/60 shrink-0" />
               <input
@@ -1057,6 +1164,7 @@ export default function ATIClient() {
                 {campaignsList.length}c · {creatives.length}cr
               </span>
             )}
+            </div>
           </div>
         </div>
       </div>
@@ -1067,13 +1175,24 @@ export default function ATIClient() {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-red-400">{error}</p>
             <p className="text-xs text-text-secondary mt-1">
-              Confirme que o token do Meta e as chaves da Shopee estão configurados.{" "}
+              Token Meta obrigatório. Shopee é opcional para listar campanhas.{" "}
               <button type="button" onClick={() => router.push("/configuracoes")} className="text-shopee-orange hover:underline font-semibold">
-                Abrir Configurações →
+                Configurações →
               </button>
             </p>
           </div>
           <button type="button" onClick={() => setError(null)} className="text-red-400/60 hover:text-red-400 text-xs shrink-0">✕</button>
+        </div>
+      )}
+
+      {shopeeWarning && !error && (
+        <div className="mb-5 p-3 rounded-xl border border-amber-500/35 bg-amber-500/10 flex items-start gap-2">
+          <AlertCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-amber-200">Vendas Shopee (período)</p>
+            <p className="text-xs text-text-secondary mt-1">{shopeeWarning}</p>
+          </div>
+          <button type="button" onClick={() => setShopeeWarning(null)} className="text-amber-400/60 text-xs shrink-0">✕</button>
         </div>
       )}
 
@@ -1179,28 +1298,19 @@ export default function ATIClient() {
             <div className="px-4 pb-4 pt-0 border-t border-dark-border space-y-4 text-sm text-text-secondary">
               <div>
                 <h3 className="text-text-primary font-semibold mb-1 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-shopee-orange" /> O que é o ad_id?
-                </h3>
-                <ul className="list-disc list-inside space-y-0.5 ml-2">
-                  <li>Não é seu ID de afiliado.</li>
-                  <li>Não é o nome da campanha que você digita.</li>
-                  <li>É um número que o Meta gera para cada anúncio. Cada anúncio tem um ad_id único.</li>
-                </ul>
-              </div>
-              <div>
-                <h3 className="text-text-primary font-semibold mb-1 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-shopee-orange" /> O que fazer
+                  <span className="w-1.5 h-1.5 rounded-full bg-shopee-orange" /> Por anúncio: um Sub ID
                 </h3>
                 <p className="text-text-primary bg-dark-bg/80 rounded-md p-3 border-l-2 border-shopee-orange">
-                  Coloque o ad_id no link de destino do anúncio (link da Shopee) como Sub-ID, ex.: <code className="bg-dark-bg px-1 rounded">?utm_content=AD_ID</code>.
+                  No <strong>Gerador de links Shopee</strong>, use um código único em <strong>Sub ID 1</strong> (ex.: <code className="bg-dark-bg px-1 rounded">meta_a1</code>). Cole esse mesmo código no campo <strong>Sub ID Shopee</strong> do anúncio aqui no ATI. O link do anúncio no Meta pode ser o link gerado, sem precisar de <code className="bg-dark-bg px-1 rounded">utm_content</code>.
                 </p>
               </div>
               <div>
                 <h3 className="text-text-primary font-semibold mb-2 flex items-center gap-1.5"><Link2 className="h-4 w-4 text-shopee-orange" /> Passo a passo</h3>
                 <ol className="list-decimal list-inside space-y-2 ml-2">
-                  <li>Crie o anúncio no Meta. Abra o anúncio e veja na URL: <code className="bg-dark-bg px-1 rounded">selected_ad_ids=NUMERO</code>.</li>
-                  <li>Use esse número no link da Shopee: <code className="bg-dark-bg px-1 rounded">https://shope.ee/...?utm_content=NUMERO</code>.</li>
-                  <li>Salve o anúncio. As vendas com esse Sub-ID serão cruzadas no ATI.</li>
+                  <li>Gere o link da oferta com Sub ID 1 = código seu (único por anúncio).</li>
+                  <li>Abra o anúncio no ATI, salve esse código em <strong>Sub ID Shopee</strong>.</li>
+                  <li>Use <strong>Colocar link no anúncio</strong> para publicar o link da Shopee no Meta (URL exata).</li>
+                  <li>Vendas no relatório da Shopee com esse Sub1 aparecem cruzadas com o gasto do anúncio.</li>
                 </ol>
               </div>
             </div>
@@ -1215,7 +1325,7 @@ export default function ATIClient() {
             <div>
               <p className="text-sm font-semibold text-text-primary">Nenhum dado no período</p>
               <p className="text-xs text-text-secondary mt-1 max-w-sm">
-                Integrações não configuradas ou sem criativos ativos. Use o <code className="bg-dark-bg px-1 rounded text-shopee-orange">ad_id</code> do Meta como Sub-ID no link da Shopee para cruzar as vendas.
+                Integrações não configuradas ou sem criativos. Configure Sub ID 1 no gerador e vincule cada anúncio no ATI para cruzar vendas.
               </p>
             </div>
             <button
@@ -1419,6 +1529,7 @@ export default function ATIClient() {
                                         setAdEditError(null);
                                       } else setError("Conta de anúncios não disponível.");
                                     }}
+                                    onReloadAti={load}
                                   />
                                 ))}
                               </div>
@@ -1466,7 +1577,7 @@ export default function ATIClient() {
               <input type="url" value={linkModalShopeeLink} onChange={(e) => setLinkModalShopeeLink(e.target.value)} placeholder="https://s.shopee.com.br/60MfL7egOy" className="w-full rounded-xl border border-dark-border bg-dark-bg py-2 px-3 text-text-primary text-sm placeholder-text-secondary/50 focus:outline-none focus:border-shopee-orange transition-colors" />
             </div>
             <p className="text-xs text-text-secondary/70">
-              Ao publicar, o <code className="bg-dark-bg px-1 rounded text-shopee-orange">utm_content</code> será preenchido com o ad_id automaticamente para rastreamento no ATI.
+              O link é publicado <strong className="text-text-primary">exatamente</strong> como você colou. O cruzamento com vendas é pelo <strong>Sub ID Shopee</strong> que você configurou no anúncio (Sub1 do gerador).
             </p>
             {linkModalError && (
               <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 space-y-1">
@@ -1481,7 +1592,7 @@ export default function ATIClient() {
                 type="button"
                 disabled={!linkModalAdId || !linkModalShopeeLink.trim() || linkModalPublishing}
                 onClick={async () => {
-                  const finalLink = buildLinkWithUtmContent(linkModalShopeeLink, linkModalAdId);
+                  const finalLink = linkModalShopeeLink.trim();
                   setLinkModalPublishing(true);
                   setLinkModalError(null);
                   setLinkModalErrorDetail(null);
@@ -1505,6 +1616,7 @@ export default function ATIClient() {
                     setLinkModalAd(null);
                     setLinkModalShopeeLink("");
                     setAdIdToHasLink((prev) => ({ ...prev, [linkModalAdId]: true }));
+                    await load();
                   } catch (e) {
                     const msg = e instanceof Error ? e.message : "Erro ao publicar";
                     console.error("[ATI] update-link exceção:", e);

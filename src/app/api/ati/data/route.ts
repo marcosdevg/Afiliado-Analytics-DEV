@@ -69,16 +69,10 @@ export async function GET(req: Request) {
 
     const baseUrl = new URL(req.url).origin;
 
-    const [metaRes, shopeeRes] = await Promise.all([
-      fetch(`${baseUrl}/api/meta/insights?start=${start}&end=${end}`, {
-        headers: { cookie: req.headers.get("cookie") ?? "" },
-        cache: "no-store",
-      }),
-      fetch(`${baseUrl}/api/shopee/conversion-report?start=${start}&end=${end}`, {
-        headers: { cookie: req.headers.get("cookie") ?? "" },
-        cache: "no-store",
-      }),
-    ]);
+    const metaRes = await fetch(`${baseUrl}/api/meta/insights?ati=1`, {
+      headers: { cookie: req.headers.get("cookie") ?? "" },
+      cache: "no-store",
+    });
 
     if (!metaRes.ok) {
       const err = (await metaRes.json()) as { error?: string };
@@ -87,12 +81,23 @@ export async function GET(req: Request) {
         { status: metaRes.status }
       );
     }
-    if (!shopeeRes.ok) {
-      const err = (await shopeeRes.json()) as { error?: string };
-      return NextResponse.json(
-        { error: err.error ?? "Erro ao buscar dados da Shopee" },
-        { status: shopeeRes.status }
-      );
+
+    let shopeeRows: ShopeeRow[] = [];
+    let shopeeWarning: string | null = null;
+    try {
+      const shopeeRes = await fetch(`${baseUrl}/api/shopee/conversion-report?start=${start}&end=${end}`, {
+        headers: { cookie: req.headers.get("cookie") ?? "" },
+        cache: "no-store",
+      });
+      if (shopeeRes.ok) {
+        const sj = (await shopeeRes.json()) as { data?: ShopeeRow[] };
+        shopeeRows = sj.data ?? [];
+      } else {
+        const err = (await shopeeRes.json().catch(() => ({}))) as { error?: string };
+        shopeeWarning = err.error ?? `Shopee (${shopeeRes.status}). Vendas não cruzadas neste período.`;
+      }
+    } catch {
+      shopeeWarning = "Shopee indisponível. Campanhas Meta carregam normalmente.";
     }
 
     const metaJson = (await metaRes.json()) as {
@@ -116,20 +121,29 @@ export async function GET(req: Request) {
       adSetStatusMap?: Record<string, string>;
       adStatusMap?: Record<string, string>;
     };
-    const shopeeJson = (await shopeeRes.json()) as { data?: ShopeeRow[] };
-
     const insights = metaJson.insights ?? [];
     const campaignStatus = metaJson.campaignStatusMap ?? {};
     const campaignsList = metaJson.campaignsList ?? [];
     const adSetList = metaJson.adSetList ?? [];
     const adSetStatusMap = metaJson.adSetStatusMap ?? {};
     const adStatusMap = metaJson.adStatusMap ?? {};
-    const shopeeRows = shopeeJson.data ?? [];
     const shopeeBySubId = aggregateShopeeBySubId(shopeeRows);
 
+    const adToShopeeSub = new Map<string, string>();
+    const { data: subRows, error: subMapErr } = await supabase
+      .from("ati_ad_shopee_sub")
+      .select("ad_id, shopee_sub_id")
+      .eq("user_id", user.id);
+    if (!subMapErr && subRows) {
+      for (const r of subRows as { ad_id: string; shopee_sub_id: string }[]) {
+        adToShopeeSub.set(r.ad_id, r.shopee_sub_id);
+      }
+    }
+
+    const zeroShopee = { commission: 0, revenue: 0, orders: 0 };
     const creatives: ATICreativeRow[] = insights.map((m) => {
-      const subId = m.ad_id;
-      const shopee = shopeeBySubId.get(subId) ?? shopeeBySubId.get(m.ad_name) ?? { commission: 0, revenue: 0, orders: 0 };
+      const shopeeSubId = adToShopeeSub.get(m.ad_id) ?? "";
+      const shopee = shopeeSubId ? (shopeeBySubId.get(shopeeSubId) ?? zeroShopee) : zeroShopee;
       const cost = m.spend;
       const clicksMeta = m.clicks;
       const orders = shopee.orders;
@@ -172,7 +186,8 @@ export async function GET(req: Request) {
         campaignId: m.campaign_id,
         campaignName: m.campaign_name,
         adAccountId: m.ad_account_id,
-        subId,
+        subId: shopeeSubId || null,
+        shopeeSubId: shopeeSubId || null,
         cost,
         clicksMeta,
         ctrMeta: m.ctr,
@@ -222,8 +237,10 @@ export async function GET(req: Request) {
       adSetList,
       adSetStatusMap,
       adStatusMap,
-      dateStart: start,
-      dateEnd: end,
+      shopeePeriodStart: start,
+      shopeePeriodEnd: end,
+      metaMetricsMode: "lifetime",
+      ...(shopeeWarning ? { shopeeWarning } : {}),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao gerar dados ATI";

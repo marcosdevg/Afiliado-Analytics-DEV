@@ -60,11 +60,9 @@ type ShopeeNode = {
   utmContent?: unknown;
   referrer?: unknown;
   orders?: unknown;
-};
-
-type ShopeeConversionReport = {
-  nodes?: unknown;
-  pageInfo?: unknown;
+  subId1?: unknown;
+  subId2?: unknown;
+  subId3?: unknown;
 };
 
 type ShopeePageInfo = {
@@ -74,7 +72,7 @@ type ShopeePageInfo = {
 
 type ShopeeGqlResponse = {
   data?: {
-    conversionReport?: ShopeeConversionReport;
+    conversionReport?: { nodes?: unknown; pageInfo?: unknown };
   };
   errors?: ShopeeGqlError[];
 };
@@ -102,15 +100,6 @@ function safeString(v: unknown) {
   return v === null || v === undefined ? "" : String(v);
 }
 
-/**
- * Normaliza utmContent em lista de subIds.
- * Casos reais vistos:
- * - "----" (sem subId)
- * - "picadorOK----" (subId + separador)
- * Também suporta:
- * - array
- * - JSON string '["a","b"]'
- */
 function parseUtmContent(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value
@@ -132,7 +121,7 @@ function parseUtmContent(value: unknown): string[] {
           .filter((s) => s !== "----");
       }
     } catch {
-      // ignora e cai no fallback
+      /* ignore */
     }
   }
 
@@ -153,6 +142,17 @@ function parseUtmContent(value: unknown): string[] {
   }
 
   return [raw].filter((s) => s !== "----");
+}
+
+/** Chave principal para cruzar com Sub ID 1 do gerador (API ou utm). */
+function primaryTrackKey(n: ShopeeNode): string {
+  for (const k of [n.subId1, n.subId2, n.subId3]) {
+    const v = safeString(k).trim();
+    if (v && v !== "----") return v;
+  }
+  const utm = parseUtmContent(n.utmContent);
+  if (utm.length > 0) return utm[0];
+  return "Sem Sub ID";
 }
 
 async function shopeeFetch(appId: string, secret: string, query: string): Promise<ShopeeGqlResponse> {
@@ -206,6 +206,25 @@ export async function GET(req: Request) {
     const purchaseTimeStart = toUnixSeconds(start, false);
     const purchaseTimeEnd = toUnixSeconds(end, true);
 
+    let useSubFields = true;
+    try {
+      const probe = `
+        query {
+          conversionReport(purchaseTimeStart: ${purchaseTimeStart}, purchaseTimeEnd: ${purchaseTimeEnd}, limit: 1) {
+            nodes { subId1 utmContent purchaseTime orders { orderId orderStatus items { itemName } } }
+            pageInfo { hasNextPage scrollId }
+          }
+        }
+      `;
+      await shopeeFetch(appId, secret, probe);
+    } catch {
+      useSubFields = false;
+    }
+
+    const nodeFields = useSubFields
+      ? `purchaseTime device utmContent referrer subId1 subId2 subId3`
+      : `purchaseTime device utmContent referrer`;
+
     const rows: CommissionDataRow[] = [];
     let scrollId: string | null = null;
     let hasNextPage = true;
@@ -222,10 +241,7 @@ export async function GET(req: Request) {
             ${scrollArg}
           ) {
             nodes {
-              purchaseTime
-              device
-              utmContent
-              referrer
+              ${nodeFields}
               orders {
                 orderId
                 orderStatus
@@ -251,9 +267,7 @@ export async function GET(req: Request) {
 
       const conn = json?.data?.conversionReport;
       const nodesUnknown = conn?.nodes;
-
-      const pageInfoUnknown = conn?.pageInfo;
-      const pageInfoObj = (pageInfoUnknown ?? {}) as ShopeePageInfo;
+      const pageInfoObj = (conn?.pageInfo ?? {}) as ShopeePageInfo;
 
       for (const n of asArray<ShopeeNode>(nodesUnknown)) {
         const purchaseIso =
@@ -261,8 +275,8 @@ export async function GET(req: Request) {
             ? new Date(n.purchaseTime * 1000).toISOString()
             : String(n.purchaseTime ?? "");
 
-        const utmParts = parseUtmContent(n.utmContent);
-        const sub1 = utmParts.length > 0 ? utmParts.join(" / ") : "Sem Sub ID";
+        const trackKey = primaryTrackKey(n);
+        const sub1 = trackKey;
 
         const referrer = safeString(n.referrer).trim();
         const device = safeString(n.device).trim();
@@ -317,7 +331,7 @@ export async function GET(req: Request) {
       if (!scrollId) break;
     }
 
-    return NextResponse.json({ data: rows });
+    return NextResponse.json({ data: rows, _subFieldsFromApi: useSubFields });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Erro" }, { status: 500 });
   }

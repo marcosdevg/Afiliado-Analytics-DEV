@@ -104,7 +104,7 @@ export async function POST(req: Request) {
 
     if (!ad_account_id || !adset_id || !name || !page_id || !message) {
       return NextResponse.json(
-        { error: "ad_account_id, adset_id, name, page_id e message são obrigatórios. O link de destino pode ser preenchido depois em Gerar link de anúncio no ATI." },
+        { error: "ad_account_id, adset_id, name, page_id e message são obrigatórios. O link de destino pode ser configurado depois no ATI." },
         { status: 400 }
       );
     }
@@ -122,6 +122,8 @@ export async function POST(req: Request) {
       );
     }
 
+    const instagram_actor_id = body?.instagram_actor_id?.trim() || undefined;
+
     let objectStorySpec: Record<string, unknown>;
 
     if (video_id) {
@@ -135,6 +137,7 @@ export async function POST(req: Request) {
       else if (image_url) videoData.image_url = image_url;
       objectStorySpec = {
         page_id,
+        ...(instagram_actor_id ? { instagram_actor_id } : {}),
         video_data: videoData,
       };
     } else {
@@ -148,6 +151,7 @@ export async function POST(req: Request) {
       else if (image_url) linkData.picture = image_url;
       objectStorySpec = {
         page_id,
+        ...(instagram_actor_id ? { instagram_actor_id } : {}),
         link_data: linkData,
       };
     }

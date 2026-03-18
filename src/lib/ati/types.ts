@@ -51,8 +51,9 @@ export interface ATICreativeRow {
   campaignName: string;
   /** Conta de anúncios (para criar conjunto/anúncio pelo ATI) */
   adAccountId?: string;
-  /** Sub-ID usado para cruzar com Shopee (pode ser ad_id ou configurável) */
-  subId: string;
+  /** Sub ID Shopee (Sub1 do gerador) configurado no ATI para este anúncio */
+  subId: string | null;
+  shopeeSubId?: string | null;
   /** Métricas Meta */
   cost: number;
   clicksMeta: number;

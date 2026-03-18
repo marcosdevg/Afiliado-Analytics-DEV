@@ -1,13 +1,14 @@
 /**
- * Atualiza o link do anúncio e ativa a campanha (cópia invisível + mapeamento).
+ * Atualiza o link do anúncio (URL exata enviada pelo cliente — sem injetar utm).
  * POST /api/meta/ads/update-link
  * Body: { ad_id: string, link: string }
  *
- * O Meta não permite alterar o criativo de um anúncio existente. Nos bastidores:
- * 1) Criar cópia do anúncio com o link (Shopee + utm_content=ad_id ORIGINAL)
- * 2) Ativar a cópia, deletar o original e manter o nome original na cópia
- * 3) Salvar no Supabase: delivering_ad_id (cópia) -> display_ad_id (original)
- * 4) Nos insights, tratamos a cópia como se fosse o original → cruzamento ATI/Shopee correto
+ * ad_id no ATI é sempre o "display" (id estável). Se já houve troca de link antes,
+ * o anúncio que roda no Meta é uma cópia: resolvemos display → delivering via meta_ad_display_mapping.
+ *
+ * O Meta não permite mudar o link do criativo in-place:
+ * cópia com novo link, ativar, apagar o anúncio que estava entregando, mapear cópia → mesmo display_ad_id.
+ * Cruzamento Shopee no ATI é por Sub ID salvo por anúncio (ati_ad_shopee_sub), não por utm_content.
  */
 
 import { NextResponse } from "next/server";
@@ -85,7 +86,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const adUrl = `${GRAPH_BASE}/${ad_id}?fields=account_id,creative,adset_id,campaign_id,name&access_token=${encodeURIComponent(token)}`;
+    const displayAdId = ad_id;
+    let effectiveAdId = ad_id;
+    const { data: mapRow } = await supabase
+      .from("meta_ad_display_mapping")
+      .select("delivering_ad_id")
+      .eq("user_id", user.id)
+      .eq("display_ad_id", displayAdId)
+      .maybeSingle();
+    if (mapRow?.delivering_ad_id) {
+      effectiveAdId = String(mapRow.delivering_ad_id);
+    }
+
+    const adUrl = `${GRAPH_BASE}/${effectiveAdId}?fields=account_id,creative,adset_id,campaign_id,name&access_token=${encodeURIComponent(token)}`;
     const adRes = await fetch(adUrl);
     const adJson = (await adRes.json()) as {
       account_id?: string;
@@ -137,7 +150,7 @@ export async function POST(req: Request) {
       status_option: "ACTIVE",
       rename_strategy: "NO_RENAME",
     });
-    const copyRes = await fetch(`${GRAPH_BASE}/${ad_id}/copies`, {
+    const copyRes = await fetch(`${GRAPH_BASE}/${effectiveAdId}/copies`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: copyParams.toString(),
@@ -205,7 +218,7 @@ export async function POST(req: Request) {
         );
       }
       const deleteParams = new URLSearchParams({ access_token: token, status: "DELETED" });
-      await fetch(`${GRAPH_BASE}/${ad_id}`, {
+      await fetch(`${GRAPH_BASE}/${effectiveAdId}`, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: deleteParams.toString(),
@@ -228,14 +241,14 @@ export async function POST(req: Request) {
         });
       }
       await supabase.from("meta_ad_display_mapping").upsert(
-        { user_id: user.id, delivering_ad_id: newAdJson.id, display_ad_id: ad_id },
+        { user_id: user.id, delivering_ad_id: newAdJson.id, display_ad_id: displayAdId },
         { onConflict: "user_id,delivering_ad_id" }
       );
       return NextResponse.json({ success: true, message: "Link atualizado com sucesso." });
     }
 
     const deleteParams = new URLSearchParams({ access_token: token, status: "DELETED" });
-    await fetch(`${GRAPH_BASE}/${ad_id}`, {
+    await fetch(`${GRAPH_BASE}/${effectiveAdId}`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: deleteParams.toString(),
@@ -265,7 +278,7 @@ export async function POST(req: Request) {
       });
     }
     await supabase.from("meta_ad_display_mapping").upsert(
-      { user_id: user.id, delivering_ad_id: copyJson.copied_ad_id, display_ad_id: ad_id },
+      { user_id: user.id, delivering_ad_id: copyJson.copied_ad_id, display_ad_id: displayAdId },
       { onConflict: "user_id,delivering_ad_id" }
     );
     return NextResponse.json({ success: true, message: "Link atualizado com sucesso." });

@@ -18,6 +18,7 @@ import {
   Video,
   ChevronLeft,
   Zap,
+  Instagram,
 } from "lucide-react";
 import LoadingOverlay from "@/app/components/ui/LoadingOverlay";
 import {
@@ -31,6 +32,7 @@ import {
 type AdAccount = { id: string; name: string; business_id?: string };
 type Page = { id: string; name: string; instagram_account?: { id: string; username: string } | null };
 type Pixel = { id: string; name: string };
+type InstagramAccount = { id: string; username: string; profile_pic: string | null };
 type LibraryImage = { hash: string; url: string | null; id: string | null };
 type LibraryVideo = { id: string; title: string; source: string | null; length: number | null; picture: string | null };
 
@@ -108,6 +110,10 @@ export default function MetaAdsClient() {
   const [loadingTokenDebug, setLoadingTokenDebug] = useState(false);
   const [promotePages, setPromotePages] = useState<Page[]>([]);
   const [loadingPromotePages, setLoadingPromotePages] = useState(false);
+  const [igAccounts, setIgAccounts] = useState<InstagramAccount[]>([]);
+  const [loadingIgAccounts, setLoadingIgAccounts] = useState(false);
+  const [igDebug, setIgDebug] = useState<string | null>(null);
+  const [igManualMode, setIgManualMode] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,6 +157,22 @@ export default function MetaAdsClient() {
       .finally(() => { if (!cancelled) setLoadingPromotePages(false); });
     return () => { cancelled = true; };
   }, [adAccountId, adAccounts]);
+
+  useEffect(() => {
+    if (!adAccountId) { setIgAccounts([]); setInstagramAccountId(""); return; }
+    let cancelled = false;
+    setLoadingIgAccounts(true);
+    const params = new URLSearchParams({ ad_account_id: adAccountId });
+    if (pageId) params.set("page_id", pageId);
+    const acct = adAccounts.find((a) => a.id === adAccountId);
+    if (acct?.business_id) params.set("business_id", acct.business_id);
+    fetch(`/api/meta/instagram-accounts?${params.toString()}`)
+      .then((r) => r.json())
+      .then((json) => { if (!cancelled) { setIgAccounts(json.accounts ?? []); setIgDebug(json._debug ? json._debug.join(" | ") : null); } })
+      .catch(() => { if (!cancelled) { setIgAccounts([]); setIgDebug(null); } })
+      .finally(() => { if (!cancelled) setLoadingIgAccounts(false); });
+    return () => { cancelled = true; };
+  }, [adAccountId, pageId, adAccounts]);
 
   const selectedAccount = adAccounts.find((a) => a.id === adAccountId);
   const isPortfolioAccount = Boolean(selectedAccount?.business_id);
@@ -244,6 +266,7 @@ export default function MetaAdsClient() {
         ad_account_id: adAccountId, adset_id: adsetId, name: adName || "Anúncio",
         page_id: pageId, link: adLink.trim(), message: adMessage.trim(),
         title: adTitle.trim() || undefined, call_to_action: callToAction,
+        instagram_actor_id: instagramAccountId || undefined,
       };
       if (mediaType === "video") {
         body.video_id = videoId.trim();
@@ -442,6 +465,50 @@ export default function MetaAdsClient() {
                   </>
                 )}
               </div>
+
+              {/* Instagram (opcional) */}
+              <div>
+                <FieldLabel hint="Opcional. Se selecionada, o anúncio também aparecerá nesta conta do Instagram.">
+                  <span className="flex items-center gap-1.5"><Instagram className="h-3 w-3" /> Conta do Instagram</span>
+                </FieldLabel>
+                {loadingIgAccounts && adAccountId ? (
+                  <div className="flex items-center gap-2 text-xs text-text-secondary py-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando contas Instagram…
+                  </div>
+                ) : igAccounts.length > 0 ? (
+                  <>
+                    <select value={instagramAccountId} onChange={(e) => setInstagramAccountId(e.target.value)} className={selectCls}>
+                      <option value="">Não usar Instagram</option>
+                      {igAccounts.map((ig) => (
+                        <option key={ig.id} value={ig.id}>@{ig.username}</option>
+                      ))}
+                    </select>
+                    {!igManualMode && (
+                      <button type="button" onClick={() => setIgManualMode(true)} className="text-[10px] text-text-secondary/50 hover:text-shopee-orange mt-1 transition-colors">
+                        Não encontrou? Digitar ID manualmente
+                      </button>
+                    )}
+                    {igManualMode && (
+                      <input type="text" value={instagramAccountId} onChange={(e) => setInstagramAccountId(e.target.value.trim())}
+                        placeholder="Cole o ID numérico da conta IG"
+                        className={`${inputCls} mt-1.5`} />
+                    )}
+                  </>
+                ) : adAccountId ? (
+                  <div>
+                    <p className="text-[11px] text-amber-400/80 mb-1.5">Nenhuma conta encontrada via API. O token pode precisar da permissão <strong>instagram_basic</strong>.</p>
+                    <input type="text" value={instagramAccountId} onChange={(e) => setInstagramAccountId(e.target.value.trim())}
+                      placeholder="Cole o ID numérico da conta IG (ex: 17841400123456)"
+                      className={inputCls} />
+                    <p className="text-[10px] text-text-secondary/40 mt-1.5">
+                      Para encontrar o ID: abra o Gerenciador de Anúncios do Meta → crie um anúncio → em &quot;Identidade&quot; selecione a conta IG → inspecione a rede (DevTools) e procure o campo <code className="text-text-secondary/60">instagram_actor_id</code>.
+                    </p>
+                    {igDebug && <p className="text-[10px] text-text-secondary/30 mt-1 break-all">Debug: {igDebug}</p>}
+                  </div>
+                ) : (
+                  <p className="text-xs text-text-secondary/60 py-1.5">Selecione uma conta de anúncios primeiro.</p>
+                )}
+              </div>
             </>
           )}
 
@@ -601,17 +668,18 @@ export default function MetaAdsClient() {
               <p className="text-sm text-text-primary font-medium">{pages.find((p) => p.id === pageId)?.name || pageList.find((p) => p.id === pageId)?.name || "—"}</p>
               <p className="text-[11px] text-text-secondary/60 mt-0.5">Definida no passo 1.</p>
             </div>
-            {pages.find((p) => p.id === pageId)?.instagram_account && (
-              <div>
-                <FieldLabel>Conta do Instagram</FieldLabel>
-                <select value={instagramAccountId} onChange={(e) => setInstagramAccountId(e.target.value)} className={selectCls}>
-                  <option value="">Não usar Instagram</option>
-                  <option value={pages.find((p) => p.id === pageId)!.instagram_account!.id}>
-                    @{pages.find((p) => p.id === pageId)!.instagram_account!.username || pages.find((p) => p.id === pageId)!.instagram_account!.id}
-                  </option>
-                </select>
-              </div>
-            )}
+            <div>
+              <FieldLabel>Conta do Instagram</FieldLabel>
+              {instagramAccountId ? (
+                <p className="text-sm text-text-primary font-medium flex items-center gap-1.5">
+                  <Instagram className="h-3.5 w-3.5 text-pink-400" />
+                  @{igAccounts.find((ig) => ig.id === instagramAccountId)?.username || instagramAccountId}
+                </p>
+              ) : (
+                <p className="text-sm text-text-secondary/60">Não selecionada</p>
+              )}
+              <p className="text-[11px] text-text-secondary/60 mt-0.5">Definida no passo 1.</p>
+            </div>
           </SectionBox>
 
           {/* Conteúdo */}
@@ -804,12 +872,7 @@ export default function MetaAdsClient() {
                 <p className="text-xs text-text-secondary">Em modo pausado — ative quando quiser.</p>
               </div>
             </div>
-            <div className="bg-dark-bg rounded-xl border border-dark-border p-3 mb-4">
-              <p className="text-xs text-text-secondary mb-1">ID do anúncio</p>
-              <code className="text-sm font-mono text-shopee-orange">{createdAdId}</code>
-              <p className="text-[11px] text-text-secondary/60 mt-1.5">No ATI, use &quot;Gerar link de anúncio&quot; para colocar este ID no link da Shopee e publicar.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 mt-1">
               <button type="button" onClick={handleReset}
                 className="flex-1 rounded-xl bg-shopee-orange px-4 py-2 text-sm font-semibold text-white hover:opacity-90 shadow-[0_2px_12px_rgba(238,77,45,0.2)]">
                 Nova campanha

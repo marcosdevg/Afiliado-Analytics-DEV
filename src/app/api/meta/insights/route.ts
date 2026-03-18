@@ -1,8 +1,8 @@
 /**
- * Busca insights do Meta Ads (campanhas, conjuntos, anúncios) para o período.
- * Inclui TODOS os anúncios da conta (rascunho, pausados, inativos), com métricas zeradas quando não há entrega no período.
- * Ordena pelos mais recentes primeiro.
- * GET /api/meta/insights?start=YYYY-MM-DD&end=YYYY-MM-DD
+ * Meta Ads: campanhas, conjuntos e TODOS os anúncios (ativos ou não).
+ *
+ * - ATI: GET ?ati=1 — sem datas. Métricas de gasto/cliques = date_preset lifetime (fallback maximum).
+ * - Outros: GET ?start=&end= — métricas só naquele intervalo.
  */
 
 import { NextResponse } from "next/server";
@@ -102,6 +102,77 @@ async function getInsights(
     nextUrl = nextJson.paging?.next ?? null;
   }
   return out;
+}
+
+/** Gasto/cliques/impressões por anúncio com date_preset (lifetime, maximum, etc.). */
+async function getInsightsByPreset(
+  accessToken: string,
+  adAccountId: string,
+  datePreset: string
+): Promise<MetaAdInsight[]> {
+  const fields = "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,clicks,impressions,ctr,cpc";
+  const params = new URLSearchParams({
+    access_token: accessToken,
+    fields,
+    level: "ad",
+    date_preset: datePreset,
+  });
+  const url = `${GRAPH_BASE}/${adAccountId}/insights?${params.toString()}`;
+  const res = await fetch(url);
+  const json = (await res.json()) as {
+    data?: Array<Record<string, string | undefined>>;
+    paging?: { next?: string };
+    error?: { message: string };
+  };
+  if (json.error) throw new Error(json.error.message || "Meta API error");
+
+  const out: MetaAdInsight[] = [];
+  let data = json.data ?? [];
+  let nextUrl: string | null = json.paging?.next ?? null;
+  while (data.length > 0 || nextUrl) {
+    for (const row of data) {
+      const spend = parseFloat(row.spend ?? "0") || 0;
+      const clicks = parseInt(row.clicks ?? "0", 10) || 0;
+      const impressions = parseInt(row.impressions ?? "0", 10) || 0;
+      const ctr = parseFloat(row.ctr ?? "0") || 0;
+      const cpc = parseFloat(row.cpc ?? "0") || (clicks > 0 ? spend / clicks : 0);
+      out.push({
+        ad_id: String(row.ad_id ?? ""),
+        ad_name: String(row.ad_name ?? row.ad_id ?? "Sem nome"),
+        adset_id: String(row.adset_id ?? ""),
+        adset_name: String(row.adset_name ?? row.adset_id ?? ""),
+        campaign_id: String(row.campaign_id ?? ""),
+        campaign_name: String(row.campaign_name ?? row.campaign_id ?? ""),
+        ad_account_id: adAccountId,
+        spend,
+        clicks,
+        impressions,
+        ctr,
+        cpc,
+      });
+    }
+    if (!nextUrl) break;
+    const nextRes = await fetch(nextUrl);
+    const nextJson = (await nextRes.json()) as {
+      data?: Array<Record<string, string | undefined>>;
+      paging?: { next?: string };
+    };
+    data = nextJson.data ?? [];
+    nextUrl = nextJson.paging?.next ?? null;
+  }
+  return out;
+}
+
+async function getInsightsAtiMode(accessToken: string, adAccountId: string): Promise<MetaAdInsight[]> {
+  try {
+    return await getInsightsByPreset(accessToken, adAccountId, "lifetime");
+  } catch {
+    try {
+      return await getInsightsByPreset(accessToken, adAccountId, "maximum");
+    } catch {
+      return [];
+    }
+  }
 }
 
 /** Lista todos os ads da conta (qualquer status), para aparecer no ATI mesmo sem entrega no período. Retorna também mapa de status. */
@@ -291,11 +362,12 @@ export async function GET(req: Request) {
     }
 
     const url = new URL(req.url);
+    const atiMode = url.searchParams.get("ati") === "1";
     const start = url.searchParams.get("start");
     const end = url.searchParams.get("end");
-    if (!start || !end) {
+    if (!atiMode && (!start || !end)) {
       return NextResponse.json(
-        { error: "Parâmetros start e end são obrigatórios (YYYY-MM-DD)" },
+        { error: "Parâmetros start e end são obrigatórios (YYYY-MM-DD), exceto no modo ATI (?ati=1)." },
         { status: 400 }
       );
     }
@@ -318,12 +390,21 @@ export async function GET(req: Request) {
     for (const account of accounts) {
       const accountId = account.id;
       try {
-        const [insights, adsResult, campaignsResult, adSetsResult] = await Promise.all([
-          getInsights(token, accountId, start, end),
+        const [adsResult, campaignsResult, adSetsResult] = await Promise.all([
           getAllAds(token, accountId),
           getCampaigns(token, accountId),
           getAllAdSets(token, accountId),
         ]);
+        let insights: MetaAdInsight[] = [];
+        if (atiMode) {
+          insights = await getInsightsAtiMode(token, accountId);
+        } else {
+          try {
+            insights = await getInsights(token, accountId, start!, end!);
+          } catch {
+            insights = [];
+          }
+        }
         const ads = adsResult.ads;
         for (const [id, status] of Object.entries(adsResult.adStatusMap)) {
           adStatusMap[id] = status;
@@ -378,6 +459,7 @@ export async function GET(req: Request) {
       adSetList,
       adSetStatusMap,
       adStatusMap,
+      ...(atiMode ? { atiLifetimeMetrics: true as const } : {}),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao buscar dados do Meta";
