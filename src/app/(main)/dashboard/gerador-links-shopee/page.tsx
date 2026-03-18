@@ -6,7 +6,7 @@ import {
   Link2, Sparkles, Trash2, Search, ExternalLink, ShoppingBag,
   Hand, ListPlus, AlertCircle, Loader2, ChevronLeft, ChevronRight,
   ImageIcon, Share2, Copy, MessageCircle, Download, TrendingUp, X,
-  Plus, Info, Zap, Star, Tag, CheckCircle2,
+  Plus, Info, Zap, Star, Tag, CheckCircle2, Check,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -167,6 +167,7 @@ export default function GeradorLinksShopeePage() {
   const [linksInOfferList, setLinksInOfferList] = useState<Set<string>>(new Set());
   const [addToListModal, setAddToListModal] = useState<{ open: boolean; entries: HistoryEntry[] }>({ open: false, entries: [] });
   const [selectedHistoryIds, setSelectedHistoryIds] = useState<Set<string>>(new Set());
+  const [copiedHistoryId, setCopiedHistoryId] = useState<string | null>(null);
   const [listasOfertas, setListasOfertas] = useState<{ id: string; nome: string; totalItens: number }[]>([]);
   const [novaListaNome, setNovaListaNome] = useState("");
   const [selectedListaId, setSelectedListaId] = useState<string | null>(null);
@@ -947,9 +948,30 @@ export default function GeradorLinksShopeePage() {
                     </div>
                     {/* Ações */}
                     <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <button type="button" onClick={() => navigator.clipboard.writeText(h.shortLink)}
-                        className="p-1.5 rounded-lg bg-dark-card border border-dark-border text-text-secondary hover:text-shopee-orange hover:border-shopee-orange/40 transition-colors" title="Copiar link">
-                        <Copy className="h-3.5 w-3.5" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(h.shortLink);
+                          setCopiedHistoryId(h.id);
+                          window.setTimeout(() => {
+                            setCopiedHistoryId((cur) => (cur === h.id ? null : cur));
+                          }, 1000);
+                        }}
+                        className={`p-1.5 rounded-lg border transition-colors duration-200 ${
+                          copiedHistoryId === h.id
+                            ? "bg-emerald-500/25 border-emerald-400/70 text-emerald-400"
+                            : "bg-dark-card border-dark-border text-text-secondary hover:text-shopee-orange hover:border-shopee-orange/40"
+                        }`}
+                        title={copiedHistoryId === h.id ? "Copiado!" : "Copiar link"}
+                      >
+                        {copiedHistoryId === h.id ? (
+                          <span className="relative flex h-3.5 w-3.5 items-center justify-center">
+                            <span className="absolute inset-0 rounded-full bg-emerald-500/35" />
+                            <Check className="h-2.5 w-2.5 text-emerald-300 relative z-[1]" strokeWidth={3} />
+                          </span>
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
                       </button>
                       <button type="button" onClick={() => openAddToListModal([h])}
                         className={`p-1.5 rounded-lg border transition-colors ${linksInOfferList.has(h.shortLink ?? "") ? "bg-emerald-500/10 border-emerald-400/40 text-emerald-400" : "bg-dark-card border-dark-border text-text-secondary hover:text-shopee-orange hover:border-shopee-orange/40"}`}

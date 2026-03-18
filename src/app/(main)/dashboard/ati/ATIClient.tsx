@@ -26,7 +26,11 @@ import {
   CopyPlus,
   Plus,
   BadgePercent,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
+
+const ATI_CAMPAIGNS_PER_PAGE = 6;
 import type { ATICreativeRow } from "@/lib/ati/types";
 import type { MetricLevel } from "@/lib/ati/types";
 import { META_CAMPAIGN_OBJECTIVES } from "@/lib/meta-ads-constants";
@@ -521,6 +525,7 @@ export default function ATIClient() {
   const [traficoGruposTogglingId, setTraficoGruposTogglingId] = useState<string | null>(null);
   const [expandedCampaigns, setExpandedCampaigns] = useState<Record<string, boolean>>({});
   const [expandedAdSets, setExpandedAdSets] = useState<Record<string, boolean>>({});
+  const [campaignListPage, setCampaignListPage] = useState(1);
 
   // Campanha: editar / deletar
   const [campaignEditModal, setCampaignEditModal] = useState<{ campaignId: string; campaignName: string; objective: string } | null>(null);
@@ -1104,6 +1109,21 @@ export default function ATIClient() {
     return tree;
   }, [creatives, campaignsList, adSetList, filterCampaign, filterAdSet, filterAd]);
 
+  const campaignListTotalPages = Math.max(1, Math.ceil(filteredAndGrouped.length / ATI_CAMPAIGNS_PER_PAGE));
+  const paginatedCampaigns = useMemo(() => {
+    const start = (campaignListPage - 1) * ATI_CAMPAIGNS_PER_PAGE;
+    return filteredAndGrouped.slice(start, start + ATI_CAMPAIGNS_PER_PAGE);
+  }, [filteredAndGrouped, campaignListPage]);
+
+  useEffect(() => {
+    setCampaignListPage(1);
+  }, [filterCampaign, filterAdSet, filterAd]);
+
+  useEffect(() => {
+    const max = Math.max(1, Math.ceil(filteredAndGrouped.length / ATI_CAMPAIGNS_PER_PAGE));
+    setCampaignListPage((p) => (p > max ? max : p < 1 ? 1 : p));
+  }, [filteredAndGrouped.length]);
+
   const shopeePeriodLabel = `${new Date(start).toLocaleDateString("pt-BR")} – ${new Date(end).toLocaleDateString("pt-BR")}`;
   const dateLabel = `Meta: gasto/cliques lifetime · Vendas Shopee: ${shopeePeriodLabel}`;
 
@@ -1338,7 +1358,7 @@ export default function ATIClient() {
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredAndGrouped.map((camp) => {
+            {paginatedCampaigns.map((camp) => {
               const campaignOpen = expandedCampaigns[camp.campaignId];
               const campIsActive = campaignStatus[camp.campaignId] === "ACTIVE";
               return (
@@ -1542,6 +1562,40 @@ export default function ATIClient() {
                 </div>
               );
             })}
+            {campaignListTotalPages > 1 && filteredAndGrouped.length > 0 && (
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 mt-1 border-t border-dark-border">
+                <p className="text-xs text-text-secondary">
+                  Mostrando campanhas{" "}
+                  <span className="text-text-primary font-medium">
+                    {(campaignListPage - 1) * ATI_CAMPAIGNS_PER_PAGE + 1}
+                    –
+                    {Math.min(campaignListPage * ATI_CAMPAIGNS_PER_PAGE, filteredAndGrouped.length)}
+                  </span>{" "}
+                  de <span className="text-text-primary font-medium">{filteredAndGrouped.length}</span>
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={campaignListPage <= 1}
+                    onClick={() => setCampaignListPage((p) => Math.max(1, p - 1))}
+                    className="inline-flex items-center gap-1 rounded-lg border border-dark-border bg-dark-bg px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-shopee-orange hover:border-shopee-orange/40 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                  >
+                    <ChevronLeft className="h-4 w-4" /> Anterior
+                  </button>
+                  <span className="text-xs text-text-secondary tabular-nums px-2">
+                    Página <span className="text-text-primary font-semibold">{campaignListPage}</span> / {campaignListTotalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={campaignListPage >= campaignListTotalPages}
+                    onClick={() => setCampaignListPage((p) => Math.min(campaignListTotalPages, p + 1))}
+                    className="inline-flex items-center gap-1 rounded-lg border border-dark-border bg-dark-bg px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-shopee-orange hover:border-shopee-orange/40 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                  >
+                    Próxima <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
             {filteredAndGrouped.length === 0 && (creatives.length > 0 || campaignsList.length > 0) && (
               <p className="text-center text-text-secondary py-6">Nenhum resultado para os filtros informados.</p>
             )}
