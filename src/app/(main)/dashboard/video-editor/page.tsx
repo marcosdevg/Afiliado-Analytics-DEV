@@ -14,6 +14,7 @@ import {
   VIDEO_STYLES, SUBTITLE_THEMES,
   type VideoInputProps, type VideoStyleId, type MediaAsset, type CaptionWord, type SubtitleTheme,
 } from "../../../../../remotion/types";
+import { useRemotionSandboxRender } from "../../../../hooks/use-remotion-sandbox-render";
 
 type Voice = { voice_id: string; name: string; preview_url: string | null; labels: Record<string, string> };
 type MusicTrack = { id: string; name: string; artist: string; duration: number; audioUrl: string; downloadUrl: string; coverUrl: string };
@@ -161,6 +162,7 @@ export default function VideoEditorPage() {
 
   // ── Step 4 ──
   const [error, setError] = useState<string | null>(null);
+  const remotionExport = useRemotionSandboxRender();
 
   const dimensions = useMemo(() => {
     switch (aspectRatio) {
@@ -1247,13 +1249,69 @@ export default function VideoEditorPage() {
             {/* Export card */}
             <div className="bg-dark-card rounded-2xl border border-dark-border overflow-hidden">
               <div className="p-4 space-y-3">
-                <button type="button" disabled
-                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-shopee-orange/40 to-shopee-orange/20 border border-shopee-orange/30 py-3 text-sm font-bold text-shopee-orange/60 cursor-not-allowed">
-                  <Download className="h-4 w-4" />
-                  Exportar MP4
+                <button
+                  type="button"
+                  disabled={
+                    remotionExport.state.status === "invoking"
+                    || selectedAssets.length === 0
+                  }
+                  onClick={() => void remotionExport.startRender(compositionProps)}
+                  className={`w-full flex items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold transition-all ${
+                    remotionExport.state.status === "invoking" || selectedAssets.length === 0
+                      ? "bg-gradient-to-r from-shopee-orange/40 to-shopee-orange/20 border-shopee-orange/30 text-shopee-orange/60 cursor-not-allowed"
+                      : "bg-gradient-to-r from-shopee-orange to-shopee-orange/90 border-shopee-orange text-white hover:opacity-95 cursor-pointer"
+                  }`}
+                >
+                  {remotionExport.state.status === "invoking" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4" />
+                  )}
+                  {remotionExport.state.status === "invoking"
+                    ? "Renderizando..."
+                    : "Exportar MP4"}
                 </button>
+                {remotionExport.state.status === "invoking" && (
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-text-secondary/80 text-center">{remotionExport.state.phase}</p>
+                    <div className="h-1.5 rounded-full bg-dark-border overflow-hidden">
+                      <div
+                        className="h-full bg-shopee-orange transition-all"
+                        style={{ width: `${Math.min(100, Math.round(remotionExport.state.progress * 100))}%` }}
+                      />
+                    </div>
+                    {remotionExport.state.subtitle ? (
+                      <p className="text-[10px] text-text-secondary/50 text-center">{remotionExport.state.subtitle}</p>
+                    ) : null}
+                  </div>
+                )}
+                {remotionExport.state.status === "error" && (
+                  <p className="text-[11px] text-red-400 text-center">{remotionExport.state.error}</p>
+                )}
+                {remotionExport.state.status === "done" && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] text-emerald-400/90 text-center">
+                      Pronto ({(remotionExport.state.size / (1024 * 1024)).toFixed(2)} MB)
+                    </p>
+                    <a
+                      href={remotionExport.state.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block w-full text-center text-xs font-semibold text-shopee-orange hover:underline"
+                    >
+                      Abrir / baixar vídeo
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => remotionExport.reset()}
+                      className="w-full text-[10px] text-text-secondary/60 hover:text-text-primary"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                )}
                 <p className="text-[10px] text-text-secondary/35 text-center leading-relaxed">
-                  Renderização MP4 requer Remotion Lambda ou Vercel Sandbox configurado no servidor.
+                  Usa Vercel Sandbox + Blob. Configure <code className="text-[9px]">BLOB_READ_WRITE_TOKEN</code> na Vercel e rode o build com bundle Remotion.
                 </p>
               </div>
             </div>

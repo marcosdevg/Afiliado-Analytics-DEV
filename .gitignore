@@ -17,6 +17,9 @@
 /.next/
 /out/
 
+# Remotion bundle (gerado em build / dev local)
+/remotion/static-bundle/
+
 # production
 /build
 

@@ -1,322 +1,146 @@
-# Renderização MP4 com Remotion + Vercel Sandbox
+# Renderização MP4 com Remotion + Vercel Sandbox (Afiliado Analytics)
 
-Este guia explica **detalhadamente** como usar o **Vercel Sandbox** para gerar vídeos MP4 do Remotion no servidor, sem AWS Lambda.
+Este guia descreve o que está **implementado no repositório** e o que você precisa fazer na **Vercel** para o fluxo funcionar de ponta a ponta.
 
----
-
-## 1. O que é o Vercel Sandbox para Remotion?
-
-- **Vercel Sandbox** é um ambiente de execução que sobe uma **VM Linux efêmera** por renderização.
-- Cada vez que você pede um MP4, a Vercel inicia um sandbox com **Chrome**, **FFmpeg** e as bibliotecas necessárias para o Remotion renderizar o vídeo.
-- O vídeo é gerado **no servidor** e pode ser enviado para **Vercel Blob** (armazenamento) e depois baixado pelo usuário.
-
-**Vantagens:**
-- Não precisa configurar AWS Lambda nem conta AWS.
-- Basta conta Vercel + um Blob Store.
-- Deploy contínuo: push no Git e a renderização usa o código novo.
-
-**Limitações:**
-- Render em **uma única máquina** (mais lento que Lambda distribuído).
-- Sandbox leva alguns segundos para subir (Chrome + FFmpeg).
-- **Timeouts:** 45 min (Hobby), 5 h (Pro/Enterprise). **Concorrência:** 10 (Hobby), 2000 (Pro/Enterprise).
+Documentação oficial Remotion: [Vercel Sandbox](https://www.remotion.dev/docs/vercel-sandbox) · [API `@remotion/vercel`](https://www.remotion.dev/docs/vercel/api)
 
 ---
 
-## 2. Pré-requisitos
+## 1. O que já existe no projeto
 
-| Item | Descrição |
-|------|-----------|
-| **Conta Vercel** | Projeto já deployado na Vercel (ex.: Afiliado Analytics). |
-| **Plano** | Hobby funciona; para vídeos longos ou muitos usuários, Pro é recomendado (timeout 5 h, 2000 sandboxes). |
-| **Vercel Blob** | Um Blob Store criado no dashboard da Vercel para guardar os MP4 gerados. |
-| **Pacote `@remotion/vercel`** | Instalado no projeto para chamar a API de render no servidor. |
-
----
-
-## 3. Passo a passo
-
-### 3.1. Criar o Blob Store na Vercel
-
-1. Acesse [vercel.com](https://vercel.com) → seu **projeto** (Afiliado Analytics).
-2. Aba **Storage** (menu lateral).
-3. **Create Database / Store** → escolha **Blob**.
-4. Nome (ex.: `remotion-videos`) → **Create**.
-5. **Connect to Project** e selecione o projeto do Afiliado Analytics.
-6. Anote o nome do store (será usado como variável de ambiente).
-
-Isso gera automaticamente variáveis como `BLOB_READ_WRITE_TOKEN` no projeto. **Redeploy** após conectar o Blob ao projeto.
+| Item | Caminho / detalhe |
+|------|-------------------|
+| Composition ID fixo | `remotion/constants.ts` → `REMOTION_COMPOSITION_ID` = **`GeradorCriativos`** |
+| Root Remotion (bundle) | `remotion/Root.tsx` — registra `VideoComposition` + `calculateMetadata` |
+| Bundle de saída | `remotion/static-bundle/` (gerado pelo script; está no `.gitignore`) |
+| Script de bundle | `npm run remotion:bundle` |
+| Build com bundle | `npm run build` roda **`remotion:bundle` antes** do `next build` |
+| API de render (SSE) | `src/app/api/remotion/render-mp4/route.ts` — stream de progresso + upload Blob |
+| Hook no front | `src/hooks/use-remotion-sandbox-render.ts` — consome SSE e mostra progresso |
+| Botão Exportar | `src/app/(main)/dashboard/video-editor/page.tsx` — passo 4 do gerador |
+| Inclusão do bundle no deploy | `vercel.json` → `functions` → `includeFiles` para a rota de render |
+| Dependências | `@remotion/vercel`, `@vercel/sandbox`, `@vercel/functions` |
 
 ---
 
-### 3.2. Instalar o pacote `@remotion/vercel`
+## 2. Fluxo técnico (resumo)
 
-No diretório do projeto:
+1. Usuário clica **Exportar MP4** no passo 4.
+2. O front envia `POST /api/remotion/render-mp4` com `{ inputProps }` (mesmo objeto do `<Player />`).
+3. A API abre um **Vercel Sandbox**, envia o **bundle** (`remotion/static-bundle`), chama `renderMediaOnVercel`, depois `uploadToVercelBlob`.
+4. A resposta é **Server-Sent Events (SSE)** com fases de progresso e, ao final, `{ type: "done", url, size }`.
+5. O front exibe link para abrir/baixar o MP4.
+
+---
+
+## 3. Checklist na Vercel (obrigatório para funcionar 100%)
+
+### 3.1. Blob Store
+
+1. [Vercel](https://vercel.com) → seu projeto → **Storage** → **Create** → **Blob**.
+2. **Connect to Project** no mesmo projeto do app.
+3. Confirme que a variável **`BLOB_READ_WRITE_TOKEN`** aparece em **Settings → Environment Variables** (Production / Preview conforme o uso).
+4. Faça **Redeploy** depois de conectar o Blob.
+
+> Sem `BLOB_READ_WRITE_TOKEN`, a rota retorna erro 500 explicando a falta da variável.
+
+### 3.2. Plano e timeout
+
+- **Hobby:** timeout de função costuma ser **60s** por padrão; renders longos podem estourar. O `vercel.json` define `maxDuration: 300` para a rota de render — em **Pro** isso é respeitado de forma ampla; no Hobby verifique os limites atuais no dashboard.
+- Vídeos muito longos ou muitas mídias: considere **Pro** (até 5 h no Sandbox, conforme doc Remotion).
+
+### 3.3. Build na Vercel
+
+O comando de build do projeto é:
 
 ```bash
-npm install @remotion/vercel
+npm run remotion:bundle && next build --turbopack
 ```
 
-Use uma versão compatível com seu `remotion` (ex.: mesma major). No seu `package.json` você tem `remotion: ^4.0.436`; use `@remotion/vercel@^4.0.x`.
+Assim a pasta **`remotion/static-bundle`** é gerada **no build** e empacotada com a função (via `includeFiles` no `vercel.json`).
+
+Não commite `remotion/static-bundle` — ela é recriada no CI.
 
 ---
 
-### 3.3. Registrar uma Composition para o servidor
+## 4. Variáveis de ambiente
 
-O Remotion no **player** do front usa `<Player component={...} inputProps={...} />`. No **servidor** (Vercel Sandbox) é preciso um **bundle** que tenha uma **Composition** registrada com um **ID fixo** e que receba `inputProps`.
+| Variável | Onde vem | Uso |
+|----------|-----------|-----|
+| `BLOB_READ_WRITE_TOKEN` | Automática ao ligar Blob ao projeto | Upload do MP4 (`uploadToVercelBlob`) |
 
-Você precisa de um **arquivo root** (ex.: `remotion/Root.tsx`) que:
-
-1. Use `registerRoot()` do Remotion.
-2. Renderize um `<Composition>` com o **mesmo** componente que você usa no Gerador de Criativos (`VideoComposition`) e as **mesmas** props que o front envia.
-
-Exemplo mínimo (adaptar ao seu `VideoComposition` e `VideoInputProps`):
-
-```tsx
-// remotion/Root.tsx
-import React from "react";
-import { registerRoot, Composition } from "remotion";
-import { VideoComposition } from "./VideoComposition";
-import type { VideoInputProps } from "./types";
-
-export const RemotionRoot: React.FC = () => {
-  return (
-    <>
-      <Composition
-        id="GeradorCriativos"
-        component={VideoComposition}
-        durationInFrames={300}
-        fps={30}
-        width={1080}
-        height={1920}
-        defaultProps={{
-          style: "showcase",
-          media: [],
-          voiceoverSrc: null,
-          musicSrc: null,
-          musicVolume: 0.5,
-          captions: [],
-          subtitleTheme: {} as any,
-          productName: "",
-          price: "",
-          ctaText: "Link na bio",
-          fps: 30,
-          width: 1080,
-          height: 1920,
-          durationInFrames: 300,
-        } as VideoInputProps}
-        calculateMetadata={({ props }) => {
-          return {
-            durationInFrames: props.durationInFrames,
-            fps: props.fps,
-            width: props.width,
-            height: props.height,
-          };
-        }}
-      />
-    </>
-  );
-};
-
-registerRoot(RemotionRoot);
-```
-
-- O **ID** `GeradorCriativos` será usado na API de render.
-- `defaultProps` deve bater com `VideoInputProps`; o servidor envia `inputProps` que sobrescrevem esses valores.
-- `calculateMetadata` permite que duração, fps e dimensões venham das props (como no seu fluxo atual).
-
-Esse root é usado para **gerar o bundle** que o Vercel Sandbox vai executar (ver próximo passo).
+Não é necessário `BLOB_STORE_ID` na implementação atual (o template oficial usa `blobToken`).
 
 ---
 
-### 3.4. Gerar o bundle Remotion
+## 5. Testar localmente
 
-O Sandbox não usa o Next.js diretamente; ele precisa de um **bundle estático** do Remotion (HTML + JS).
+1. Copie o token do Blob para `.env.local` (só desenvolvimento):
 
-No `package.json` você já tem `@remotion/cli`. Adicione um script:
+   ```bash
+   BLOB_READ_WRITE_TOKEN=vercel_blob_rw_xxxxxxxx
+   ```
 
-```json
-"scripts": {
-  "remotion:bundle": "remotion bundle remotion/Root.tsx --out-dir out/bundle"
-}
-```
+2. Gere o bundle (ou deixe o primeiro request em dev gerar, se a rota chamar `bundleRemotionProject` — em **dev sem `VERCEL`**, a API recompila o bundle antes de enviar ao Sandbox).
 
-- `remotion/Root.tsx` é o arquivo que chama `registerRoot` e contém a `<Composition>`.
-- `out/bundle` é onde o Remotion gera os arquivos. Esse diretório (ou seu conteúdo) deve ser o que você envia para o Sandbox (ver 3.5).
+3. `npm run dev` → Gerador de Criativos → passo 4 → **Exportar MP4** com ao menos uma mídia selecionada.
 
-Rode uma vez localmente para validar:
+4. Render local ainda depende de **Vercel Sandbox** / credenciais; se falhar só em local, teste após deploy.
+
+---
+
+## 6. Testar em produção (Vercel)
+
+1. Commit + push.
+2. Aguarde o deploy concluir.
+3. Abra o app em produção → Gerador → passo 4 → Exportar.
+4. Se der erro, abra **Vercel → Project → Logs** na função da rota `/api/remotion/render-mp4`.
+
+Erros comuns:
+
+- **`BLOB_READ_WRITE_TOKEN` ausente** → reconectar Blob e redeploy.
+- **Bundle não encontrado** → build não rodou `remotion:bundle` → confira script `build` no `package.json` e logs do build.
+- **Timeout** → vídeo muito longo ou plano Hobby; reduza duração ou aumente limite/plano.
+
+---
+
+## 7. Arquivos que você não deve duplicar
+
+- **Um único** `REMOTION_COMPOSITION_ID` / `id` na `<Composition>` — já em `remotion/Root.tsx` e importado na API.
+- **Um único** caminho de bundle: `remotion/static-bundle` + constante `REMOTION_BUNDLE_DIR` em `helpers.ts`.
+
+---
+
+## 8. Template oficial (referência)
+
+Para comparar com o projeto mantido pela Remotion:
 
 ```bash
-npm run remotion:bundle
+npx create-video@latest --template vercel
 ```
 
-Se der erro (ex.: imports do Next ou de paths do app), ajuste o root para usar apenas código que o Remotion consiga empacotar (evite imports de `@/`, de APIs do Next, etc.).
+Repositório de referência: [template-vercel no GitHub](https://github.com/remotion-dev/remotion/tree/main/packages/template-vercel).
 
 ---
 
-### 3.5. API de render no Next.js (App Router)
-
-Crie uma rota que:
-
-1. Recebe os **inputProps** do vídeo (o mesmo objeto que o front usa no Player).
-2. Cria um sandbox (`createSandbox()`).
-3. Coloca o bundle no sandbox (`addBundleToSandbox()`).
-4. Chama `renderMediaOnVercel()` com `compositionId: "GeradorCriativos"` e os `inputProps`.
-5. Faz upload do MP4 para o Vercel Blob (`uploadToVercelBlob()`).
-6. Retorna a URL do vídeo (ou um link de download).
-
-Exemplo de esqueleto (adaptar imports e paths):
-
-```ts
-// app/api/remotion/render-mp4/route.ts
-import { NextResponse } from "next/server";
-import { createSandbox, addBundleToSandbox, renderMediaOnVercel, uploadToVercelBlob } from "@remotion/vercel";
-import path from "path";
-
-export const maxDuration = 300; // 5 min (Pro); Hobby ~60
-
-export async function POST(req: Request) {
-  const body = await req.json();
-  const inputProps = body.inputProps; // VideoInputProps do front
-
-  const sandbox = await createSandbox();
-  try {
-    const bundleDir = path.join(process.cwd(), "out", "bundle");
-    await addBundleToSandbox({ sandbox, localPath: bundleDir });
-
-    const { sandboxFilePath } = await renderMediaOnVercel({
-      sandbox,
-      compositionId: "GeradorCriativos",
-      inputProps,
-      codec: "h264",
-      onProgress: async (update) => {
-        // opcional: enviar progresso por SSE ou WebSocket
-        console.log(`Progress: ${Math.round(update.overallProgress * 100)}%`);
-      },
-    });
-
-    const blobUrl = await uploadToVercelBlob({
-      sandbox,
-      sandboxFilePath,
-      blobStoreId: process.env.BLOB_STORE_ID!, // ou nome do store
-    });
-
-    return NextResponse.json({ url: blobUrl });
-  } finally {
-    await sandbox.dispose();
-  }
-}
-```
-
-- **Importante:** O bundle precisa existir no servidor. No deploy da Vercel, o passo de build deve rodar `npm run remotion:bundle` e o diretório `out/bundle` deve ser incluído no deploy (não está em `.gitignore`). Ou use o método que a [documentação do Remotion](https://www.remotion.dev/docs/vercel-sandbox) recomenda (ex.: template oficial).
-- Consulte a [doc do `@remotion/vercel`](https://www.remotion.dev/docs/vercel/api) para assinaturas exatas de `addBundleToSandbox` e `uploadToVercelBlob` (parâmetros podem ser `bundlePath`, `bucketName`, etc., conforme a versão).
-
----
-
-### 3.6. Variáveis de ambiente no projeto Vercel
-
-No projeto na Vercel → **Settings** → **Environment Variables**:
-
-| Nome | Descrição |
-|------|-----------|
-| `BLOB_READ_WRITE_TOKEN` | Definido automaticamente ao conectar o Blob ao projeto. |
-| `BLOB_STORE_ID` (ou o que a doc do `@remotion/vercel` pedir) | ID/nome do Blob Store, se a função de upload exigir. |
-
-Redeploy após alterar variáveis.
-
----
-
-### 3.7. Front: chamar a API e permitir download
-
-No Gerador de Criativos (ex.: `video-editor/page.tsx`), no botão **Exportar MP4**:
-
-1. Habilitar o botão (remover `disabled` quando houver configuração de render).
-2. Ao clicar:
-   - Montar o objeto `inputProps` igual ao que você passa para o `<Player>` (mesmo que `compositionProps`).
-   - Fazer `POST /api/remotion/render-mp4` com `{ inputProps }`.
-   - A resposta deve trazer `{ url: "https://..." }` (URL do Blob).
-   - Mostrar um estado de “Renderizando… X%” se você implementar progresso (ex.: polling ou SSE).
-   - Ao terminar, abrir a URL em nova aba ou iniciar download (ex.: `<a href={url} download>` ou `window.open(url)`).
-
-Exemplo mínimo:
-
-```ts
-const [exporting, setExporting] = useState(false);
-const [exportUrl, setExportUrl] = useState<string | null>(null);
-
-const handleExportMp4 = async () => {
-  setExporting(true);
-  try {
-    const res = await fetch("/api/remotion/render-mp4", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ inputProps: compositionProps }),
-    });
-    const data = await res.json();
-    if (data.url) setExportUrl(data.url);
-  } finally {
-    setExporting(false);
-  }
-};
-```
-
----
-
-## 4. Fluxo resumido
-
-```
-[Usuário clica Exportar MP4]
-        ↓
-[Front envia POST /api/remotion/render-mp4 com inputProps]
-        ↓
-[Next.js cria Sandbox, coloca bundle, chama renderMediaOnVercel]
-        ↓
-[Remotion renderiza MP4 dentro do Sandbox]
-        ↓
-[uploadToVercelBlob envia o arquivo para o Blob]
-        ↓
-[API retorna { url }]
-        ↓
-[Front exibe link ou inicia download]
-```
-
----
-
-## 5. Template oficial Remotion + Vercel (alternativa)
-
-Se quiser seguir a estrutura que a Remotion testa e mantém:
-
-1. Use o template:  
-   `npx create-video@latest --template vercel`
-2. Isso gera um projeto Next.js já com:
-   - Root com Composition registrada
-   - Rota de API que usa `renderMediaOnVercel` + `uploadToVercelBlob`
-   - Blob conectado no deploy
-3. Depois você pode **copiar** a pasta `remotion/`, o script de bundle e a rota de API para o Afiliado Analytics e adaptar para o seu `VideoComposition` e `VideoInputProps`.
-
-Documentação: [Remotion – Vercel Sandbox](https://www.remotion.dev/docs/vercel-sandbox).
-
----
-
-## 6. Limites e custos (resumo)
+## 9. Limites e custos (resumo)
 
 | Item | Hobby | Pro / Enterprise |
-|------|--------|-------------------|
-| Timeout por render | 45 min | 5 h |
+|------|--------|------------------|
+| Timeout Sandbox | 45 min | 5 h |
 | Sandboxes simultâneos | 10 | 2000 |
-| Custo | Incluso no plano; excedente conforme [Vercel](https://vercel.com/docs/vercel-sandbox/pricing) | Idem |
 
-Vídeos e arquivos no Blob **ficam armazenados** até você apagar. Configure [Spend Management](https://vercel.com/docs/accounts/spend-management) e limpe arquivos antigos se quiser controlar custo.
+Preços Sandbox: [Vercel Sandbox pricing](https://vercel.com/docs/vercel-sandbox/pricing).  
+Arquivos no Blob permanecem até você apagá-los.
 
 ---
 
-## 7. Checklist antes de usar em produção
+## 10. Checklist rápido antes de ir ao ar
 
-- [ ] Blob Store criado e conectado ao projeto.
-- [ ] `@remotion/vercel` instalado.
-- [ ] Root com `<Composition id="GeradorCriativos">` e bundle gerado (`npm run remotion:bundle`).
-- [ ] Rota `POST /api/remotion/render-mp4` implementada e testada (com `inputProps` reais).
-- [ ] Build da Vercel inclui o bundle (ou gera no build).
-- [ ] Botão “Exportar MP4” chama a API e trata resposta/erro e download.
-- [ ] Variáveis de ambiente (Blob) configuradas e redeploy feito.
+- [ ] Blob criado e conectado ao projeto  
+- [ ] `BLOB_READ_WRITE_TOKEN` visível nas envs + redeploy  
+- [ ] `npm run build` local passa (inclui `remotion:bundle`)  
+- [ ] Botão Exportar testado em preview/production  
+- [ ] (Opcional) Spend limits na Vercel  
 
-Se algo falhar, verifique os logs da função no dashboard da Vercel (Logs da rota) e a [documentação do Remotion para Vercel](https://www.remotion.dev/docs/vercel-sandbox).
+Se algo falhar, use os **Logs da função** na Vercel e a [documentação Remotion Vercel](https://www.remotion.dev/docs/vercel-sandbox).

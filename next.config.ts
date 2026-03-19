@@ -24,6 +24,8 @@ const nextConfig: NextConfig = {
   serverExternalPackages: [
     "@sparticuz/chromium",
     "puppeteer-core",
+    "@remotion/vercel",
+    "@vercel/sandbox",
   ],
 
   webpack: (config) => {

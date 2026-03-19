@@ -450,7 +450,7 @@ function AdAccordionItem({
                   <tr className="bg-dark-card border-b border-dark-border text-text-secondary">
                     <th className="text-left py-2 px-3 font-semibold">Período</th>
                     <th className="text-right py-2 px-2 font-semibold cursor-help" title={ATI_HINT.custo}>Custo Tráfego</th>
-                    <th className="text-right py-2 px-2 font-semibold cursor-help" title={ATI_HINT.cliques}>Cliques Shopee</th>
+                    <th className="text-right py-2 px-2 font-semibold cursor-help" title={ATI_HINT.cliques}>Cliques Meta</th>
                     <th className="text-right py-2 px-2 font-semibold">CPC Meta (R$)</th>
                     <th className="text-right py-2 px-2 font-semibold">CTR</th>
                     <th className="text-right py-2 px-2 font-semibold cursor-help" title={ATI_HINT.pedidos}>Pedidos</th>

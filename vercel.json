@@ -1,5 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "src/app/api/remotion/render-mp4/route.ts": {
+      "includeFiles": "remotion/static-bundle/**",
+      "maxDuration": 300
+    }
+  },
   "crons": [
     { "path": "/api/cron/expire-subscriptions", "schedule": "0 5 * * *" },
     { "path": "/api/grupos-venda/cron-disparo", "schedule": "*/2 * * * *" }
