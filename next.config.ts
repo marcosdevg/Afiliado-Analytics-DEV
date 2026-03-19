@@ -21,6 +21,14 @@ const nextConfig: NextConfig = {
   turbopack: { root },
   outputFileTracingRoot: root,
 
+  serverExternalPackages: [
+    "@sparticuz/chromium",
+    "puppeteer",
+    "puppeteer-core",
+    "puppeteer-extra",
+    "puppeteer-extra-plugin-stealth",
+  ],
+
   webpack: (config) => {
     config.module ??= {};
     (config.module as { exprContextCritical?: boolean }).exprContextCritical = false;

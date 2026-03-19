@@ -1,23 +1,10 @@
 import { NextResponse } from "next/server";
+import { scrape } from "../../../../server/shopee-scraper-light";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const VIDEO_RE = /\.(mp4|m3u8|webm|ts)(\?|$)/i;
-
-async function runScraper(url: string): Promise<{ productName: string; media: { url: string; type: string; label: string }[]; error?: string }> {
-  // Evita dependência de arquivo fora do bundle (ex.: /scripts) no runtime da Vercel
-  const mod = await import("../../../../server/shopee-scraper.cjs");
-  const scrape = mod.scrape ?? mod.default?.scrape;
-  if (typeof scrape !== "function") {
-    return { productName: "", media: [], error: "Scraper não encontrado no servidor" };
-  }
-  try {
-    return await scrape(url);
-  } catch (e) {
-    return { productName: "", media: [], error: e instanceof Error ? e.message : "Falha no scraper" };
-  }
-}
 
 export async function POST(req: Request) {
   try {
@@ -46,11 +33,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // Mantém validação mínima; o scraper em si lida com a navegação.
+    const result = await scrape(shopeeUrl);
 
-    const result = await runScraper(shopeeUrl);
-
-    if (result.error) {
+    if (result.error && (!result.media || result.media.length === 0)) {
       return NextResponse.json({ error: result.error }, { status: 502 });
     }
 
