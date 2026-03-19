@@ -27,6 +27,9 @@ const nextConfig: NextConfig = {
     "puppeteer-core",
     "puppeteer-extra",
     "puppeteer-extra-plugin-stealth",
+    "is-plain-object",
+    "clone-deep",
+    "merge-deep",
   ],
 
   webpack: (config) => {
