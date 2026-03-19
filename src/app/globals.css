@@ -227,7 +227,7 @@ select::-webkit-scrollbar-thumb:hover {
   background-position: center;
 }
 
-/* Scrollbar Gerador de Links Shopee: preto + laranja (estilo do app) */
+/* Scrollbar padrão do app: fundo preto + barra laranja */
 .scrollbar-shopee {
   scrollbar-width: thin;
   scrollbar-color: #EE4D2D #18181B;
@@ -241,19 +241,16 @@ select::-webkit-scrollbar-thumb:hover {
 .scrollbar-shopee::-webkit-scrollbar-track {
   background: #18181B;
   border-radius: 6px;
-  border-left: 1px solid rgba(238, 77, 45, 0.25);
 }
 
 .scrollbar-shopee::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #27272A 0%, #3f3f46 100%);
+  background: #EE4D2D;
   border-radius: 6px;
-  border: 1px solid rgba(238, 77, 45, 0.4);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+  border: 2px solid #18181B;
 }
 
 .scrollbar-shopee::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #EE4D2D 0%, #f97316 100%);
-  border-color: rgba(238, 77, 45, 0.8);
+  background: #f97316;
 }
 
 .scrollbar-shopee::-webkit-scrollbar-button {
