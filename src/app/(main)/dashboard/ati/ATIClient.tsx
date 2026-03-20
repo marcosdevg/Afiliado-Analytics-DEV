@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef, useCallback, type ComponentType } from "react";
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
@@ -30,10 +30,16 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 
 const ATI_CAMPAIGNS_PER_PAGE = 6;
 import type { ATICreativeRow } from "@/lib/ati/types";
+import type { ATIDashboardSessionPayload } from "@/lib/ati/session-cache";
+import {
+  readAtiSessionCache,
+  writeAtiSessionCache,
+} from "@/lib/ati/session-cache";
 import type { MetricLevel } from "@/lib/ati/types";
 import { META_CREATE_CAMPAIGN_OBJECTIVES, META_CAMPAIGN_OBJECTIVES } from "@/lib/meta-ads-constants";
 import MetaAdSetForm from "@/app/components/meta/MetaAdSetForm";
@@ -525,7 +531,11 @@ export default function ATIClient() {
     return d.toISOString().slice(0, 10);
   });
   const [end, setEnd] = useState(() => new Date().toISOString().slice(0, 10));
-  const [loading, setLoading] = useState(false);
+  /** Loading de tela cheia (sem dados em cache para o período ou primeira carga). */
+  const [loading, setLoading] = useState(true);
+  /** Atualização manual ou após ações — ícone no botão, lista continua visível. */
+  const [refreshing, setRefreshing] = useState(false);
+  const dataPresentRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [creatives, setCreatives] = useState<ATICreativeRow[]>([]);
   const [validated, setValidated] = useState<Array<{ id: string; adId: string; adName: string; campaignId: string; campaignName: string; scaledAt: string }>>([]);
@@ -620,47 +630,106 @@ export default function ATIClient() {
   const [adDuplicateSaving, setAdDuplicateSaving] = useState(false);
   const [shopeeWarning, setShopeeWarning] = useState<string | null>(null);
 
-  const load = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/ati/data?start=${start}&end=${end}`, { cache: "no-store" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Erro ao carregar");
-      setCreatives(json.creatives ?? []);
-      setValidated(json.validated ?? []);
-      setCampaignStatus((json.campaignStatus as Record<string, string>) ?? {});
-      setCampaignsList(Array.isArray(json.campaignsList) ? json.campaignsList : []);
-      setAdSetList(Array.isArray(json.adSetList) ? json.adSetList : []);
-      setAdSetStatusMap((json.adSetStatusMap as Record<string, string>) ?? {});
-      setAdStatusMap((json.adStatusMap as Record<string, string>) ?? {});
-      setShopeeWarning(typeof json.shopeeWarning === "string" ? json.shopeeWarning : null);
-      const tagsRes = await fetch("/api/ati/campaign-tags?tag=Tráfego%20para%20Grupos", { cache: "no-store" });
-      if (tagsRes.ok) {
-        const tagsJson = (await tagsRes.json()) as { campaignIds?: string[] };
-        setCampaignIdsTraficoGrupos(Array.isArray(tagsJson.campaignIds) ? tagsJson.campaignIds : []);
-      } else {
-        setCampaignIdsTraficoGrupos([]);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro");
-      setCreatives([]);
-      setValidated([]);
-      setCampaignStatus({});
-      setCampaignsList([]);
-      setAdSetList([]);
-      setAdSetStatusMap({});
-      setAdStatusMap({});
-      setCampaignIdsTraficoGrupos([]);
-      setShopeeWarning(null);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const applyAtiPayload = useCallback((data: ATIDashboardSessionPayload) => {
+    setCreatives(data.creatives);
+    setValidated(data.validated);
+    setCampaignStatus(data.campaignStatus);
+    setCampaignsList(data.campaignsList);
+    setAdSetList(data.adSetList);
+    setAdSetStatusMap(data.adSetStatusMap);
+    setAdStatusMap(data.adStatusMap);
+    setShopeeWarning(data.shopeeWarning);
+    setCampaignIdsTraficoGrupos(data.campaignIdsTraficoGrupos);
+  }, []);
 
   useEffect(() => {
-    load();
-  }, [start, end]);
+    dataPresentRef.current =
+      creatives.length > 0 ||
+      campaignsList.length > 0 ||
+      validated.length > 0;
+  }, [creatives.length, campaignsList.length, validated.length]);
+
+  const load = useCallback(
+    async (opts?: { skipCache?: boolean }) => {
+      if (!opts?.skipCache) {
+        const cached = readAtiSessionCache(start, end);
+        if (cached) {
+          applyAtiPayload(cached);
+          setLoading(false);
+          setRefreshing(false);
+          setError(null);
+          return;
+        }
+      }
+
+      const keepUiOnError = opts?.skipCache === true;
+      const soft = opts?.skipCache === true && dataPresentRef.current;
+
+      if (soft) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+
+      try {
+        const res = await fetch(`/api/ati/data?start=${start}&end=${end}`, { cache: "no-store" });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error ?? "Erro ao carregar");
+
+        const tagsRes = await fetch("/api/ati/campaign-tags?tag=Tráfego%20para%20Grupos", { cache: "no-store" });
+        let campaignIdsTraficoGrupos: string[] = [];
+        if (tagsRes.ok) {
+          const tagsJson = (await tagsRes.json()) as { campaignIds?: string[] };
+          campaignIdsTraficoGrupos = Array.isArray(tagsJson.campaignIds) ? tagsJson.campaignIds : [];
+        }
+
+        const payload: ATIDashboardSessionPayload = {
+          creatives: json.creatives ?? [],
+          validated: json.validated ?? [],
+          campaignStatus: (json.campaignStatus as Record<string, string>) ?? {},
+          campaignsList: Array.isArray(json.campaignsList) ? json.campaignsList : [],
+          adSetList: Array.isArray(json.adSetList) ? json.adSetList : [],
+          adSetStatusMap: (json.adSetStatusMap as Record<string, string>) ?? {},
+          adStatusMap: (json.adStatusMap as Record<string, string>) ?? {},
+          shopeeWarning: typeof json.shopeeWarning === "string" ? json.shopeeWarning : null,
+          campaignIdsTraficoGrupos,
+        };
+
+        writeAtiSessionCache(start, end, payload);
+        applyAtiPayload(payload);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Erro");
+        if (!keepUiOnError) {
+          setCreatives([]);
+          setValidated([]);
+          setCampaignStatus({});
+          setCampaignsList([]);
+          setAdSetList([]);
+          setAdSetStatusMap({});
+          setAdStatusMap({});
+          setCampaignIdsTraficoGrupos([]);
+          setShopeeWarning(null);
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [start, end, applyAtiPayload],
+  );
+
+  useLayoutEffect(() => {
+    const cached = readAtiSessionCache(start, end);
+    if (cached) {
+      applyAtiPayload(cached);
+      setLoading(false);
+      setError(null);
+    } else {
+      setLoading(true);
+    }
+  }, [start, end, applyAtiPayload]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   useEffect(() => {
     if (!adSetEditModal) {
@@ -729,7 +798,7 @@ export default function ATIClient() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Erro");
-      await load();
+      await load({ skipCache: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao adicionar");
     } finally {
@@ -741,7 +810,7 @@ export default function ATIClient() {
     try {
       const res = await fetch(`/api/ati/validated?id=${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Erro ao remover");
-      await load();
+      await load({ skipCache: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
     }
@@ -860,7 +929,7 @@ export default function ATIClient() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Erro ao editar");
       setCampaignEditModal(null);
-      await load();
+      await load({ skipCache: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao editar campanha");
     } finally {
@@ -876,7 +945,7 @@ export default function ATIClient() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Erro ao deletar");
       setCampaignDeleteConfirm(null);
-      await load();
+      await load({ skipCache: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao deletar campanha");
     } finally {
@@ -913,7 +982,7 @@ export default function ATIClient() {
       const adAccountId = adSetNewModal.adAccountId;
       const newAdsetName = body.name;
       setAdSetNewModal(null);
-      await load();
+      await load({ skipCache: true });
       // Abrir imediatamente o modal de Novo anúncio para criar o ad deste conjunto
       if (newAdsetId && adAccountId) {
         setAdNewModal({ adAccountId, adsetId: newAdsetId, adSetName: newAdsetName });
@@ -951,7 +1020,7 @@ export default function ATIClient() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Erro ao criar anúncio");
       setAdNewModal(null);
-      await load();
+      await load({ skipCache: true });
     } catch (e) {
       setAdNewError(e instanceof Error ? e.message : "Erro ao criar anúncio");
     } finally {
@@ -986,7 +1055,7 @@ export default function ATIClient() {
       if (!res.ok) throw new Error(json?.error ?? "Erro ao editar conjunto");
       setAdSetEditModal(null);
       setAdSetEditInitialData(null);
-      await load();
+      await load({ skipCache: true });
     } catch (e) {
       setAdSetEditError(e instanceof Error ? e.message : "Erro ao editar conjunto");
     } finally {
@@ -1002,7 +1071,7 @@ export default function ATIClient() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Erro ao deletar");
       setAdSetDeleteConfirm(null);
-      await load();
+      await load({ skipCache: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao deletar conjunto");
     } finally {
@@ -1024,7 +1093,7 @@ export default function ATIClient() {
       if (!res.ok) throw new Error(json?.error ?? "Erro ao duplicar");
       setAdSetDuplicateModal(null);
       setAdSetDuplicateCount("5");
-      await load();
+      await load({ skipCache: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao duplicar conjunto");
     } finally {
@@ -1040,7 +1109,7 @@ export default function ATIClient() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Erro ao deletar");
       setAdDeleteConfirm(null);
-      await load();
+      await load({ skipCache: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao deletar anúncio");
     } finally {
@@ -1062,7 +1131,7 @@ export default function ATIClient() {
       if (!res.ok) throw new Error(json?.error ?? "Erro ao duplicar");
       setAdDuplicateModal(null);
       setAdDuplicateCount("5");
-      await load();
+      await load({ skipCache: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao duplicar anúncio");
     } finally {
@@ -1093,7 +1162,7 @@ export default function ATIClient() {
       }
       setAdEditModal(null);
       setAdEditInitialData(null);
-      await load();
+      await load({ skipCache: true });
     } catch (e) {
       setAdEditError(e instanceof Error ? e.message : "Erro ao editar anúncio");
     } finally {
@@ -1190,10 +1259,12 @@ export default function ATIClient() {
             </div>
           </div>
 
-          {/* Período vendas Shopee + botão */}
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            <span className="text-[10px] text-text-secondary/80 font-medium uppercase tracking-wide">Período das vendas Shopee</span>
-            <div className="flex items-center gap-2">
+          {/* Período (vendas Shopee no relatório) + um único botão que atualiza Meta + Shopee */}
+          <div className="flex flex-col items-end gap-1 shrink-0 max-w-full">
+            <span className="text-[10px] text-text-secondary/80 font-medium uppercase tracking-wide text-right">
+              Período das vendas Shopee
+            </span>
+            <div className="flex flex-wrap items-center justify-end gap-2">
             <div className="flex items-center gap-1.5 bg-dark-card border border-dark-border rounded-xl px-3 py-1.5">
               <CalendarDays className="h-3.5 w-3.5 text-text-secondary/60 shrink-0" />
               <input
@@ -1211,14 +1282,17 @@ export default function ATIClient() {
               />
             </div>
             <button
-              onClick={load}
-              disabled={loading}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-shopee-orange px-3.5 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0"
+              type="button"
+              onClick={() => void load({ skipCache: true })}
+              disabled={loading || refreshing}
+              title="Atualizar ATI: campanhas Meta + vendas Shopee (período acima)"
+              aria-label="Atualizar dados do ATI: campanhas Meta e vendas Shopee no período selecionado"
+              className="inline-flex items-center gap-2 rounded-xl bg-shopee-orange px-3 py-1.5 sm:px-3.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity shrink-0 shadow-sm border border-shopee-orange/30"
             >
-              {loading
-                ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                : null}
-              Atualizar
+              <RefreshCw
+                className={`h-4 w-4 shrink-0 text-white stroke-2 ${refreshing ? "animate-spin" : ""}`}
+              />
+              <span>Atualizar</span>
             </button>
             {campaignsList.length > 0 && (
               <span className="hidden md:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium bg-dark-card border border-dark-border text-text-secondary shrink-0">
@@ -1762,7 +1836,7 @@ export default function ATIClient() {
                     setLinkModalAd(null);
                     setLinkModalShopeeLink("");
                     setAdIdToHasLink((prev) => ({ ...prev, [linkModalAdId]: true }));
-                    await load();
+                    await load({ skipCache: true });
                   } catch (e) {
                     const msg = e instanceof Error ? e.message : "Erro ao publicar";
                     console.error("[ATI] update-link exceção:", e);
@@ -1868,8 +1942,14 @@ export default function ATIClient() {
 
       {/* Novo conjunto - formulário completo como em Criar Campanha Meta */}
       {adSetNewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 overflow-y-auto" onClick={() => setAdSetNewModal(null)}>
-          <div className="bg-dark-card border border-dark-border rounded-xl shadow-xl max-w-xl w-full p-6 my-8" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-4 bg-black/60 max-md:overflow-y-auto max-md:scrollbar-shopee md:overflow-y-visible"
+          onClick={() => setAdSetNewModal(null)}
+        >
+          <div
+            className="bg-dark-card border border-dark-border rounded-xl shadow-xl w-full max-w-2xl p-4 md:p-5 my-4 md:my-6 md:max-h-[min(92vh,820px)] md:flex md:flex-col md:overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
             <MetaAdSetForm
               campaignId={adSetNewModal.campaignId}
               adAccountId={adSetNewModal.adAccountId}
@@ -1885,9 +1965,15 @@ export default function ATIClient() {
 
       {/* Editar conjunto - mesmo formulário, dados pré-preenchidos */}
       {adSetEditModal && adSetEditInitialData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 overflow-y-auto" onClick={() => { setAdSetEditModal(null); setAdSetEditInitialData(null); }}>
-          <div className="bg-dark-card border border-dark-border rounded-xl shadow-xl max-w-xl w-full p-6 my-8" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-text-primary mb-4">Editar conjunto</h3>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-4 bg-black/60 max-md:overflow-y-auto max-md:scrollbar-shopee md:overflow-y-visible"
+          onClick={() => { setAdSetEditModal(null); setAdSetEditInitialData(null); }}
+        >
+          <div
+            className="bg-dark-card border border-dark-border rounded-xl shadow-xl w-full max-w-2xl p-4 md:p-5 my-4 md:my-6 md:max-h-[min(92vh,820px)] md:flex md:flex-col md:overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base md:text-lg font-semibold text-text-primary mb-3">Editar conjunto</h3>
             <MetaAdSetForm
               key={`edit-${adSetEditModal.adSetId}`}
               campaignId={adSetEditModal.campaignId ?? ""}
@@ -1915,8 +2001,14 @@ export default function ATIClient() {
 
       {/* Novo anúncio - formulário completo como em Criar Campanha Meta */}
       {adNewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 overflow-y-auto" onClick={() => setAdNewModal(null)}>
-          <div className="bg-dark-card border border-dark-border rounded-xl shadow-xl max-w-xl w-full p-6 my-8 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-4 bg-black/60 max-md:overflow-y-auto max-md:scrollbar-shopee md:overflow-y-visible"
+          onClick={() => setAdNewModal(null)}
+        >
+          <div
+            className="bg-dark-card border border-dark-border rounded-xl shadow-xl w-full max-w-2xl p-4 md:p-5 my-4 md:my-6 md:max-h-[min(92vh,820px)] flex flex-col overflow-hidden min-h-0"
+            onClick={(e) => e.stopPropagation()}
+          >
             <MetaAdForm
               adAccountId={adNewModal.adAccountId}
               adsetId={adNewModal.adsetId}
@@ -1932,9 +2024,14 @@ export default function ATIClient() {
 
       {/* Editar anúncio - mesmo formulário, dados pré-preenchidos (nome e link editáveis) */}
       {adEditModal && adEditInitialData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 overflow-y-auto" onClick={() => { setAdEditModal(null); setAdEditInitialData(null); }}>
-          <div className="bg-dark-card border border-dark-border rounded-xl shadow-xl max-w-xl w-full p-6 my-8 max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-text-primary mb-4">Editar anúncio</h3>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-4 bg-black/60 max-md:overflow-y-auto max-md:scrollbar-shopee md:overflow-y-visible"
+          onClick={() => { setAdEditModal(null); setAdEditInitialData(null); }}
+        >
+          <div
+            className="bg-dark-card border border-dark-border rounded-xl shadow-xl w-full max-w-2xl p-4 md:p-5 my-4 md:my-6 md:max-h-[min(92vh,820px)] flex flex-col overflow-hidden min-h-0"
+            onClick={(e) => e.stopPropagation()}
+          >
             <MetaAdForm
               key={`edit-ad-${adEditModal.adId}`}
               adAccountId={adEditModal.adAccountId}

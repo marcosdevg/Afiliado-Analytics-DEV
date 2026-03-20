@@ -1288,7 +1288,7 @@ export default function VideoEditorPage() {
                   {exportPrep
                     ? "Preparando mídias..."
                     : remotionExport.state.status === "invoking"
-                      ? "Renderizando..."
+                      ? "Gerando vídeo..."
                       : "Exportar MP4"}
                 </button>
                 {remotionExport.state.status === "invoking" && (
@@ -1330,9 +1330,6 @@ export default function VideoEditorPage() {
                     </button>
                   </div>
                 )}
-                <p className="text-[10px] text-text-secondary/35 text-center leading-relaxed">
-                  Usa Vercel Sandbox + Blob. Configure <code className="text-[9px]">BLOB_READ_WRITE_TOKEN</code> na Vercel e rode o build com bundle Remotion.
-                </p>
               </div>
             </div>
           </div>

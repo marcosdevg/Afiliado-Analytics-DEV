@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Target, Loader2, Zap } from "lucide-react";
+import { Target, Loader2, Zap, HelpCircle } from "lucide-react";
+import { MetaFormLabel } from "@/app/components/meta/MetaFormLabel";
 import {
   META_COUNTRIES,
   META_PUBLISHER_PLATFORMS,
@@ -157,39 +158,55 @@ export default function MetaAdSetForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <h3 className="text-lg font-semibold text-text-primary flex items-center gap-2">
-        <Target className="h-5 w-5 text-shopee-orange" />
-        Conjunto de anúncios
-      </h3>
-      {campaignName && (
-        <p className="text-sm text-text-secondary">Campanha: <strong className="text-text-primary">{campaignName}</strong></p>
-      )}
-      <p className="text-sm text-text-secondary">
-        Orçamento, público, plataformas (Facebook, Instagram, etc.) e otimização conforme o objetivo da campanha.
-      </p>
-
-      <div>
-        <label className="block text-sm font-medium text-text-primary mb-1">Nome do conjunto</label>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Ex: Conjunto BR 18-45"
-          className="w-full rounded-md border border-dark-border bg-dark-bg py-2 px-3 text-text-primary text-sm placeholder-text-secondary/60"
-        />
+    <form onSubmit={handleSubmit} className="space-y-3 md:space-y-2.5 flex flex-col flex-1 min-h-0">
+      <div className="flex items-start gap-2">
+        <h3 className="text-base md:text-lg font-semibold text-text-primary flex items-center gap-2 min-w-0 flex-1">
+          <Target className="h-5 w-5 text-shopee-orange shrink-0" />
+          <span>Conjunto de anúncios</span>
+          <span
+            className="inline-flex shrink-0"
+            title="Orçamento, público, plataformas (Facebook, Instagram, etc.) e otimização conforme o objetivo da campanha."
+            aria-label="Ajuda sobre o conjunto"
+          >
+            <HelpCircle className="h-4 w-4 text-text-secondary/45 hover:text-shopee-orange cursor-help" />
+          </span>
+        </h3>
       </div>
-      <div>
-        <label className="block text-sm font-medium text-text-primary mb-1">Orçamento diário (R$)</label>
-        <input
-          type="number"
-          min="1"
-          step="0.01"
-          value={dailyBudget}
-          onChange={(e) => setDailyBudget(e.target.value)}
-          className="w-full rounded-md border border-dark-border bg-dark-bg py-2 px-3 text-text-primary text-sm"
-        />
-        <p className="text-xs text-text-secondary mt-1">Mínimo R$ 1,00. Ex: 10 = R$ 10/dia.</p>
+      {campaignName && (
+        <p className="text-xs md:text-sm text-text-secondary">
+          Campanha: <strong className="text-text-primary">{campaignName}</strong>
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 md:gap-4 gap-3">
+        <div>
+          <MetaFormLabel htmlFor="adset-name">Nome do conjunto</MetaFormLabel>
+          <input
+            id="adset-name"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Ex: Conjunto BR 18-45"
+            className="w-full rounded-md border border-dark-border bg-dark-bg py-1.5 md:py-2 px-3 text-text-primary text-sm placeholder-text-secondary/60"
+          />
+        </div>
+        <div>
+          <MetaFormLabel
+            htmlFor="adset-budget"
+            hint="Mínimo R$ 1,00. Ex.: 10 = R$ 10 por dia."
+          >
+            Orçamento diário (R$)
+          </MetaFormLabel>
+          <input
+            id="adset-budget"
+            type="number"
+            min="1"
+            step="0.01"
+            value={dailyBudget}
+            onChange={(e) => setDailyBudget(e.target.value)}
+            className="w-full rounded-md border border-dark-border bg-dark-bg py-1.5 md:py-2 px-3 text-text-primary text-sm"
+          />
+        </div>
       </div>
 
       {campaignObjective == null ? (
@@ -198,14 +215,19 @@ export default function MetaAdSetForm({
         </p>
       ) : isSales ? (
         <>
-          <div className="rounded-lg border border-dark-border/60 bg-dark-bg/20 p-3 space-y-3">
-            <p className="text-xs text-text-secondary">Campanha de <strong className="text-text-primary">vendas</strong>: otimização para compras ou carrinho no site (pixel obrigatório).</p>
+          <div className="rounded-lg border border-dark-border/60 bg-dark-bg/20 p-2.5 md:p-3 space-y-2">
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Pixel</label>
+              <MetaFormLabel
+                htmlFor="adset-pixel-sales"
+                hint="Campanha de vendas: otimização para compras ou carrinho no site. Pixel obrigatório."
+              >
+                Pixel
+              </MetaFormLabel>
               <select
+                id="adset-pixel-sales"
                 value={pixelId}
                 onChange={(e) => setPixelId(e.target.value)}
-                className="w-full rounded-md border border-dark-border bg-dark-bg py-2 px-3 text-text-primary text-sm"
+                className="w-full rounded-md border border-dark-border bg-dark-bg py-1.5 md:py-2 px-3 text-text-primary text-sm"
               >
                 <option value="">Selecione o pixel</option>
                 {pixels.map((p) => (
@@ -214,11 +236,12 @@ export default function MetaAdSetForm({
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-text-primary mb-1">Evento para otimizar</label>
+              <MetaFormLabel htmlFor="adset-conv-sales">Evento para otimizar</MetaFormLabel>
               <select
+                id="adset-conv-sales"
                 value={conversionEvent}
                 onChange={(e) => setConversionEvent(e.target.value)}
-                className="w-full rounded-md border border-dark-border bg-dark-bg py-2 px-3 text-text-primary text-sm"
+                className="w-full rounded-md border border-dark-border bg-dark-bg py-1.5 md:py-2 px-3 text-text-primary text-sm"
               >
                 {META_SALES_CONVERSION_EVENTS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
@@ -286,9 +309,9 @@ export default function MetaAdSetForm({
         </>
       )}
 
-      <div className="rounded-lg border border-dark-border/60 bg-dark-bg/20 p-3 space-y-2">
+      <div className="rounded-lg border border-dark-border/60 bg-dark-bg/20 p-2.5 md:p-3 space-y-2">
         <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
-          <Zap className="h-4 w-4 text-shopee-orange" /> Plataformas
+          <Zap className="h-4 w-4 text-shopee-orange shrink-0" /> Plataformas
         </div>
         <div className="grid grid-cols-2 gap-2">
           {META_PUBLISHER_PLATFORMS.map((p) => (
@@ -312,72 +335,76 @@ export default function MetaAdSetForm({
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-text-primary mb-1">País</label>
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-2 md:items-end">
+        <div className="md:col-span-4">
+          <MetaFormLabel htmlFor="adset-country">País</MetaFormLabel>
           <select
+            id="adset-country"
             value={countryCode}
             onChange={(e) => setCountryCode(e.target.value)}
-            className="w-full rounded-md border border-dark-border bg-dark-bg py-2 px-3 text-text-primary text-sm"
+            className="w-full rounded-md border border-dark-border bg-dark-bg py-1.5 md:py-2 px-3 text-text-primary text-sm"
           >
             {META_COUNTRIES.map((c) => (
               <option key={c.code} value={c.code}>{c.name} ({c.code})</option>
             ))}
           </select>
         </div>
-        <div className="flex gap-4">
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-text-primary mb-1">Idade mín.</label>
+        <div className="md:col-span-4">
+          <MetaFormLabel htmlFor="adset-gender">Gênero</MetaFormLabel>
+          <select
+            id="adset-gender"
+            value={gender}
+            onChange={(e) => setGender(e.target.value as "all" | "male" | "female")}
+            className="w-full rounded-md border border-dark-border bg-dark-bg py-1.5 md:py-2 px-3 text-text-primary text-sm"
+          >
+            <option value="all">Todos</option>
+            <option value="male">Masculino</option>
+            <option value="female">Feminino</option>
+          </select>
+        </div>
+        <div className="md:col-span-4 flex gap-2">
+          <div className="flex-1 min-w-0">
+            <MetaFormLabel htmlFor="adset-age-min">Idade mín.</MetaFormLabel>
             <input
+              id="adset-age-min"
               type="number"
               min="18"
               max="65"
               value={ageMin}
               onChange={(e) => setAgeMin(e.target.value)}
-              className="w-full rounded-md border border-dark-border bg-dark-bg py-2 px-3 text-text-primary text-sm"
+              className="w-full rounded-md border border-dark-border bg-dark-bg py-1.5 md:py-2 px-2 text-text-primary text-sm"
             />
           </div>
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-text-primary mb-1">Idade máx.</label>
+          <div className="flex-1 min-w-0">
+            <MetaFormLabel htmlFor="adset-age-max">Idade máx.</MetaFormLabel>
             <input
+              id="adset-age-max"
               type="number"
               min="18"
               max="65"
               value={ageMax}
               onChange={(e) => setAgeMax(e.target.value)}
-              className="w-full rounded-md border border-dark-border bg-dark-bg py-2 px-3 text-text-primary text-sm"
+              className="w-full rounded-md border border-dark-border bg-dark-bg py-1.5 md:py-2 px-2 text-text-primary text-sm"
             />
           </div>
         </div>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-text-primary mb-1">Gênero</label>
-        <select
-          value={gender}
-          onChange={(e) => setGender(e.target.value as "all" | "male" | "female")}
-          className="w-full rounded-md border border-dark-border bg-dark-bg py-2 px-3 text-text-primary text-sm"
-        >
-          <option value="all">Todos</option>
-          <option value="male">Masculino</option>
-          <option value="female">Feminino</option>
-        </select>
       </div>
 
       {error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>
       )}
-      <div className="flex gap-3 pt-2">
+      <div className="flex gap-3 pt-2 md:pt-1.5 border-t border-dark-border/50 mt-1">
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-md border border-dark-border px-4 py-2 text-sm font-medium text-text-primary hover:bg-dark-bg"
+          className="rounded-md border border-dark-border px-3 py-1.5 md:px-4 md:py-2 text-sm font-medium text-text-primary hover:bg-dark-bg"
         >
           Cancelar
         </button>
         <button
           type="submit"
           disabled={!name.trim() || saving || campaignObjective == null}
-          className="flex items-center gap-2 rounded-md bg-shopee-orange px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+          className="flex items-center gap-2 rounded-md bg-shopee-orange px-3 py-1.5 md:px-4 md:py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
           {submitLabel ?? "Criar conjunto"}

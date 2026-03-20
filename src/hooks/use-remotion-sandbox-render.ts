@@ -20,7 +20,7 @@ export function useRemotionSandboxRender() {
   const startRender = useCallback(async (inputProps: VideoInputProps) => {
     setState({
       status: "invoking",
-      phase: "Iniciando...",
+      phase: "Preparando...",
       progress: 0,
       subtitle: null,
     });

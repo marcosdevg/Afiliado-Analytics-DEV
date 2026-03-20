@@ -29,6 +29,13 @@ export const dynamic = "force-dynamic";
  */
 const REMOTION_SANDBOX_BUNDLE_DIR = "remotion-bundle";
 
+/** Mensagens curtas para o usuário (sem termos técnicos: sandbox, blob, dependências, etc.). */
+function friendlyPrepPhase(progress: number): string {
+  if (progress < 0.34) return "Preparando...";
+  if (progress < 0.67) return "Só mais um instante...";
+  return "Quase pronto...";
+}
+
 function assertBundleExists(): void {
   const abs = path.join(process.cwd(), REMOTION_BUNDLE_DIR);
   if (!fs.existsSync(abs)) {
@@ -71,15 +78,14 @@ export async function POST(req: Request) {
   };
 
   const runRender = async () => {
-    await send({ type: "phase", phase: "Criando sandbox...", progress: 0 });
+    await send({ type: "phase", phase: "Preparando...", progress: 0 });
 
     const sandbox = await createSandbox({
-      onProgress: async ({ progress, message }) => {
+      onProgress: async ({ progress }) => {
         await send({
           type: "phase",
-          phase: message ?? "Preparando ambiente...",
+          phase: friendlyPrepPhase(progress),
           progress,
-          subtitle: process.env.VERCEL ? undefined : "Desenvolvimento local pode ser mais lento.",
         });
       },
     });
@@ -98,7 +104,7 @@ export async function POST(req: Request) {
         bundleDir: REMOTION_BUNDLE_DIR,
       });
 
-      await send({ type: "phase", phase: "Renderizando vídeo...", progress: 0.05 });
+      await send({ type: "phase", phase: "Gerando vídeo...", progress: 0.05 });
 
       const { sandboxFilePath, contentType } = await renderMediaOnVercel({
         sandbox,
@@ -110,21 +116,21 @@ export async function POST(req: Request) {
             case "opening-browser":
               await send({
                 type: "phase",
-                phase: "Abrindo navegador...",
+                phase: "Carregando...",
                 progress: update.overallProgress,
               });
               break;
             case "selecting-composition":
               await send({
                 type: "phase",
-                phase: "Selecionando composição...",
+                phase: "Montando o vídeo...",
                 progress: update.overallProgress,
               });
               break;
             case "render-progress":
               await send({
                 type: "phase",
-                phase: "Renderizando frames...",
+                phase: "Gerando vídeo...",
                 progress: update.overallProgress,
               });
               break;
@@ -134,7 +140,7 @@ export async function POST(req: Request) {
         },
       });
 
-      await send({ type: "phase", phase: "Enviando para o Blob...", progress: 1 });
+      await send({ type: "phase", phase: "Salvando seu vídeo...", progress: 1 });
 
       const { url, size } = await uploadToVercelBlob({
         sandbox,
