@@ -1,17 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   MessageCircle, Loader2, Trash2, Send, AlertCircle, Search,
-  Clock, PlusCircle, Info, Zap, Tag, ChevronDown, RefreshCw,
-  Play, Pause, Hash, Layers, X, ChevronLeft, ChevronRight,
+  Clock, PlusCircle, Info, Zap, Tag, RefreshCw,
+  Play, Pause, Hash, Layers, X, ChevronLeft, ChevronRight, ChevronDown,
   List as ListIcon, User, Settings2, Smartphone, CheckCheck,
 } from "lucide-react";
 import BuscarGruposModal, {
   type BuscarGruposPayload,
   type EvolutionInstanceItem,
 } from "../gpl/BuscarGruposModal";
+import MetaSearchablePicker from "@/app/components/meta/MetaSearchablePicker";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type ListaGrupos = { id: string; instanceId: string; nomeLista: string; createdAt: string };
@@ -160,15 +161,17 @@ function DisparoCard({ c, togglingId, onToggle, onRemove }: {
           </div>
         )}
         {c.listaOfertasNome && (
-          <div className="flex items-center gap-1.5 text-[9px] text-[#a0a0a0] min-w-0">
-            <Layers className="w-2.5 h-2.5 text-[#e24c30] shrink-0" />
-            <span className="truncate">Lista: <span className="text-white">{c.listaOfertasNome}</span></span>
+          <div className="flex items-start md:items-center gap-1.5 text-[9px] text-[#a0a0a0] min-w-0">
+            <Layers className="w-2.5 h-2.5 text-[#e24c30] shrink-0 mt-0.5 md:mt-0" />
+            <span className="min-w-0 max-md:break-words md:truncate">
+              Lista: <span className="text-white">{c.listaOfertasNome}</span>
+            </span>
           </div>
         )}
         {c.instanceId && (
-          <div className="flex items-center gap-1.5 text-[9px] text-[#a0a0a0] min-w-0">
-            <User className="w-2.5 h-2.5 text-[#e24c30] shrink-0" />
-            <span className="truncate">{c.instanceId}</span>
+          <div className="flex items-start md:items-center gap-1.5 text-[9px] text-[#a0a0a0] min-w-0">
+            <User className="w-2.5 h-2.5 text-[#e24c30] shrink-0 mt-0.5 md:mt-0" />
+            <span className="min-w-0 max-md:break-all md:truncate">{c.instanceId}</span>
           </div>
         )}
         {c.horarioInicio && c.horarioFim && (
@@ -245,6 +248,13 @@ export default function GruposVendaPage() {
   const [contentMode, setContentMode] = useState<"keywords" | "list">("keywords");
   const [scheduleMode, setScheduleMode] = useState<"24h" | "window">("window");
   const [panelSearch, setPanelSearch] = useState("");
+  const [panelPage, setPanelPage] = useState(1);
+  /** Step 3 mobile: bloco Sub IDs recolhido por padrão */
+  const [mobileSubIdsOpen, setMobileSubIdsOpen] = useState(false);
+  /** Step 4 mobile: resumo da automação recolhido por padrão */
+  const [mobileResumoOpen, setMobileResumoOpen] = useState(false);
+  /** Painel: 2 cards/página abaixo de lg; 6 no desktop (lg+, 1024px) */
+  const [panelPerPage, setPanelPerPage] = useState(2);
 
   // ─── API ────────────────────────────────────────────────────────────────────
   const loadInstances = useCallback(async () => {
@@ -426,6 +436,61 @@ export default function GruposVendaPage() {
     d.instanceId?.toLowerCase().includes(panelSearch.toLowerCase())
   );
 
+  const panelTotalPages = Math.max(1, Math.ceil(filteredDisparos.length / panelPerPage));
+  const safePanelPage = Math.min(panelPage, panelTotalPages);
+  const pagedDisparos = filteredDisparos.slice(
+    (safePanelPage - 1) * panelPerPage,
+    safePanelPage * panelPerPage,
+  );
+
+  useEffect(() => {
+    setPanelPage(1);
+  }, [panelSearch]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const apply = () => setPanelPerPage(mq.matches ? 6 : 2);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    setPanelPage((p) => Math.min(p, panelTotalPages));
+  }, [panelTotalPages, panelPerPage]);
+
+  useEffect(() => {
+    if (wizardStep !== 3) setMobileSubIdsOpen(false);
+  }, [wizardStep]);
+
+  useEffect(() => {
+    if (wizardStep !== 4) setMobileResumoOpen(false);
+  }, [wizardStep]);
+
+  const subIdsFilledCount = [subId1, subId2, subId3].filter((s) => s.trim()).length;
+  const subIdsMobileSummary =
+    subIdsFilledCount === 0
+      ? "Opcional — toque para configurar"
+      : subIdsFilledCount === 3
+        ? "Canal, lista e campanha preenchidos"
+        : `${subIdsFilledCount} campo${subIdsFilledCount > 1 ? "s" : ""} preenchido${subIdsFilledCount > 1 ? "s" : ""}`;
+
+  const listaOfertasPickerOptions = useMemo(
+    () => [
+      {
+        value: "",
+        label: "Sem lista de ofertas (usa keywords)",
+        description: "Envio por keywords em vez de produtos fixos",
+      },
+      ...listasOfertas.map((l) => ({
+        value: l.id,
+        label: l.nome,
+        description: `${l.totalItens} ${l.totalItens === 1 ? "item" : "itens"}`,
+      })),
+    ],
+    [listasOfertas],
+  );
+
   function openWizard() { setWizardStep(1); setShowStepInfo(false); setView("wizard"); }
   function closeWizard() { setShowStepInfo(false); setView("panel"); }
   function handleNext() { setShowStepInfo(false); if (wizardStep < 4) setWizardStep((s) => s + 1); }
@@ -445,7 +510,7 @@ export default function GruposVendaPage() {
   };
 
   return (
-    <div className="flex flex-col w-full text-[#f0f0f2] bg-[#121214] min-h-screen rounded-lg p-3 sm:p-6 gap-4 sm:gap-5">
+    <div className="flex flex-col w-full text-[#f0f0f2]  rounded-lg p-3 sm:p-6 gap-4 sm:gap-5">
       <style jsx>{`
         .scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
         .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
@@ -461,7 +526,7 @@ export default function GruposVendaPage() {
           </div>
           Grupos de Venda
         </h1>
-        <p className="text-[11px] text-[#a0a0a0] mt-1 leading-relaxed">
+        <p className="text-[11px] text-[#a0a0a0] mt-1 leading-relaxed max-md:hidden">
           Dispare ofertas automaticamente em grupos do WhatsApp — uma vez ou em loop 24h.
         </p>
       </header>
@@ -487,13 +552,13 @@ export default function GruposVendaPage() {
           {/* Criar Nova Automação */}
           <button onClick={openWizard}
             className="w-full flex items-center justify-between bg-[#1c1c1f] border border-[#2c2c32] hover:border-[#e24c30]/40 rounded-xl px-4 sm:px-5 py-3.5 sm:py-4 transition-all group gap-3 text-left">
-            <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+            <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1 max-md:items-center">
               <div className="w-10 h-10 sm:w-9 sm:h-9 rounded-xl bg-[#e24c30]/10 border border-[#e24c30]/20 flex items-center justify-center shrink-0 group-hover:bg-[#e24c30]/20 group-hover:shadow-lg group-hover:shadow-[#e24c30]/15 transition-all">
                 <PlusCircle className="w-4 h-4 text-[#e24c30]" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-[11px] sm:text-[12px] font-bold text-white leading-tight">Criar Nova Automação</p>
-                <p className="text-[9px] sm:text-[10px] text-[#a0a0a0] mt-1 leading-relaxed line-clamp-2 sm:line-clamp-none">Configure instância, lista de grupos, conteúdo e horário passo a passo.</p>
+                <p className="text-[9px] sm:text-[10px] text-[#a0a0a0] mt-1 leading-relaxed line-clamp-2 sm:line-clamp-none max-md:hidden">Configure instância, lista de grupos, conteúdo e horário passo a passo.</p>
               </div>
             </div>
             <div className="w-8 h-8 rounded-lg bg-[#222228] border border-[#2c2c32] flex items-center justify-center shrink-0 group-hover:bg-[#e24c30]/10 group-hover:border-[#e24c30]/25 transition-all">
@@ -544,24 +609,78 @@ export default function GruposVendaPage() {
               </div>
             )}
 
-            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5 max-h-[380px] overflow-y-auto scrollbar-thin">
-              {continuoLoading ? (
-                <div className="col-span-full flex items-center justify-center gap-2 py-10 text-[#a0a0a0] text-sm">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
-                </div>
-              ) : filteredDisparos.length > 0 ? (
-                filteredDisparos.map((item) => (
-                  <DisparoCard key={item.id} c={item} togglingId={continuoTogglingId} onToggle={handleContinuoToggle} onRemove={handleRemoveContinuo} />
-                ))
-              ) : (
-                <div className="col-span-full flex flex-col items-center justify-center gap-2 py-10 text-center">
-                  <Search className="w-7 h-7 text-[#2c2c32]" />
-                  <p className="text-[11px] font-semibold text-[#a0a0a0]">
-                    {continuoList.length === 0 ? "Nenhum disparo configurado" : "Nenhum disparo encontrado"}
+            <div className="p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 min-h-[120px]">
+                {continuoLoading ? (
+                  <div className="col-span-full flex items-center justify-center gap-2 py-10 text-[#a0a0a0] text-sm">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
+                  </div>
+                ) : filteredDisparos.length > 0 ? (
+                  pagedDisparos.map((item) => (
+                    <DisparoCard key={item.id} c={item} togglingId={continuoTogglingId} onToggle={handleContinuoToggle} onRemove={handleRemoveContinuo} />
+                  ))
+                ) : (
+                  <div className="col-span-full flex flex-col items-center justify-center gap-2 py-10 text-center">
+                    <Search className="w-7 h-7 text-[#2c2c32]" />
+                    <p className="text-[11px] font-semibold text-[#a0a0a0]">
+                      {continuoList.length === 0 ? "Nenhum disparo configurado" : "Nenhum disparo encontrado"}
+                    </p>
+                    <p className="text-[9px] text-[#a0a0a0]/60">
+                      {continuoList.length === 0 ? "Clique em \"Criar Nova Automação\" para começar." : "Tente outro título ou instância."}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {!continuoLoading && filteredDisparos.length > 0 && (
+                <div className="mt-4 pt-4 pb-1 border-t border-[#2c2c32] flex flex-col items-center gap-4 px-2 sm:px-4">
+                  <p className="text-[11px] text-[#a0a0a0] text-center leading-relaxed max-w-md">
+                    Mostrando {(safePanelPage - 1) * panelPerPage + 1}–
+                    {Math.min(safePanelPage * panelPerPage, filteredDisparos.length)} de {filteredDisparos.length} disparo
+                    {filteredDisparos.length !== 1 ? "s" : ""}
+                    <span className="text-[#686868]"> · Página {safePanelPage} de {panelTotalPages}</span>
                   </p>
-                  <p className="text-[9px] text-[#a0a0a0]/60">
-                    {continuoList.length === 0 ? "Clique em \"Criar Nova Automação\" para começar." : "Tente outro título ou instância."}
-                  </p>
+                  <div
+                    className="flex items-center justify-center gap-2.5 sm:gap-3 flex-wrap w-full max-w-md mx-auto"
+                    role="navigation"
+                    aria-label="Paginação do painel"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setPanelPage((p) => Math.max(1, p - 1))}
+                      disabled={safePanelPage <= 1}
+                      className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#121214] border border-[#2c2c32] flex items-center justify-center text-[#a0a0a0] hover:text-[#f0f0f2] hover:border-[#3e3e3e] disabled:opacity-30 transition shrink-0"
+                      aria-label="Página anterior"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    {Array.from({ length: panelTotalPages }, (_, i) => i + 1)
+                      .slice(Math.max(0, safePanelPage - 3), Math.min(panelTotalPages, safePanelPage + 2))
+                      .map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setPanelPage(p)}
+                          className={cn(
+                            "min-w-[2.25rem] h-9 sm:min-w-10 sm:h-10 px-2 rounded-xl text-[11px] sm:text-xs font-semibold transition shrink-0",
+                            p === safePanelPage
+                              ? "bg-[#e24c30] text-white shadow-md shadow-[#e24c30]/25 scale-105"
+                              : "bg-[#121214] border border-[#2c2c32] text-[#a0a0a0] hover:text-[#f0f0f2] hover:border-[#3e3e3e]",
+                          )}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    <button
+                      type="button"
+                      onClick={() => setPanelPage((p) => Math.min(panelTotalPages, p + 1))}
+                      disabled={safePanelPage >= panelTotalPages}
+                      className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#121214] border border-[#2c2c32] flex items-center justify-center text-[#a0a0a0] hover:text-[#f0f0f2] hover:border-[#3e3e3e] disabled:opacity-30 transition shrink-0"
+                      aria-label="Próxima página"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -594,7 +713,7 @@ export default function GruposVendaPage() {
             {/* Step 1: Selecionar instância */}
             {wizardStep === 1 && (
               <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4 sm:gap-6">
-                <div className="bg-[#222228] border border-[#2c2c32] rounded-xl p-4 flex flex-col gap-2 h-fit">
+                <div className="bg-[#222228] border border-[#2c2c32] rounded-xl p-4 flex flex-col gap-2 h-fit max-md:hidden">
                   <p className="text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest">💡 Sobre Instâncias</p>
                   <p className="text-[10px] text-[#a0a0a0] leading-relaxed">Cada instância representa um número de WhatsApp conectado à plataforma. Múltiplas instâncias permitem separar campanhas por conta.</p>
                 </div>
@@ -724,23 +843,31 @@ export default function GruposVendaPage() {
                     <div className="min-w-0">
                       <FieldLabel>Lista de Ofertas</FieldLabel>
                       {loadingListasOfertas ? (
-                        <div className="flex items-center gap-2 text-[#a0a0a0] text-xs"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando...</div>
-                      ) : (
-                        <div className="relative">
-                          <select value={selectedListaOfertasId} onChange={(e) => setSelectedListaOfertasId(e.target.value)}
-                            className="appearance-none w-full bg-[#222228] border border-[#3e3e3e] pl-4 pr-8 py-2.5 rounded-xl text-[11px] font-semibold text-[#f0f0f2] focus:border-[#e24c30] focus:outline-none transition cursor-pointer">
-                            <option value="">Sem lista de ofertas (usa keywords)</option>
-                            {listasOfertas.map((l) => <option key={l.id} value={l.id}>{l.nome} ({l.totalItens} itens)</option>)}
-                          </select>
-                          <ChevronDown className="w-3.5 h-3.5 text-[#a0a0a0] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando listas…
                         </div>
+                      ) : (
+                        <MetaSearchablePicker
+                          value={selectedListaOfertasId}
+                          onChange={setSelectedListaOfertasId}
+                          options={listaOfertasPickerOptions}
+                          modalTitle="Lista de ofertas"
+                          modalDescription="Escolha uma lista salva em Minha Lista de Ofertas ou use apenas keywords."
+                          searchPlaceholder="Filtrar listas…"
+                          emptyButtonLabel="Escolher lista de ofertas"
+                          emptyAsTag
+                          emptyTagLabel="Selecionar Lista"
+                          emptyOptionsMessage="Nenhuma lista cadastrada."
+                          className="w-full max-w-full"
+                        />
                       )}
                       <p className="text-[9px] text-[#a0a0a0] mt-2 leading-relaxed">A lista de ofertas substitui as keywords e envia produtos fixos em rotação.</p>
                     </div>
                   )}
                 </div>
 
-                <div className="flex flex-col gap-3 min-w-0">
+                {/* Sub IDs — desktop: sempre expandido */}
+                <div className="hidden md:flex flex-col gap-3 min-w-0">
                   <FieldLabel>
                     <span className="inline-flex items-center gap-1 flex-wrap">
                       <Tag className="w-2.5 h-2.5" /> Sub IDs de Rastreamento
@@ -749,9 +876,9 @@ export default function GruposVendaPage() {
                   </FieldLabel>
                   <div className="flex flex-col gap-2">
                     {[
-                      { label: "Canal", value: subId1, setter: setSubId1, ph: "Ex: whatsapp" },
-                      { label: "Lista", value: subId2, setter: setSubId2, ph: "Ex: natal" },
-                      { label: "Campanha", value: subId3, setter: setSubId3, ph: "Ex: black25" },
+                      { label: "Canal", value: subId1, setter: setSubId1, ph: "Ex: Whtasapp" },
+                      { label: "Lista", value: subId2, setter: setSubId2, ph: "Ex: Camisa Anime" },
+                      { label: "Campanha", value: subId3, setter: setSubId3, ph: "Ex: Natal" },
                     ].map(({ label, value, setter, ph }) => (
                       <div key={label} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 sm:gap-3">
                         <span className="text-[8px] text-[#a0a0a0] uppercase tracking-widest font-bold w-full sm:w-16 shrink-0">{label}</span>
@@ -760,6 +887,52 @@ export default function GruposVendaPage() {
                       </div>
                     ))}
                   </div>
+                </div>
+
+                {/* Sub IDs — mobile: dropdown estilo instância, começa recolhido */}
+                <div className="md:hidden min-w-0 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMobileSubIdsOpen((o) => !o)}
+                    aria-expanded={mobileSubIdsOpen}
+                    className="w-full flex items-center justify-between gap-3 rounded-xl bg-[#1a1a1c] border border-[#2c2c32] px-4 py-3 text-left transition hover:border-[#3e3e3e] active:scale-[0.99]"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest flex items-center gap-1.5">
+                        <Tag className="w-2.5 h-2.5 text-[#e24c30] shrink-0" />
+                        Sub IDs de Rastreamento
+                        <span className="text-[8px] normal-case tracking-normal font-normal text-[#a0a0a0]">(opcional)</span>
+                      </p>
+                      <p className="text-[10px] text-[#f0f0f2] mt-1 truncate">{subIdsMobileSummary}</p>
+                    </div>
+                    <ChevronDown
+                      className={cn(
+                        "w-4 h-4 shrink-0 text-[#f0f0f2] transition-transform duration-200",
+                        mobileSubIdsOpen && "rotate-180",
+                      )}
+                      aria-hidden
+                    />
+                  </button>
+                  {mobileSubIdsOpen && (
+                    <div className="flex flex-col gap-2 pl-0.5 pt-1 border border-[#2c2c32] rounded-xl bg-[#222228]/50 p-3">
+                      {[
+                        { label: "Canal", value: subId1, setter: setSubId1, ph: "Ex: Whtasapp" },
+                        { label: "Lista", value: subId2, setter: setSubId2, ph: "Ex: Camisa Anime" },
+                        { label: "Campanha", value: subId3, setter: setSubId3, ph: "Ex: Natal" },
+                      ].map(({ label, value, setter, ph }) => (
+                        <div key={label} className="flex flex-col gap-1.5">
+                          <span className="text-[8px] text-[#a0a0a0] uppercase tracking-widest font-bold">{label}</span>
+                          <input
+                            type="text"
+                            value={value}
+                            onChange={(e) => setter(e.target.value)}
+                            placeholder={ph}
+                            className="w-full bg-[#222228] border border-[#3e3e3e] rounded-lg px-3 py-2.5 text-[10px] text-white placeholder:text-[#868686] focus:border-[#e24c30] outline-none transition"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -802,9 +975,45 @@ export default function GruposVendaPage() {
                   )}
                 </div>
 
-                <div className="bg-[#222228] border border-[#2c2c32] rounded-xl p-4 min-w-0">
-                  <p className="text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest mb-4">Resumo da Automação</p>
-                  <div className="flex flex-col gap-3">
+                <div className="bg-[#222228] border border-[#2c2c32] rounded-xl min-w-0 overflow-hidden">
+                  {/* Mobile: cabeçalho dropdown (começa recolhido) */}
+                  <button
+                    type="button"
+                    onClick={() => setMobileResumoOpen((o) => !o)}
+                    aria-expanded={mobileResumoOpen}
+                    className="md:hidden w-full flex items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-[#1c1c1f]/80"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest">Resumo da Automação</p>
+                      <p className="text-[10px] text-[#f0f0f2] mt-1 truncate">
+                        {instances.find((i) => i.id === selectedInstanceId)?.nome_instancia ?? "Canal"}{" "}
+                        ·{" "}
+                        {contentMode === "keywords"
+                          ? `${keywordCount} keyword${keywordCount !== 1 ? "s" : ""}`
+                          : "Lista de ofertas"}{" "}
+                        · {scheduleMode === "24h" ? "24h" : horaInicio && horaFim ? `${horaInicio}–${horaFim}` : "Janela"}
+                      </p>
+                    </div>
+                    <ChevronDown
+                      className={cn(
+                        "w-4 h-4 shrink-0 text-[#f0f0f2] transition-transform duration-200",
+                        mobileResumoOpen && "rotate-180",
+                      )}
+                      aria-hidden
+                    />
+                  </button>
+
+                  {/* Desktop: título fixo */}
+                  <p className="hidden md:block text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest px-4 pt-4 mb-4">
+                    Resumo da Automação
+                  </p>
+
+                  <div
+                    className={cn(
+                      "flex flex-col gap-3 px-4 pb-4 max-md:border-t max-md:border-[#2c2c32] max-md:pt-3 md:pt-0",
+                      !mobileResumoOpen && "max-md:hidden",
+                    )}
+                  >
                     {[
                       { icon: <Smartphone className="w-3.5 h-3.5 text-[#e24c30] shrink-0" />, label: "Canal", value: instances.find((i) => i.id === selectedInstanceId)?.nome_instancia ?? "Não selecionado", warn: !selectedInstanceId },
                       { icon: <ListIcon className="w-3.5 h-3.5 text-[#e24c30] shrink-0" />, label: "Lista", value: selectedList?.nomeLista ?? null, warn: !selectedList },

@@ -7,13 +7,14 @@ import { useSupabase } from "@/app/components/auth/AuthProvider";
 import {
   Calculator, Users, Calendar, DollarSign, TrendingUp, TrendingDown,
   AlertCircle, AlertTriangle, Info, ArrowRight, MessageCircle,
-  Search, Loader2, RefreshCw, ChevronDown, ChevronUp,
+  Search, Loader2, ChevronDown, ChevronUp,
   MousePointerClick, Zap, Target, BarChart3, CheckCircle2, XCircle,
-  ArrowUpRight, ArrowDownRight, Layers3, Activity, CheckSquare,
+  ArrowUpRight, ArrowDownRight, Activity, CheckSquare,
   RefreshCcw, Clock,
 } from "lucide-react";
 import Link from "next/link";
 import LoadingOverlay from "@/app/components/ui/LoadingOverlay";
+import MetaSearchablePicker from "@/app/components/meta/MetaSearchablePicker";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface CommissionDataRow {
@@ -208,7 +209,7 @@ function ResultCard({ title, value, footer, valueClassName, highlight }: {
   title: string; value: string; footer?: string; valueClassName?: string; highlight?: boolean;
 }) {
   return (
-    <div className={cn("rounded-lg flex flex-col", highlight ? "bg-[#1c1c1f] border border-dark-border p-3" : "px-1")}>
+    <div className={cn("rounded-lg flex flex-col", highlight ? "bg-[#27272a] border border-[#2c2c32] p-3" : "px-1")}>
       <p className="text-[10px] text-text-secondary uppercase tracking-wider leading-tight">{title}</p>
       <p className={cn("mt-0.5 text-2xl font-bold font-heading break-words leading-tight", valueClassName || "text-white")}>{value}</p>
       {footer && <p className="mt-0.5 text-[9px] text-text-secondary">{footer}</p>}
@@ -274,6 +275,21 @@ export default function GplCalculatorPage() {
   // Tab state (mock: "grupos" | "campanhas")
   const [activeTab, setActiveTab] = useState<"grupos" | "campanhas">("grupos");
   const [groupSearchFilter, setGroupSearchFilter] = useState("");
+  const [campaignSearchFilter, setCampaignSearchFilter] = useState("");
+  const [groupListPage, setGroupListPage] = useState(1);
+  const [campaignListPage, setCampaignListPage] = useState(1);
+
+  const LIST_PAGE_SIZE = 10;
+
+  const instancePickerOptions = useMemo(
+    () =>
+      evolutionInstances.map((i) => ({
+        value: i.id,
+        label: i.nome_instancia,
+        description: i.numero_whatsapp ? String(i.numero_whatsapp) : undefined,
+      })),
+    [evolutionInstances],
+  );
 
   // 1) Checar chaves
   useEffect(() => {
@@ -447,41 +463,6 @@ export default function GplCalculatorPage() {
   const selectedInstance = evolutionInstances.find((i) => i.id === selectedInstanceId);
   const selectedInstanceName = selectedInstance?.nome_instancia ?? "";
 
-  const loadGroupSnapshots = async (instanceId: string, start?: string, end?: string) => {
-    setGroupsLoading(true); setGroupsError(null);
-    try {
-      const params = new URLSearchParams({ instance_id: instanceId });
-      if (start && end) { params.set("start", start); params.set("end", end); }
-      const res = await fetch(`/api/gpl/group-snapshots?${params.toString()}`, { cache: "no-store" });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Falha ao carregar snapshots");
-      const snapshots = Array.isArray(json.snapshots) ? json.snapshots : [];
-      const normalized = snapshots.map((s: { date: string; groups: unknown[]; created_at?: string }) => ({
-        date: s.date,
-        groups: ((s.groups ?? []) as Array<{ id?: string; nome?: string; qtdMembros?: number }>).map((g) => ({ id: String(g?.id ?? ""), nome: String(g?.nome ?? ""), qtdMembros: Number(g?.qtdMembros ?? 0) })),
-      })) as Array<{ date: string; groups: WhatsAppGroup[] }>;
-      setGroupSnapshots(normalized);
-      const latest = normalized[0];
-      const groupsFromSnapshot = latest?.groups ?? [];
-      setGroups(groupsFromSnapshot);
-      setGroupsCache((prev) => ({ ...prev, [instanceId]: groupsFromSnapshot }));
-      setGroupsLastFetchedAt(snapshots[0]?.created_at ?? null);
-      setPreviousGroupsForComparison(null);
-      const baseRaw = json.base?.groups;
-      const baseNormalized = Array.isArray(baseRaw) ? (baseRaw as Array<{ id?: string; nome?: string; qtdMembros?: number }>).map((g) => ({ id: String(g?.id ?? ""), nome: String(g?.nome ?? ""), qtdMembros: Number(g?.qtdMembros ?? 0) })) : [];
-      setBaseGroups(baseNormalized.length > 0 ? baseNormalized : null);
-      const cum = json.cumulative ?? [];
-      const cumMap: Record<string, { total_novos: number; total_saidas: number }> = {};
-      for (const c of cum) { if (c?.group_id) cumMap[c.group_id] = { total_novos: Number(c.total_novos ?? 0), total_saidas: Number(c.total_saidas ?? 0) }; }
-      setGroupCumulative(cumMap);
-    } catch (e) {
-      setGroups([]); setBaseGroups(null); setGroupCumulative({});
-      setGroupsError(e instanceof Error ? e.message : "Erro ao carregar grupos salvos");
-      setGroupsCache((prev) => ({ ...prev, [instanceId]: [] }));
-      setGroupSnapshots([]); setGroupsLastFetchedAt(null);
-    } finally { setGroupsLoading(false); }
-  };
-
   const fetchGroupsForInstance = async (instanceId: string, nomeInstancia: string) => {
     setGroupsLoading(true); setGroupsError(null);
     setPreviousGroupsForComparison(groups.length > 0 ? [...groups] : null);
@@ -523,14 +504,6 @@ export default function GplCalculatorPage() {
     } finally { setGroupsLoading(false); }
   };
 
-  useEffect(() => {
-    if (!selectedInstanceId || !selectedInstanceName) { setGroups([]); setBaseGroups(null); setGroupCumulative({}); setGroupsError(null); setGroupSnapshots([]); setGroupsLastFetchedAt(null); return; }
-    const start = startDateApplied || getYesterday();
-    const end = endDateApplied || getYesterday();
-    loadGroupSnapshots(selectedInstanceId, start, end);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedInstanceId, selectedInstanceName, startDateApplied, endDateApplied]);
-
   const filteredGroups = useMemo(() => {
     const q = normalizeStr(groupSearchFilter);
     if (!q) return groups;
@@ -549,6 +522,71 @@ export default function GplCalculatorPage() {
     for (const g of atualList) { const anterior = porIdAnterior.get(g.id) ?? g.qtdMembros; map.set(g.id, { anterior, delta: g.qtdMembros - anterior }); }
     return map;
   }, [baseGroups, previousGroupsForComparison, groupSnapshots, groups]);
+
+  /** Mesma regra do card: tag "Alta evasão" quando há saídas (cumulativo ou delta). */
+  const sortedFilteredGroups = useMemo(() => {
+    const sairamValor = (g: WhatsAppGroup) => {
+      const cum = groupCumulative[g.id];
+      const delta = groupMemberDelta.get(g.id);
+      return cum ? cum.total_saidas : (delta !== undefined && delta.delta < 0 ? Math.abs(delta.delta) : 0);
+    };
+    const copy = [...filteredGroups];
+    copy.sort((a, b) => {
+      const ha = sairamValor(a) > 0;
+      const hb = sairamValor(b) > 0;
+      if (ha === hb) return 0;
+      return ha ? -1 : 1;
+    });
+    return copy;
+  }, [filteredGroups, groupCumulative, groupMemberDelta]);
+
+  const filteredCampaigns = useMemo(() => {
+    const q = normalizeStr(campaignSearchFilter);
+    if (!q) return traficoGruposCampaigns;
+    return traficoGruposCampaigns.filter((c) => normalizeStr(c.name).includes(q));
+  }, [traficoGruposCampaigns, campaignSearchFilter]);
+
+  const groupTotalPages = Math.max(1, Math.ceil(sortedFilteredGroups.length / LIST_PAGE_SIZE));
+  const safeGroupPage = Math.min(groupListPage, groupTotalPages);
+  const pagedGroups = sortedFilteredGroups.slice((safeGroupPage - 1) * LIST_PAGE_SIZE, safeGroupPage * LIST_PAGE_SIZE);
+
+  const campaignTotalPages = Math.max(1, Math.ceil(filteredCampaigns.length / LIST_PAGE_SIZE));
+  const safeCampaignPage = Math.min(campaignListPage, campaignTotalPages);
+  const pagedCampaigns = filteredCampaigns.slice((safeCampaignPage - 1) * LIST_PAGE_SIZE, safeCampaignPage * LIST_PAGE_SIZE);
+
+  useEffect(() => {
+    setGroupListPage(1);
+  }, [groupSearchFilter, selectedInstanceId]);
+
+  useEffect(() => {
+    setCampaignListPage(1);
+  }, [campaignSearchFilter, activeTab]);
+
+  useEffect(() => {
+    setGroupListPage((p) => Math.min(p, groupTotalPages));
+  }, [groupTotalPages]);
+
+  useEffect(() => {
+    setCampaignListPage((p) => Math.min(p, campaignTotalPages));
+  }, [campaignTotalPages]);
+
+  const handleInstancePickerChange = (newId: string) => {
+    setSelectedInstanceId(newId);
+    setSelectedGroupIds(new Set());
+    setGroupListPage(1);
+    if (!newId) {
+      setGroups([]);
+      setBaseGroups(null);
+      setGroupCumulative({});
+      setGroupsError(null);
+      setGroupSnapshots([]);
+      setGroupsLastFetchedAt(null);
+      setPreviousGroupsForComparison(null);
+      return;
+    }
+    const inst = evolutionInstances.find((i) => i.id === newId);
+    if (inst) void fetchGroupsForInstance(newId, inst.nome_instancia);
+  };
 
   const totalMembersSelected = useMemo(() => groups.filter((g) => selectedGroupIds.has(g.id)).reduce((acc, g) => acc + g.qtdMembros, 0), [groups, selectedGroupIds]);
   useEffect(() => { if (totalMembersSelected > 0) setGroupSize(String(totalMembersSelected)); }, [totalMembersSelected]);
@@ -617,7 +655,7 @@ export default function GplCalculatorPage() {
   ];
 
   const tabInfoTooltip = activeTab === "grupos"
-    ? "Selecione para somar os membros em 'Pessoas no grupo'. Atualize a página para buscar os dados mais recentes da API"
+    ? "Selecione uma instância no canto superior direito para carregar os grupos automaticamente. Use a busca abaixo para filtrar a lista. Marque os grupos para somar em 'Pessoas no grupo'."
     : "Selecione campanhas para somar o custo de tráfego. Certifique-se de marcar a tag no ATI para que elas apareçam aqui.";
 
   function onClickBuscar() {
@@ -659,23 +697,8 @@ export default function GplCalculatorPage() {
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-text-secondary flex items-center gap-1">
-            <Layers3 className="w-3 h-3 text-emerald-400" /> Instância:
-          </span>
-          <div className="relative flex items-center">
-            <select value={selectedInstanceId} onChange={(e) => { setSelectedInstanceId(e.target.value); setSelectedGroupIds(new Set()); }}
-              className="appearance-none bg-[#1c1c1f] border border-dark-border pl-3 pr-8 py-1.5 rounded-md text-xs font-semibold text-text-primary hover:border-text-secondary focus:border-[#e24c30] focus:outline-none focus:ring-1 focus:ring-[#e24c30] transition-all cursor-pointer">
-              <option value="">Selecionar...</option>
-              {evolutionInstances.map((inst) => (
-                <option key={inst.id} value={inst.id}>{inst.nome_instancia}</option>
-              ))}
-            </select>
-            <ChevronDown className="w-3 h-3 text-text-secondary absolute right-2.5 pointer-events-none" />
-          </div>
-          <div className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium border ${hasShopeeKeys ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-blue-500/10 text-blue-400 border-blue-500/20"}`}>
-            {hasShopeeKeys ? <><CheckCircle2 className="h-3 w-3" /> API Shopee</> : <><BarChart3 className="h-3 w-3" /> Relatório local</>}
-          </div>
+        <div className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium border ${hasShopeeKeys ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-blue-500/10 text-blue-400 border-blue-500/20"}`}>
+          {hasShopeeKeys ? <><CheckCircle2 className="h-3 w-3" /> API Shopee</> : <><BarChart3 className="h-3 w-3" /> Relatório local</>}
         </div>
       </div>
 
@@ -709,7 +732,7 @@ export default function GplCalculatorPage() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 flex-1 min-h-0">
 
           {/* ── Coluna esquerda: Parâmetros ── */}
-          <div className="md:col-span-4 lg:col-span-3 bg-[#121214] rounded-xl border border-dark-border p-4 flex flex-col gap-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
+          <div className="md:col-span-4 lg:col-span-3 bg-[#27272a] rounded-xl border border-[#2c2c32] p-4 flex flex-col gap-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
             <div className="flex items-center gap-2 text-emerald-400 bg-emerald-500/10 px-2 py-1.5 rounded border border-emerald-500/20 text-[11px] font-semibold">
               <CheckSquare className="w-3 h-3 shrink-0" /> {hasShopeeKeys ? "API Shopee Conectada" : "Relatório local carregado"}
             </div>
@@ -722,10 +745,10 @@ export default function GplCalculatorPage() {
               {totalMembersSelected > 0 && (
                 <p className="text-[10px] text-emerald-400 flex items-center gap-1"><Users className="h-3 w-3" /> {totalMembersSelected.toLocaleString("pt-BR")} membros selecionados</p>
               )}
-              <div className="bg-[#1c1c1f] p-2 rounded-lg border border-dark-border">
+              <div className="bg-[#27272a] p-2 rounded-lg border border-dark-border">
                 <label className="mb-2 flex items-center justify-between text-xs font-medium">
                   <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-amber-400" /> Período</span>
-                  <span className="text-[10px] bg-[#121214] px-1.5 py-0.5 rounded text-text-secondary">{draftDays > 0 ? `${draftDays}d` : "—"}</span>
+                  <span className="text-[10px] bg-[#222228] border border-[#2c2c32] px-1.5 py-0.5 rounded text-text-secondary">{draftDays > 0 ? `${draftDays}d` : "—"}</span>
                 </label>
                 <div className="flex flex-col gap-2 mb-2">
                   <div className="w-full">
@@ -772,7 +795,7 @@ export default function GplCalculatorPage() {
             {/* Cards resumo */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 shrink-0">
               {summaryCards.map((card) => (
-                <div key={card.label} className="bg-[#121214] border border-dark-border rounded-lg p-2.5 flex flex-col justify-center">
+                <div key={card.label} className="bg-[#27272a] border border-[#2c2c32] rounded-lg p-2.5 flex flex-col justify-center">
                   <div className="flex items-center gap-1">
                     <p className="text-[9px] text-text-secondary uppercase tracking-wider leading-tight">{card.label}</p>
                     {card.tooltip && (
@@ -790,33 +813,88 @@ export default function GplCalculatorPage() {
             </div>
 
             {/* Panel grupos/campanhas */}
-            <div className="bg-[#121214] rounded-xl border border-dark-border flex-1 relative min-h-[400px] lg:min-h-0">
+            <div className=" rounded-xl  flex-1 relative min-h-[400px] lg:min-h-0">
               <div className="absolute inset-0 flex flex-col p-4">
-                {/* Tabs + search */}
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-2 shrink-0">
-                  <div className="flex bg-[#1c1c1f] p-1 rounded-lg border border-dark-border">
-                    <button onClick={() => setActiveTab("grupos")}
-                      className={cn("px-4 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-2",
-                        activeTab === "grupos" ? "bg-[#e24c30] text-white" : "text-text-secondary hover:text-white")}>
-                      <Users className="w-3 h-3" /> Grupos
-                    </button>
-                    <button onClick={() => setActiveTab("campanhas")}
-                      className={cn("px-4 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-2",
-                        activeTab === "campanhas" ? "bg-[#e24c30] text-white" : "text-text-secondary hover:text-white")}>
-                      <Activity className="w-3 h-3" /> Campanhas
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <Search className="w-3 h-3 absolute left-2 top-2 text-text-secondary" />
-                      <input type="text" placeholder="Buscar..." value={activeTab === "grupos" ? groupSearchFilter : ""}
-                        onChange={(e) => { if (activeTab === "grupos") setGroupSearchFilter(e.target.value); }}
-                        className="bg-[#1c1c1f] border border-dark-border rounded-md py-1.5 pl-7 pr-2 text-xs w-32 focus:border-[#e24c30] outline-none" />
+                {/* Mobile: abas | (busca + instância na mesma linha). Desktop lg+: abas + instância | busca full width. */}
+                <div className="flex flex-col gap-2 mb-2 shrink-0">
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 w-full min-w-0">
+                    <div className="flex bg-[#27272a] p-1 rounded-lg border border-dark-border shrink-0">
+                      <button type="button" onClick={() => setActiveTab("grupos")}
+                        className={cn("px-4 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-2",
+                          activeTab === "grupos" ? "bg-[#e24c30] text-white" : "text-text-secondary hover:text-white")}>
+                        <Users className="w-3 h-3" /> Grupos
+                      </button>
+                      <button type="button" onClick={() => setActiveTab("campanhas")}
+                        className={cn("px-4 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-2",
+                          activeTab === "campanhas" ? "bg-[#e24c30] text-white" : "text-text-secondary hover:text-white")}>
+                        <Activity className="w-3 h-3" /> Campanhas
+                      </button>
                     </div>
-                    <button onClick={() => { if (activeTab === "grupos" && selectedInstanceId && selectedInstanceName) fetchGroupsForInstance(selectedInstanceId, selectedInstanceName); else if (activeTab === "campanhas") fetchTraficoGrupos(); }}
-                      className="text-sky-300 hover:text-sky-200 bg-sky-500/10 hover:bg-sky-500/15 border border-sky-500/25 p-1.5 rounded-md transition-colors" title="Atualizar dados">
-                      <RefreshCcw className="w-3 h-3" />
-                    </button>
+                    <div className="hidden lg:flex items-center justify-end gap-2 shrink-0 min-w-0 max-w-full sm:max-w-[min(100%,380px)] ml-auto">
+                      <MetaSearchablePicker
+                        value={selectedInstanceId}
+                        onChange={handleInstancePickerChange}
+                        options={instancePickerOptions}
+                        modalTitle="Instância WhatsApp"
+                        modalDescription="Escolha a instância Evolution para listar os grupos. Os grupos são atualizados automaticamente ao confirmar."
+                        searchPlaceholder="Buscar instância…"
+                        emptyButtonLabel="Selecionar instância"
+                        emptyAsTag
+                        emptyTagLabel="Instância"
+                        className="flex justify-end items-center min-w-0 [&>div]:justify-end"
+                        emptyOptionsMessage="Nenhuma instância disponível. Conecte o WhatsApp nas configurações."
+                      />
+                      {activeTab === "campanhas" && (
+                        <button
+                          type="button"
+                          onClick={() => void fetchTraficoGrupos()}
+                          className="text-sky-300 hover:text-sky-200 bg-sky-500/10 hover:bg-sky-500/15 border border-sky-500/25 p-1.5 rounded-md transition-colors shrink-0"
+                          title="Atualizar campanhas"
+                        >
+                          <RefreshCcw className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-row items-center gap-2 w-full min-w-0 lg:flex-col lg:items-stretch lg:gap-2">
+                    <div className="relative flex-1 min-w-0 lg:w-full">
+                      <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder={activeTab === "grupos" ? "Buscar grupo…" : "Buscar campanha…"}
+                        value={activeTab === "grupos" ? groupSearchFilter : campaignSearchFilter}
+                        onChange={(e) => {
+                          if (activeTab === "grupos") setGroupSearchFilter(e.target.value);
+                          else setCampaignSearchFilter(e.target.value);
+                        }}
+                        className="w-full bg-[#1c1c1f] border border-[#2c2c32] rounded-md py-2 pl-8 pr-3 text-xs focus:border-[#e24c30] outline-none min-w-0"
+                      />
+                    </div>
+                    <div className="flex lg:hidden shrink-0 items-center justify-end gap-2 min-w-0">
+                      <MetaSearchablePicker
+                        value={selectedInstanceId}
+                        onChange={handleInstancePickerChange}
+                        options={instancePickerOptions}
+                        modalTitle="Instância WhatsApp"
+                        modalDescription="Escolha a instância Evolution para listar os grupos. Os grupos são atualizados automaticamente ao confirmar."
+                        searchPlaceholder="Buscar instância…"
+                        emptyButtonLabel="Selecionar instância"
+                        emptyAsTag
+                        emptyTagLabel="Instância"
+                        className="flex justify-end items-center min-w-0 max-w-[min(100vw-8rem,200px)] [&>div]:justify-end"
+                        emptyOptionsMessage="Nenhuma instância disponível. Conecte o WhatsApp nas configurações."
+                      />
+                      {activeTab === "campanhas" && (
+                        <button
+                          type="button"
+                          onClick={() => void fetchTraficoGrupos()}
+                          className="text-sky-300 hover:text-sky-200 bg-sky-500/10 hover:bg-sky-500/15 border border-sky-500/25 p-1.5 rounded-md transition-colors shrink-0"
+                          title="Atualizar campanhas"
+                        >
+                          <RefreshCcw className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -825,7 +903,7 @@ export default function GplCalculatorPage() {
                   {activeTab === "grupos" ? (
                     <p className="text-[11px] text-emerald-400 flex items-center gap-1.5 font-semibold min-w-0">
                       <Clock className="w-3.5 h-3.5 shrink-0" />
-                      {groupsLastFetchedAt ? `Atualizado: ${new Date(groupsLastFetchedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : "Clique em Atualizar para buscar grupos"}
+                      {groupsLastFetchedAt ? `Atualizado: ${new Date(groupsLastFetchedAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : "Selecione uma instância para carregar os grupos"}
                     </p>
                   ) : (
                     <p className="text-[11px] text-sky-300 flex items-center gap-1.5 font-semibold min-w-0">
@@ -851,12 +929,13 @@ export default function GplCalculatorPage() {
                     ) : groupsError ? (
                       <div className="flex items-center gap-2 px-3 py-2 bg-red-500/8 border border-red-500/20 rounded-lg"><AlertCircle className="h-4 w-4 text-red-400 shrink-0" /><p className="text-xs text-red-400">{groupsError}</p></div>
                     ) : !selectedInstanceId ? (
-                      <div className="flex flex-col items-center justify-center py-10 text-center"><MessageCircle className="w-8 h-8 text-[#2c2c32] mb-2" /><p className="text-xs text-text-secondary">Selecione uma instância no cabeçalho para ver os grupos</p></div>
+                      <div className="flex flex-col items-center justify-center py-10 text-center"><MessageCircle className="w-8 h-8 text-[#2c2c32] mb-2" /><p className="text-xs text-text-secondary">Selecione uma instância no canto superior direito para carregar os grupos</p></div>
                     ) : filteredGroups.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-10 text-center"><p className="text-xs text-text-secondary">{groups.length === 0 ? "Nenhum dado. Clique em Atualizar." : "Nenhum grupo encontrado."}</p></div>
+                      <div className="flex flex-col items-center justify-center py-10 text-center"><p className="text-xs text-text-secondary">{groups.length === 0 ? "Nenhum grupo retornado para esta instância." : "Nenhum grupo encontrado na busca."}</p></div>
                     ) : (
-                      <div className="space-y-2">
-                        {filteredGroups.map((g) => {
+                      <>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                        {pagedGroups.map((g) => {
                           const cum = groupCumulative[g.id];
                           const delta = groupMemberDelta.get(g.id);
                           const novosValor = cum ? cum.total_novos : (delta !== undefined && delta.delta > 0 ? delta.delta : 0);
@@ -887,6 +966,21 @@ export default function GplCalculatorPage() {
                           );
                         })}
                       </div>
+                      {groupTotalPages > 1 && (
+                        <div className="mt-3 pt-2 border-t border-[#2c2c32] flex flex-col items-center justify-center gap-2 text-[10px] text-text-secondary">
+                          <div className="flex items-center justify-center gap-2 flex-wrap">
+                            <button type="button" onClick={() => setGroupListPage((p) => Math.max(1, p - 1))} disabled={safeGroupPage <= 1} className="px-3 py-1.5 rounded-md border border-[#2c2c32] bg-[#1c1c1f] text-text-secondary hover:text-white disabled:opacity-30 min-w-[76px]">Anterior</button>
+                            <span className="text-text-primary/90 font-semibold tabular-nums px-2 shrink-0">Pág. {safeGroupPage}/{groupTotalPages}</span>
+                            <button type="button" onClick={() => setGroupListPage((p) => Math.min(groupTotalPages, p + 1))} disabled={safeGroupPage >= groupTotalPages} className="px-3 py-1.5 rounded-md border border-[#2c2c32] bg-[#1c1c1f] text-text-secondary hover:text-white disabled:opacity-30 min-w-[76px]">Próxima</button>
+                          </div>
+                          <p className="text-center text-text-secondary/85 leading-relaxed max-w-md">
+                            {(safeGroupPage - 1) * LIST_PAGE_SIZE + 1}–{Math.min(safeGroupPage * LIST_PAGE_SIZE, sortedFilteredGroups.length)} de {sortedFilteredGroups.length} grupos
+                            <span className="text-text-secondary/60"> · </span>
+                            {pagedGroups.reduce((acc, g) => acc + g.qtdMembros, 0).toLocaleString("pt-BR")} membros nesta página
+                          </p>
+                        </div>
+                      )}
+                      </>
                     )
                   ) : (
                     /* Campanhas */
@@ -897,48 +991,70 @@ export default function GplCalculatorPage() {
                     ) : traficoGruposCampaigns.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-10 text-center">
                         <p className="text-sm text-text-secondary">Nenhuma campanha no cache para este período.</p>
-                        <p className="text-xs text-text-secondary/60 mt-1">Clique em Atualizar para buscar da API.</p>
+                        <p className="text-xs text-text-secondary/60 mt-1">Use o botão de atualizar (ícone) ao lado da instância, no topo, para buscar na API.</p>
+                      </div>
+                    ) : filteredCampaigns.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-10 text-center">
+                        <p className="text-xs text-text-secondary">Nenhuma campanha encontrada na busca.</p>
                       </div>
                     ) : (
-                      <div className="space-y-2">
-                        {traficoGruposCampaigns.map((c) => {
+                      <>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                        {pagedCampaigns.map((c) => {
                           const isSelected = selectedTraficoCampaignIds.has(c.id);
                           const isOpen = expandedTraficoCampaigns[c.id];
                           return (
-                            <div key={c.id}
-                              className={cn("bg-[#1c1c1f] border p-2.5 rounded-lg hover:border-text-secondary transition",
-                                isSelected ? "border-shopee-orange/40 bg-shopee-orange/5" : "border-dark-border")}>
-                              <div className="flex items-center justify-between gap-3">
-                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                  <input type="checkbox" checked={isSelected} onChange={() => toggleTraficoCampaignSelection(c.id)}
-                                    className="rounded accent-[#e24c30] w-3 h-3 shrink-0 cursor-pointer" />
-                                  <button onClick={() => toggleTraficoCampaign(c.id)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="text-xs font-bold break-words">{c.name}</span>
-                                        <span className={cn("text-[9px] bg-[#1c1c1f] px-1.5 rounded text-text-secondary whitespace-nowrap", c.status === "ACTIVE" ? "text-emerald-400" : "")}>{c.status === "ACTIVE" ? "Ativo" : "Pausado"}</span>
-                                      </div>
-                                      <span className="text-[11px] font-semibold text-red-400 block mt-0.5">{formatCurrency(c.spend)}</span>
+                            <div
+                              key={c.id}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleTraficoCampaignSelection(c.id); } }}
+                              className={cn("bg-[#1c1c1f] border p-3 rounded-lg flex flex-col hover:border-text-secondary transition cursor-pointer",
+                                isSelected ? "border-shopee-orange/40 bg-shopee-orange/5" : "border-dark-border")}
+                              onClick={() => toggleTraficoCampaignSelection(c.id)}
+                            >
+                              <div className="flex items-start justify-between w-full gap-2">
+                                <div className="flex items-start gap-2 flex-1 min-w-0">
+                                  <div onClick={(e) => e.stopPropagation()}>
+                                    <OrangeCheckbox checked={isSelected} onChange={() => toggleTraficoCampaignSelection(c.id)} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-xs font-bold break-words">{c.name}</span>
+                                      <span className={cn("text-[10px] px-2 py-0.5 rounded font-medium shrink-0 whitespace-nowrap",
+                                        c.status === "ACTIVE" ? "text-emerald-400 bg-emerald-500/10" : "text-sky-400 bg-sky-400/10")}>
+                                        {c.status === "ACTIVE" ? "Ativo" : "Pausado"}
+                                      </span>
                                     </div>
-                                    {isOpen ? <ChevronUp className="w-3 h-3 text-text-secondary shrink-0" /> : <ChevronDown className="w-3 h-3 text-text-secondary shrink-0" />}
-                                  </button>
+                                    <span className="text-[10px] text-sky-400 bg-sky-400/10 px-2 py-0.5 rounded font-medium inline-block mt-1.5 whitespace-nowrap">{formatCurrency(c.spend)} gasto</span>
+                                  </div>
                                 </div>
-                                <Link href="/dashboard/ati" className="text-[10px] font-semibold text-red-500 hover:text-red-400 transition cursor-pointer shrink-0">Ver no ATI</Link>
+                                <div className="flex flex-col items-end gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleTraficoCampaign(c.id)}
+                                    className="p-1 rounded-md hover:bg-white/5 text-text-secondary"
+                                    aria-expanded={isOpen}
+                                  >
+                                    {isOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                  </button>
+                                  <Link href="/dashboard/ati" className="text-[10px] font-semibold text-red-500 hover:text-red-400 transition whitespace-nowrap">Ver no ATI</Link>
+                                </div>
                               </div>
                               {isOpen && c.adSets.map((aset) => {
                                 const adSetOpen = expandedTraficoAdSets[aset.id];
                                 return (
-                                  <div key={aset.id} className="mt-2 pl-6 border-l border-dark-border/50">
-                                    <button onClick={() => toggleTraficoAdSet(aset.id)} className="w-full flex items-center gap-2 text-left py-1">
-                                      {adSetOpen ? <ChevronUp className="w-3 h-3 text-text-secondary" /> : <ChevronDown className="w-3 h-3 text-text-secondary" />}
+                                  <div key={aset.id} className="mt-2 pl-2 border-l border-dark-border/50" onClick={(e) => e.stopPropagation()}>
+                                    <button type="button" onClick={() => toggleTraficoAdSet(aset.id)} className="w-full flex items-center gap-2 text-left py-1">
+                                      {adSetOpen ? <ChevronUp className="w-3 h-3 text-text-secondary shrink-0" /> : <ChevronDown className="w-3 h-3 text-text-secondary shrink-0" />}
                                       <span className="text-xs font-medium text-text-primary truncate flex-1">{aset.name}</span>
-                                      <span className="text-xs text-shopee-orange">{formatCurrency(aset.spend)}</span>
+                                      <span className="text-xs text-shopee-orange shrink-0">{formatCurrency(aset.spend)}</span>
                                     </button>
                                     {adSetOpen && aset.ads.map((ad) => (
                                       <div key={ad.id} className="flex items-center gap-2 py-1 pl-4 text-[11px] text-text-secondary">
                                         <span className="truncate flex-1">{ad.name}</span>
                                         <span>{formatCurrency(ad.spend)}</span>
-                                        <span className="flex items-center gap-0.5"><MousePointerClick className="h-3 w-3" /> {ad.clicks}</span>
+                                        <span className="flex items-center gap-0.5 shrink-0"><MousePointerClick className="h-3 w-3" /> {ad.clicks}</span>
                                       </div>
                                     ))}
                                   </div>
@@ -948,6 +1064,19 @@ export default function GplCalculatorPage() {
                           );
                         })}
                       </div>
+                      {campaignTotalPages > 1 && (
+                        <div className="mt-3 pt-2 border-t border-[#2c2c32] flex flex-col items-center justify-center gap-2 text-[10px] text-text-secondary">
+                          <div className="flex items-center justify-center gap-2 flex-wrap">
+                            <button type="button" onClick={() => setCampaignListPage((p) => Math.max(1, p - 1))} disabled={safeCampaignPage <= 1} className="px-3 py-1.5 rounded-md border border-[#2c2c32] bg-[#1c1c1f] text-text-secondary hover:text-white disabled:opacity-30 min-w-[76px]">Anterior</button>
+                            <span className="text-text-primary/90 font-semibold tabular-nums px-2 shrink-0">Pág. {safeCampaignPage}/{campaignTotalPages}</span>
+                            <button type="button" onClick={() => setCampaignListPage((p) => Math.min(campaignTotalPages, p + 1))} disabled={safeCampaignPage >= campaignTotalPages} className="px-3 py-1.5 rounded-md border border-[#2c2c32] bg-[#1c1c1f] text-text-secondary hover:text-white disabled:opacity-30 min-w-[76px]">Próxima</button>
+                          </div>
+                          <p className="text-center text-text-secondary/85 leading-relaxed max-w-md">
+                            {(safeCampaignPage - 1) * LIST_PAGE_SIZE + 1}–{Math.min(safeCampaignPage * LIST_PAGE_SIZE, filteredCampaigns.length)} de {filteredCampaigns.length} campanhas
+                          </p>
+                        </div>
+                      )}
+                      </>
                     )
                   )}
                 </div>
@@ -956,9 +1085,9 @@ export default function GplCalculatorPage() {
           </div>
 
           {/* ── Coluna direita: Visão Executiva ── */}
-          <div className="md:col-span-12 lg:col-span-3 bg-[#121214] rounded-xl border border-dark-border p-4 flex flex-col justify-between">
+          <div className="md:col-span-12 lg:col-span-3 bg-[#27272a] rounded-xl border border-[#2c2c32] p-4 flex flex-col justify-between">
             <div>
-              <div className="flex items-center gap-2 mb-6">
+              <div className="flex items-center gap-2 mb-6 ">
                 <Target className="w-4 h-4 text-[#e24c30]" />
                 <h2 className="text-sm font-bold uppercase tracking-wide">Visão Executiva</h2>
               </div>

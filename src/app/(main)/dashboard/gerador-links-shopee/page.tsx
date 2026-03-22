@@ -96,7 +96,7 @@ function ColHeader({ step, active, label, icon, right, tooltip }: {
   step?: number; active?: boolean; label: string; icon?: ReactNode; right?: ReactNode; tooltip?: string;
 }) {
   return (
-    <div className="h-11 flex items-center justify-between gap-2 px-4 border-b border-[#2c2c32] bg-[#121214] min-w-0">
+    <div className="h-11 flex items-center justify-between gap-2 px-4 border-b border-[#2c2c32] bg-[#27272a] min-w-0">
       <div className="flex items-center gap-2 min-w-0">
         {step != null && <StepBadge n={step} active={active} />}
         {icon}
@@ -122,7 +122,7 @@ function IconBtn({ children, onClick, title, danger, active }: {
 }) {
   return (
     <button type="button" onClick={onClick} title={title}
-      className={cn("w-6 h-6 rounded-md bg-[#121214] border flex items-center justify-center transition shrink-0",
+      className={cn("w-6 h-6 rounded-md bg-[#222228] border flex items-center justify-center transition shrink-0",
         active ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10 hover:text-emerald-300 hover:border-emerald-400/40"
           : danger ? "text-[#a0a0a0] border-[#2c2c32] hover:text-red-400 hover:border-red-400/25"
           : "text-[#a0a0a0] border-[#2c2c32] hover:text-[#f0f0f2] hover:border-[#4c4c52]")}>
@@ -242,7 +242,7 @@ function ListModal({ open, onClose, lists, newListName, setNewListName, activeLi
               <input value={newListName} onChange={(e) => setNewListName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && hasTypedName) onCreate(); }}
                 placeholder="Ex: achados do dia"
-                className="flex-1 bg-[#121214] border border-[#2c2c32] rounded-xl px-3.5 py-2.5 text-[12px] text-[#f0f0f2] placeholder:text-[#7d7d86] focus:border-[#e24c30]/60 outline-none transition" />
+                className="flex-1 bg-[#222228] border border-[#2c2c32] rounded-xl px-3.5 py-2.5 text-[12px] text-[#f0f0f2] placeholder:text-[#7d7d86] focus:border-[#e24c30]/60 outline-none transition" />
               <button onClick={onCreate} disabled={!hasTypedName}
                 className={cn("h-[42px] w-full sm:w-auto px-4 rounded-xl text-[12px] font-semibold transition flex items-center justify-center gap-2 shrink-0",
                   hasTypedName ? "bg-[#232328] border border-[#3a3a42] text-[#f0f0f2] hover:border-[#e24c30]/45 hover:text-white"
@@ -257,7 +257,7 @@ function ListModal({ open, onClose, lists, newListName, setNewListName, activeLi
               <span className="text-[10px] text-[#8e8e96]">{lists.length} {lists.length === 1 ? "lista" : "listas"}</span>
             </div>
             {lists.length > 0 ? (
-              <div className="rounded-2xl border border-[#2c2c32] bg-[#16161a] p-2 max-h-[220px] overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
+              <div className="rounded-2xl border border-[#2c2c32] bg-[#222228] p-2 max-h-[220px] overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
                 {lists.map((list) => {
                   const sel = activeListId === list.id;
                   return (
@@ -280,7 +280,7 @@ function ListModal({ open, onClose, lists, newListName, setNewListName, activeLi
                 })}
               </div>
             ) : (
-              <div className="rounded-2xl border border-[#2c2c32] bg-[#16161a] px-4 py-8 text-center">
+              <div className="rounded-2xl border border-[#2c2c32] bg-[#222228] px-4 py-8 text-center">
                 <p className="text-[13px] font-medium text-[#e1e1e5]">Nenhuma lista criada</p>
                 <p className="text-[11px] text-[#96969f] mt-1">Crie uma lista acima para continuar.</p>
               </div>
@@ -636,7 +636,7 @@ export default function GeradorLinksShopeePage() {
 
   // ── RENDER ────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#121214] text-[#f0f0f2] flex flex-col rounded-xl overflow-hidden overflow-x-hidden">
+    <div className="bg-[#1c1c1f] border border-[#2c2c32] text-[#f0f0f2] flex flex-col rounded-xl overflow-hidden overflow-x-hidden">
       <style jsx>{`
         .dash { background-image: url("data:image/svg+xml,%3csvg width='100%25' height='100%25' xmlns='http://www.w3.org/2000/svg'%3e%3crect width='100%25' height='100%25' fill='none' rx='14' ry='14' stroke='%232c2c32' stroke-width='2' stroke-dasharray='7%2c 7' stroke-linecap='square'/%3e%3c/svg%3e"); }
         .scrollbar-thin::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -645,16 +645,16 @@ export default function GeradorLinksShopeePage() {
         .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #e24c30; }
         /* Barra estilo referência: trilho escuro, thumb cinza claro */
         .scrollbar-ref::-webkit-scrollbar { width: 6px; height: 6px; }
-        .scrollbar-ref::-webkit-scrollbar-track { background: #121214; border-radius: 999px; }
+        .scrollbar-ref::-webkit-scrollbar-track { background: #222228; border-radius: 999px; }
         .scrollbar-ref::-webkit-scrollbar-thumb { background: #9a9aa3; border-radius: 999px; }
         .scrollbar-ref::-webkit-scrollbar-thumb:hover { background: #b8b8c0; }
-        .scrollbar-ref { scrollbar-width: thin; scrollbar-color: #9a9aa3 #121214; }
+        .scrollbar-ref { scrollbar-width: thin; scrollbar-color: #9a9aa3 #222228; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
       {/* Header */}
-      <header className="sticky top-0 z-30 h-12 flex items-center justify-between px-3 sm:px-5 border-b border-[#2c2c32]  gap-2">
+      <header className="sticky top-0 z-30 h-12 bg-[#27272a] flex items-center justify-between px-3 sm:px-5 border-b border-[#2c2c32]  gap-2">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <div className="w-7 h-7 rounded-lg bg-[#e24c30]/15 border border-[#e24c30]/30 flex items-center justify-center shrink-0">
             <LinkIcon className="w-3.5 h-3.5 text-[#e24c30]" />
@@ -689,7 +689,7 @@ export default function GeradorLinksShopeePage() {
 
       {/* Mobile: stepper no topo (estilo Meta — sem barra fixa no rodapé) */}
       <nav
-        className="lg:hidden sticky top-12 z-20 border-b border-[#2c2c32] bg-[#161618] px-3 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.25)]"
+        className="lg:hidden sticky top-12 z-20 border-b border-[#2c2c32] px-3 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.25)]"
         aria-label="Seções do gerador"
       >
         <div className="flex items-center justify-center w-full max-w-lg mx-auto px-2 sm:px-6 py-1 gap-0">
@@ -705,7 +705,7 @@ export default function GeradorLinksShopeePage() {
                   onClick={() => setMobileTab(step.id)}
                   aria-label={step.label}
                   aria-current={active ? "step" : undefined}
-                  className="shrink-0 rounded-full outline-none transition-transform active:scale-95 focus-visible:ring-2 focus-visible:ring-[#e24c30]/55 focus-visible:ring-offset-2 focus-visible:ring-offset-[#161618] mx-1"
+                  className="shrink-0 rounded-full outline-none transition-transform active:scale-95 focus-visible:ring-2 focus-visible:ring-[#e24c30]/55 focus-visible:ring-offset-2 focus-visible:ring-offset-[#222228] mx-1"
                 >
                   <span
                     className={cn(
@@ -728,7 +728,7 @@ export default function GeradorLinksShopeePage() {
       <div className="flex items-start border-b border-[#2c2c32]">
         {/* Aside: Configurar */}
         <aside ref={configCardRef}
-          className={cn("w-full lg:w-60 lg:shrink-0 border-r border-[#2c2c32] lg:flex flex-col min-w-0",
+          className={cn("w-full lg:w-60 lg:shrink-0 border-r border-[#2c2c32] bg-[#27272a] lg:flex flex-col min-w-0",
             mobileTab === "config" ? "flex" : "hidden")}>
           <ColHeader step={1} active label="Configurar Link" tooltip="Painel principal de configuração. Informe o produto e os Sub IDs para que o sistema gere seu link de afiliado rastreável." />
           <div className="p-4 flex flex-col gap-4">
@@ -765,7 +765,7 @@ export default function GeradorLinksShopeePage() {
 
             <FieldGroup label="Sub IDs" icon={<Hash className="w-2.5 h-2.5" />} tooltip="Identificadores de rastreamento para saber de qual canal vieram seus cliques e vendas.">
               <div className="flex flex-col gap-1.5">
-                {[{ val: subId1, set: setSubId1, ph: "instagram" }, { val: subId2, set: setSubId2, ph: "whatsapp" }, { val: subId3, set: setSubId3, ph: "campanha1" }].map((s, i) => (
+                {[{ val: subId1, set: setSubId1, ph: "customizado" }, { val: subId2, set: setSubId2, ph: "natal" }, { val: subId3, set: setSubId3, ph: "campanha1" }].map((s, i) => (
                   <div key={i} className="relative">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[8px] font-bold text-[#e24c30]/70 pointer-events-none">{i + 1}</span>
                     <input value={s.val} onChange={(e) => s.set(e.target.value)} placeholder={s.ph}
@@ -799,7 +799,7 @@ export default function GeradorLinksShopeePage() {
                   placeholder="Ex: camisas, fones..."
                   className="w-full bg-[#1c1c1f] border border-[#3e3e3e] rounded-xl px-3 py-2.5 text-xs text-[#f0f0f2] placeholder:text-[#868686] focus:border-[#e24c30]/50 outline-none transition" />
                 <button onClick={loadBestSellers} disabled={loadingBestSellers || !bestSellerKeyword.trim() || !hasApiKeys}
-                  className="flex items-center justify-center gap-1.5 bg-[#e24c30]/10 border border-[#e24c30]/40 text-[#e24c30] rounded-xl py-2 text-[11px] font-semibold hover:bg-[#e24c30]/20 hover:border-[#e24c30]/70 disabled:opacity-40 transition min-h-[42px]">
+                  className="flex cursor-pointer items-center justify-center gap-1.5 bg-[#e24c30]/20 border border-[#e24c30]/40 text-white hover:bg-orange-800 rounded-xl py-2 text-[11px] font-semibold hover:bg-[#e24c30]/20 hover:border-[#e24c30]/70 disabled:opacity-40 transition min-h-[42px]">
                   {loadingBestSellers ? <Loader2 className="w-3 h-3 animate-spin" /> : <TrendingUp className="w-3 h-3" />} Listar os mais vendidos
                 </button>
               </div>
@@ -905,7 +905,7 @@ export default function GeradorLinksShopeePage() {
               {goldenProducts.length > 0 && (
                 <div className="pt-1 w-full min-w-0">
                   <h3 className="text-[11px] font-bold text-[#f0f0f2] uppercase tracking-widest">Ofertas semelhantes</h3>
-                  <div className="mt-3 w-full rounded-xl border border-[#2c2c32] bg-[#16161a] p-3 flex flex-col gap-2 min-w-0">
+                  <div className="mt-3 w-full rounded-xl border border-[#2c2c32] bg-[#222228] p-3 flex flex-col gap-2 min-w-0">
                     {pagedGoldenSimilar.map((p) => (
                       <MostSoldCard key={`sim-${p.itemId}`} product={p} onClick={() => handleSelectProduct(p)} compact />
                     ))}
@@ -915,7 +915,7 @@ export default function GeradorLinksShopeePage() {
                           className="flex items-center gap-1 text-[11px] text-[#a0a0a0] hover:text-[#f0f0f2] disabled:opacity-30 transition min-h-[36px]">
                           <ChevronLeft className="w-3.5 h-3.5" /> Anterior
                         </button>
-                        <span className="text-[11px] font-semibold text-[#f0f0f2] bg-[#121214] px-3 py-1 rounded-lg border border-[#2c2c32]">
+                        <span className="text-[11px] font-semibold text-[#f0f0f2] bg-[#1c1c1f] px-3 py-1 rounded-lg border border-[#2c2c32]">
                           {goldenSimilarPage} / {goldenSimilarTotalPages}
                             </span>
                         <button type="button" onClick={() => setGoldenSimilarPage((p) => Math.min(goldenSimilarTotalPages, p + 1))} disabled={goldenSimilarPage >= goldenSimilarTotalPages}
@@ -962,7 +962,7 @@ export default function GeradorLinksShopeePage() {
                 </div>
 
       {/* Histórico */}
-      <section className={cn("border-t border-[#2c2c32] pb-4 lg:pb-0", mobileTab === "historico" ? "block" : "hidden lg:block")}>
+      <section className={cn("border-t border-[#2c2c32] bg-[#27272a]", mobileTab === "historico" ? "block" : "hidden lg:block")}>
         <div className="px-3 sm:px-5 py-4 border-b border-[#2c2c32] flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-6 h-6 rounded-lg bg-[#e24c30]/15 border border-[#e24c30]/25 flex items-center justify-center shrink-0">
@@ -980,8 +980,11 @@ export default function GeradorLinksShopeePage() {
             </div>
           </div>
 
-        <div className="px-3 sm:px-5 py-2.5 border-b border-[#2c2c32] bg-[#1c1c1f] flex flex-col min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between gap-2">
-          <label className="flex items-center gap-2 cursor-pointer select-none group">
+        <div className="px-3 sm:px-5 py-2.5 border-b border-[#2c2c32] bg-[#1c1c1f] flex flex-row flex-wrap items-center justify-between gap-2 lg:gap-3">
+          <label
+            className="flex items-center gap-2 cursor-pointer select-none group shrink-0"
+            aria-label={someSelected ? `${selectedHistoryIds.size} selecionados — toque para alterar seleção` : "Selecionar todos do histórico"}
+          >
             <div
               role="checkbox"
               aria-checked={allSelected ? true : someSelected ? "mixed" : false}
@@ -994,24 +997,48 @@ export default function GeradorLinksShopeePage() {
                   : "bg-[#141418] border-[#3f3f46] group-hover:border-[#e24c30]/45 group-hover:bg-[#e24c30]/5")}>
               {someSelected && !allSelected && <span className="w-2 h-1 rounded-[2px] bg-[#e24c30]" />}
             </div>
-            <span className="text-[11px] font-medium text-[#bebebe] group-hover:text-[#e0e0e0] transition">
+            <span className="hidden lg:inline text-[11px] font-medium text-[#bebebe] group-hover:text-[#e0e0e0] transition">
               {someSelected ? `${selectedHistoryIds.size} selecionado${selectedHistoryIds.size > 1 ? "s" : ""}` : "Selecionar todos"}
             </span>
+            {someSelected && (
+              <span className="lg:hidden text-xs font-bold text-[#f0f0f2] tabular-nums min-w-[1.1rem]" aria-hidden>
+                {selectedHistoryIds.size}
+              </span>
+            )}
           </label>
-          <div className={cn("flex items-center gap-2 transition-all duration-200 flex-wrap w-full min-[420px]:w-auto",
-            someSelected ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none h-0 overflow-hidden min-[420px]:h-auto min-[420px]:overflow-visible")}>
-            <button onClick={() => setSelectedHistoryIds(new Set())}
-              className="flex-1 min-[420px]:flex-none flex items-center justify-center min-[420px]:justify-start gap-1.5 text-[11px] text-[#a0a0a0] hover:text-[#bebebe] font-medium transition bg-[#121214] border border-[#2c2c32] rounded-lg px-2.5 py-2 min-[420px]:bg-transparent min-[420px]:border-0 min-[420px]:rounded-none min-[420px]:px-0 min-[420px]:py-0">
-              <X className="w-3 h-3" /> Limpar
-              </button>
-            <button onClick={() => openAddToListModal(history.filter((h) => selectedHistoryIds.has(h.id)))}
-              className="flex-1 min-[420px]:flex-none flex items-center justify-center gap-1.5 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 bg-emerald-500/8 hover:bg-emerald-500/15 border border-emerald-500/20 hover:border-emerald-500/35 px-2.5 py-2 min-[420px]:py-1 rounded-lg transition whitespace-nowrap">
-              <ListPlus className="w-3 h-3" /> Adicionar à lista ({selectedHistoryIds.size})
-                  </button>
-            <button onClick={async () => { const ids = Array.from(selectedHistoryIds); for (const id of ids) await handleDeleteHistory(id); setSelectedHistoryIds(new Set()); }}
-              className="flex-1 min-[420px]:flex-none flex items-center justify-center gap-1.5 text-[11px] font-semibold text-red-400 hover:text-red-300 bg-red-500/8 hover:bg-red-500/15 border border-red-500/20 hover:border-red-500/35 px-2.5 py-2 min-[420px]:py-1 rounded-lg transition whitespace-nowrap">
-              <Trash2 className="w-3 h-3" /> Excluir {selectedHistoryIds.size}
-                  </button>
+          <div className={cn("flex items-center justify-end gap-1.5 flex-nowrap shrink-0 transition-opacity duration-200",
+            someSelected ? "flex opacity-100" : "hidden")}
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedHistoryIds(new Set())}
+              title="Limpar seleção"
+              aria-label="Limpar seleção"
+              className="flex items-center justify-center gap-1.5 text-[11px] text-[#a0a0a0] hover:text-[#f0f0f2] font-medium transition bg-[#222228] border border-[#2c2c32] rounded-lg p-2.5 lg:p-0 lg:bg-transparent lg:border-0 lg:rounded-none lg:px-0 lg:py-0 lg:hover:text-[#bebebe]"
+            >
+              <X className="w-4 h-4 lg:w-3 lg:h-3 shrink-0" />
+              <span className="hidden lg:inline">Limpar</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => openAddToListModal(history.filter((h) => selectedHistoryIds.has(h.id)))}
+              title={`Adicionar ${selectedHistoryIds.size} à lista`}
+              aria-label={`Adicionar ${selectedHistoryIds.size} à lista de ofertas`}
+              className="flex items-center justify-center gap-1.5 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 bg-emerald-500/8 hover:bg-emerald-500/15 border border-emerald-500/20 hover:border-emerald-500/35 p-2.5 lg:px-2.5 lg:py-1 rounded-lg transition"
+            >
+              <ListPlus className="w-4 h-4 lg:w-3 lg:h-3 shrink-0" />
+              <span className="hidden lg:inline whitespace-nowrap">Adicionar à lista ({selectedHistoryIds.size})</span>
+            </button>
+            <button
+              type="button"
+              onClick={async () => { const ids = Array.from(selectedHistoryIds); for (const id of ids) await handleDeleteHistory(id); setSelectedHistoryIds(new Set()); }}
+              title={`Excluir ${selectedHistoryIds.size}`}
+              aria-label={`Excluir ${selectedHistoryIds.size} do histórico`}
+              className="flex items-center justify-center gap-1.5 text-[11px] font-semibold text-red-400 hover:text-red-300 bg-red-500/8 hover:bg-red-500/15 border border-red-500/20 hover:border-red-500/35 p-2.5 lg:px-2.5 lg:py-1 rounded-lg transition"
+            >
+              <Trash2 className="w-4 h-4 lg:w-3 lg:h-3 shrink-0" />
+              <span className="hidden lg:inline whitespace-nowrap">Excluir {selectedHistoryIds.size}</span>
+            </button>
           </div>
         </div>
 
@@ -1024,7 +1051,7 @@ export default function GeradorLinksShopeePage() {
             </div>
           )}
 
-        <div className="divide-y divide-[#2c2c32] max-h-[min(70vh,720px)] overflow-y-auto scrollbar-ref bg-[#121214]">
+        <div className="divide-y divide-[#2c2c32] max-h-[min(70vh,720px)] overflow-y-auto scrollbar-ref bg-[#1c1c1f]">
           {historyLoading && history.length === 0 ? (
             <div className="flex items-center justify-center gap-2 py-10 text-[#a0a0a0] text-sm">
               <Loader2 className="w-4 h-4 animate-spin" /> Carregando...
@@ -1054,7 +1081,7 @@ export default function GeradorLinksShopeePage() {
                         if (e.key === " " || e.key === "Enter") { e.preventDefault(); e.stopPropagation(); toggleHistorySelect(h.id); }
                       }}
                       className={cn(
-                        "w-4 h-4 rounded-md border shrink-0 cursor-pointer mt-0.5 transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-[#e24c30]/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[#121214]",
+                        "w-4 h-4 rounded-md border shrink-0 cursor-pointer mt-0.5 transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-[#e24c30]/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[#222228]",
                         isSelected
                           ? "bg-[#e24c30] border-[#e24c30] shadow-[0_0_10px_rgba(226,76,48,0.28)]"
                           : "border-[#3f3f46] bg-[#141418] hover:border-[#e24c30]/45 hover:bg-[#e24c30]/10"
@@ -1094,26 +1121,48 @@ export default function GeradorLinksShopeePage() {
           )}
         </div>
 
-        <div className="px-3 sm:px-5 py-3.5 border-t border-[#2c2c32] bg-[#1c1c1f] flex flex-wrap items-center justify-between gap-3">
-          <p className="text-[11px] text-[#a0a0a0]">Mostrando {history.length} de {historyTotal} links · Página {historyPage} de {historyTotalPages}</p>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <button onClick={() => setHistoryPage((p) => Math.max(1, p - 1))} disabled={historyPage <= 1 || historyLoading}
-              className="w-7 h-7 rounded-lg bg-[#121214] border border-[#2c2c32] flex items-center justify-center text-[#a0a0a0] hover:text-[#f0f0f2] disabled:opacity-30 transition">
-              <ChevronLeft className="w-3.5 h-3.5" />
+        <div className="px-3 sm:px-5 py-3.5 border-t border-[#2c2c32] bg-[#1c1c1f] flex flex-col items-center justify-center gap-3">
+          <p className="text-[8px] sm:text-[8.8px] text-[#6b6b73] text-center w-full">
+            Mostrando {history.length} de {historyTotal} links
+          </p>
+          <div className="flex items-center justify-center gap-5 sm:gap-8 w-full max-w-sm mx-auto">
+            <button
+              type="button"
+              onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+              disabled={historyPage <= 1 || historyLoading}
+              className={cn(
+                "flex items-center gap-0.5 text-[9.6px] sm:text-[10.4px] font-medium transition shrink-0",
+                historyPage <= 1 || historyLoading
+                  ? "text-[#4a4a52] cursor-not-allowed"
+                  : "text-[#8b8b96] hover:text-[#d4d4d8]",
+              )}
+              aria-label="Página anterior"
+            >
+              <ChevronLeft className="w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0 -mr-0.5" />
+              Anterior
             </button>
-            {Array.from({ length: historyTotalPages }, (_, i) => i + 1).slice(Math.max(0, historyPage - 3), Math.min(historyTotalPages, historyPage + 2)).map((p) => (
-              <button key={p} onClick={() => setHistoryPage(p)}
-                className={cn("w-7 h-7 rounded-lg text-[11px] font-semibold transition",
-                  p === historyPage ? "bg-[#e24c30] text-white shadow-md shadow-[#e24c30]/20"
-                    : "bg-[#121214] border border-[#2c2c32] text-[#a0a0a0] hover:text-[#f0f0f2]")}>
-                {p}
-              </button>
-            ))}
-            <button onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))} disabled={historyPage >= historyTotalPages || historyLoading}
-              className="w-7 h-7 rounded-lg bg-[#121214] border border-[#2c2c32] flex items-center justify-center text-[#a0a0a0] hover:text-[#f0f0f2] disabled:opacity-30 transition">
-              <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
+            <span
+              className="tabular-nums text-[10.4px] sm:text-[11.2px] font-bold text-white bg-[#121214] border border-[#2a2a30] rounded-xl px-4 py-2 min-w-[4.75rem] text-center shadow-inner shadow-black/20"
+              aria-live="polite"
+            >
+              {historyPage} / {Math.max(1, historyTotalPages)}
+            </span>
+            <button
+              type="button"
+              onClick={() => setHistoryPage((p) => Math.min(historyTotalPages, p + 1))}
+              disabled={historyPage >= historyTotalPages || historyLoading}
+              className={cn(
+                "flex items-center gap-0.5 text-[9.6px] sm:text-[10.4px] font-medium transition shrink-0",
+                historyPage >= historyTotalPages || historyLoading
+                  ? "text-[#4a4a52] cursor-not-allowed"
+                  : "text-[#e8e8ec] hover:text-white",
+              )}
+              aria-label="Próxima página"
+            >
+              Próxima
+              <ChevronRight className="w-4 h-4 sm:w-[18px] sm:h-[18px] shrink-0 -ml-0.5" />
+            </button>
+          </div>
         </div>
       </section>
 

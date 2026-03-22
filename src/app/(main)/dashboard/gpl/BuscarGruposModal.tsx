@@ -1,7 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { X, Search, Loader2, MessageCircle, Users } from "lucide-react";
+import { useState, useEffect, useMemo, useId, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
+import { X, Search, Loader2, Check } from "lucide-react";
+
+function cn(...c: (string | false | undefined | null)[]) {
+  return c.filter(Boolean).join(" ");
+}
 
 export type EvolutionInstanceItem = {
   id: string;
@@ -32,6 +37,23 @@ function normalizeStr(input?: unknown): string {
     .trim();
 }
 
+/** Alinhado ao MetaSearchablePicker (Lista de ofertas / criar campanha Meta) */
+const metaFieldBase =
+  "w-full rounded-xl border border-dark-border bg-dark-bg text-sm text-text-primary outline-none transition-colors focus:border-shopee-orange/60 focus:ring-1 focus:ring-shopee-orange/20";
+const metaSelectCls = `${metaFieldBase} py-2.5 px-3`;
+const metaSearchInputCls = `${metaFieldBase} py-2.5 pl-10 pr-3 placeholder:text-text-secondary/40`;
+const metaTextInputCls = `${metaFieldBase} py-2.5 px-3 placeholder:text-text-secondary/40`;
+
+/** Linha selecionável igual ao modal do picker */
+function pickerRowCls(selected: boolean) {
+  return cn(
+    "w-full text-left rounded-lg border px-3 py-2.5 text-sm font-medium transition-all flex items-start gap-2 min-w-0",
+    selected
+      ? "border-shopee-orange/50 bg-shopee-orange/10 text-text-primary"
+      : "border-dark-border/60 bg-dark-bg/30 text-text-secondary hover:border-shopee-orange/30",
+  );
+}
+
 type Props = {
   isOpen: boolean;
   onClose: () => void;
@@ -43,6 +65,7 @@ type Props = {
 };
 
 export default function BuscarGruposModal({ isOpen, onClose, onConfirm, criarListaMode, initialInstanceId }: Props) {
+  const titleId = useId();
   const [instances, setInstances] = useState<EvolutionInstanceItem[]>([]);
   const [instanceStatusMap, setInstanceStatusMap] = useState<Record<string, "open" | "close" | null>>({});
   const [statusLoading, setStatusLoading] = useState(false);
@@ -53,12 +76,14 @@ export default function BuscarGruposModal({ isOpen, onClose, onConfirm, criarLis
   const [groupFilter, setGroupFilter] = useState("");
   const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
   const [nomeLista, setNomeLista] = useState("");
+  const [lastFetchedInstanceId, setLastFetchedInstanceId] = useState("");
+  const selectedInstanceIdRef = useRef(selectedInstanceId);
+  selectedInstanceIdRef.current = selectedInstanceId;
 
   const selectedInstance = instances.find((i) => i.id === selectedInstanceId);
   const nomeInstancia = selectedInstance?.nome_instancia ?? "";
   const instanceHash = selectedInstance?.hash ?? null;
 
-  // Carregar instâncias ao abrir o modal
   useEffect(() => {
     if (!isOpen) return;
     setGroups([]);
@@ -66,6 +91,7 @@ export default function BuscarGruposModal({ isOpen, onClose, onConfirm, criarLis
     setGroupFilter("");
     setSelectedGroupIds(new Set());
     setNomeLista("");
+    setLastFetchedInstanceId("");
     setSelectedInstanceId(initialInstanceId ?? "");
     fetch("/api/evolution/instances")
       .then((r) => r.json())
@@ -78,14 +104,12 @@ export default function BuscarGruposModal({ isOpen, onClose, onConfirm, criarLis
               hash: i.hash ?? null,
             }))
           );
-          // Se a página passou uma instância, manter selecionada (pode ter vindo antes da lista carregar)
           if (initialInstanceId) setSelectedInstanceId(initialInstanceId);
         }
       })
       .catch(() => setInstances([]));
   }, [isOpen, initialInstanceId]);
 
-  // Buscar status de cada instância ao ter lista
   useEffect(() => {
     if (!isOpen || instances.length === 0) return;
     setStatusLoading(true);
@@ -115,15 +139,31 @@ export default function BuscarGruposModal({ isOpen, onClose, onConfirm, criarLis
     });
   }, [isOpen, instances.length]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [isOpen, onClose]);
+
   const handleInstanceChange = (id: string) => {
     setSelectedInstanceId(id);
     setGroups([]);
     setGroupsError(null);
     setSelectedGroupIds(new Set());
+    setLastFetchedInstanceId("");
   };
 
   const handleBuscarGrupos = async () => {
     if (!nomeInstancia) return;
+    const instanceIdWhenFetching = selectedInstanceId;
     setGroupsLoading(true);
     setGroupsError(null);
     try {
@@ -156,8 +196,12 @@ export default function BuscarGruposModal({ isOpen, onClose, onConfirm, criarLis
           ),
         })
       );
+      if (selectedInstanceIdRef.current !== instanceIdWhenFetching) return;
       setGroups(normalized);
+      setGroupFilter("");
+      setLastFetchedInstanceId(instanceIdWhenFetching);
     } catch (e) {
+      if (selectedInstanceIdRef.current !== instanceIdWhenFetching) return;
       setGroups([]);
       setGroupsError(e instanceof Error ? e.message : "Erro ao buscar grupos");
     } finally {
@@ -170,6 +214,11 @@ export default function BuscarGruposModal({ isOpen, onClose, onConfirm, criarLis
     const q = normalizeStr(groupFilter);
     return groups.filter((g) => normalizeStr(g.nome).includes(q));
   }, [groups, groupFilter]);
+
+  const visibleSelectedCount = useMemo(
+    () => filteredGroups.filter((g) => selectedGroupIds.has(g.id)).length,
+    [filteredGroups, selectedGroupIds],
+  );
 
   const selectedGroups = useMemo(
     () => groups.filter((g) => selectedGroupIds.has(g.id)),
@@ -188,7 +237,7 @@ export default function BuscarGruposModal({ isOpen, onClose, onConfirm, criarLis
     });
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = useCallback(() => {
     const payload: BuscarGruposPayload = {
       grupos: selectedGroups,
       totalParticipantes: totalParticipantesSelected,
@@ -198,211 +247,294 @@ export default function BuscarGruposModal({ isOpen, onClose, onConfirm, criarLis
     if (criarListaMode) payload.nomeLista = nomeLista.trim() || undefined;
     onConfirm(payload);
     onClose();
+  }, [
+    selectedGroups,
+    totalParticipantesSelected,
+    nomeInstancia,
+    instanceHash,
+    criarListaMode,
+    nomeLista,
+    onConfirm,
+    onClose,
+  ]);
+
+  const canConfirm = criarListaMode
+    ? selectedGroupIds.size > 0 && nomeLista.trim().length > 0
+    : selectedGroupIds.size > 0;
+
+  const showBuscarGruposButton =
+    groupsLoading || !selectedInstanceId || lastFetchedInstanceId !== selectedInstanceId;
+
+  const allFilteredIds = filteredGroups.map((g) => g.id);
+  const allFilteredSelected =
+    allFilteredIds.length > 0 && allFilteredIds.every((id) => selectedGroupIds.has(id));
+  const someFilteredSelected = allFilteredIds.some((id) => selectedGroupIds.has(id));
+
+  const toggleAllFiltered = () => {
+    setSelectedGroupIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        allFilteredIds.forEach((id) => next.delete(id));
+      } else {
+        allFilteredIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
   };
-  const canConfirm = criarListaMode ? selectedGroupIds.size > 0 && nomeLista.trim().length > 0 : selectedGroupIds.size > 0;
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
-  return (
+  const status = selectedInstanceId ? instanceStatusMap[selectedInstanceId] : null;
+
+  const modal = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-3 md:p-6 bg-black/70 backdrop-blur-[2px]"
+      role="presentation"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg bg-[#1a1a1a] border border-dark-border rounded-lg shadow-2xl flex flex-col max-h-[90vh]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="w-full max-w-lg max-h-[min(640px,90vh)] flex flex-col rounded-2xl border border-dark-border bg-dark-card shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="p-4 border-b border-dark-border flex items-center justify-between shrink-0">
-          <h2 className="text-lg font-semibold text-text-primary flex items-center gap-2">
-            <MessageCircle className="h-5 w-5 text-shopee-orange" />
-            Buscar Grupos
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-md text-text-secondary hover:bg-dark-bg hover:text-text-primary transition-colors"
-            aria-label="Fechar"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+        {/* Cabeçalho — mesmo padrão visual do MetaSearchablePicker (Lista de ofertas) */}
+        <div className="shrink-0 px-4 pt-4 pb-3 border-b border-dark-border/60 bg-dark-bg/40">
+          <div className="flex items-start justify-between gap-3">
+            <h2 id={titleId} className="text-sm font-bold text-text-primary flex items-center gap-2 pr-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-shopee-orange/15 border border-shopee-orange/25 shrink-0">
+                <Search className="h-4 w-4 text-shopee-orange" />
+              </span>
+              <span className="leading-tight">Buscar grupos</span>
+            </h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 rounded-xl p-2 text-text-secondary hover:bg-dark-bg hover:text-text-primary transition-colors"
+              aria-label="Fechar"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
 
-        {/* Conteúdo */}
-        <div className="p-4 space-y-4 overflow-y-auto flex-1 min-h-0">
-          {/* Seção 1 — Instância */}
-          <div>
-            <label className="block text-sm font-medium text-text-primary mb-2">Instância</label>
+          <div className="mt-3 space-y-1.5">
+            <label className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">Instância</label>
             <select
               value={selectedInstanceId}
               onChange={(e) => handleInstanceChange(e.target.value)}
-              className="w-full px-3 py-2 rounded-md border border-dark-border bg-[#232323] text-text-primary text-sm focus:outline-none focus:border-shopee-orange focus:ring-1 focus:ring-shopee-orange"
+              className={metaSelectCls}
             >
               <option value="">Selecione uma instância</option>
               {instances.map((inst) => {
-                const status = instanceStatusMap[inst.id];
+                const st = instanceStatusMap[inst.id];
                 return (
                   <option key={inst.id} value={inst.id}>
                     {inst.nome_instancia}
-                    {status === "open" ? " · Conectada" : status === "close" ? " · Desconectada" : ""}
+                    {st === "open" ? " · Conectada" : st === "close" ? " · Desconectada" : ""}
                   </option>
                 );
               })}
             </select>
             {statusLoading && instances.length > 0 && (
-              <p className="text-xs text-text-secondary mt-1 flex items-center gap-1">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                Verificando status...
+              <p className="text-[11px] text-text-secondary/80 flex items-center gap-1.5">
+                <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                Verificando conexão…
               </p>
             )}
-            {instances.length > 0 && selectedInstanceId && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {instances.map((inst) => {
-                  if (inst.id !== selectedInstanceId) return null;
-                  const status = instanceStatusMap[inst.id];
-                  return (
-                    <span
-                      key={inst.id}
-                      className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        status === "open"
-                          ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                          : status === "close"
-                            ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                            : "bg-dark-bg text-text-secondary border border-dark-border"
-                      }`}
-                    >
-                      {status === "open" ? "Conectada" : status === "close" ? "Desconectada" : "—"}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Seção 2 — Grupos */}
-          <div>
-            <div className="flex flex-col sm:flex-row gap-2 mb-3">
-              <button
-                type="button"
-                onClick={handleBuscarGrupos}
-                disabled={!selectedInstanceId || groupsLoading}
-                className="px-4 py-2 rounded-md bg-shopee-orange text-white text-sm font-semibold hover:bg-shopee-orange/90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+            {selectedInstanceId && status != null && (
+              <span
+                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[10px] font-semibold ${
+                  status === "open"
+                    ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-400"
+                    : status === "close"
+                      ? "border-red-500/35 bg-red-500/10 text-red-400"
+                      : "border-dark-border bg-dark-bg/50 text-text-secondary"
+                }`}
               >
-                {groupsLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin inline-block mr-2" />
-                    Buscando...
-                  </>
-                ) : (
-                  "Buscar Grupos"
-                )}
-              </button>
-            </div>
-
-            {!selectedInstanceId && groups.length === 0 && !groupsLoading && (
-              <p className="text-sm text-text-secondary py-6 text-center border border-dashed border-dark-border rounded-lg">
-                Selecione uma instância e clique em Buscar Grupos
-              </p>
-            )}
-
-            {groupsError && (
-              <p className="text-sm text-red-400 py-2">{groupsError}</p>
-            )}
-
-            {groups.length > 0 && (
-              <>
-                <p className="text-xs text-text-secondary mb-2">
-                  {totalGruposResposta} grupo{totalGruposResposta !== 1 ? "s" : ""} encontrado
-                  {totalGruposResposta !== 1 ? "s" : ""} · {alcanceTotalResposta.toLocaleString("pt-BR")}{" "}
-                  participantes no total
-                </p>
-                <div className="mb-2">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary" />
-                    <input
-                      type="text"
-                      placeholder="Filtrar por nome do grupo"
-                      value={groupFilter}
-                      onChange={(e) => setGroupFilter(e.target.value)}
-                      className="w-full pl-8 pr-3 py-2 rounded-md border border-dark-border bg-[#232323] text-text-primary text-sm placeholder-text-secondary/60 focus:outline-none focus:border-shopee-orange"
-                    />
-                  </div>
-                </div>
-                <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 border border-dark-border rounded-lg p-2 bg-[#232323]/50">
-                  {filteredGroups.length === 0 ? (
-                    <p className="text-sm text-text-secondary py-4 text-center">
-                      Nenhum grupo corresponde ao filtro
-                    </p>
-                  ) : (
-                    filteredGroups.map((g) => (
-                      <label
-                        key={g.id}
-                        className="flex items-center gap-3 py-2 px-3 rounded-md border border-dark-border bg-[#232323] hover:bg-dark-bg/80 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedGroupIds.has(g.id)}
-                          onChange={() => toggleGroup(g.id)}
-                          className="rounded border-dark-border text-shopee-orange focus:ring-shopee-orange"
-                        />
-                        <span className="flex-1 text-sm font-medium text-text-primary truncate" title={g.nome}>
-                          {g.nome}
-                        </span>
-                        <span className="text-xs text-text-secondary shrink-0 px-2 py-0.5 rounded bg-dark-bg">
-                          {g.qtdMembros.toLocaleString("pt-BR")} participantes
-                        </span>
-                      </label>
-                    ))
-                  )}
-                </div>
-              </>
-            )}
-
-            {selectedInstanceId && !groupsLoading && groups.length === 0 && !groupsError && (
-              <p className="text-sm text-text-secondary py-6 text-center border border-dashed border-dark-border rounded-lg">
-                Nenhum grupo encontrado para esta instância
-              </p>
+                {status === "open" ? "Conectada" : status === "close" ? "Desconectada" : "Status indisponível"}
+              </span>
             )}
           </div>
+
+          {showBuscarGruposButton && (
+            <button
+              type="button"
+              onClick={handleBuscarGrupos}
+              disabled={!selectedInstanceId || groupsLoading}
+              className="mt-3 w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl border border-shopee-orange/45 bg-shopee-orange/10 px-4 py-2.5 text-sm font-semibold text-shopee-orange hover:bg-shopee-orange/18 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {groupsLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                  Buscando grupos…
+                </>
+              ) : (
+                <>
+                  <Search className="h-4 w-4 shrink-0" />
+                  Buscar grupos na instância
+                </>
+              )}
+            </button>
+          )}
         </div>
 
-        {/* Rodapé */}
-        <div className="p-4 border-t border-dark-border shrink-0 flex flex-col gap-3">
+        {/* Corpo — lista / estados */}
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          {groupsError && (
+            <div className="shrink-0 px-4 py-2 mx-3 mt-3 rounded-xl border border-red-500/30 bg-red-500/10 text-[12px] text-red-300">
+              {groupsError}
+            </div>
+          )}
+
+          {!selectedInstanceId && groups.length === 0 && !groupsLoading && (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <p className="text-[12px] text-[#a0a0a0] text-center max-w-xs leading-relaxed border border-dashed border-[#2c2c32] rounded-2xl px-4 py-8 bg-[#17171a]">
+                Selecione uma <strong className="text-[#f0f0f2]">instância</strong> e use o botão de busca acima.
+              </p>
+            </div>
+          )}
+
+          {selectedInstanceId && !groupsLoading && groups.length === 0 && !groupsError && lastFetchedInstanceId === selectedInstanceId && (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <p className="text-[12px] text-[#a0a0a0] text-center max-w-xs leading-relaxed border border-dashed border-[#2c2c32] rounded-2xl px-4 py-8 bg-[#17171a]">
+                Nenhum grupo retornado. Verifique a conexão ou escolha outra instância para buscar de novo.
+              </p>
+            </div>
+          )}
+
+          {selectedInstanceId && !groupsLoading && groups.length === 0 && !groupsError && lastFetchedInstanceId !== selectedInstanceId && (
+            <div className="flex-1 flex items-center justify-center p-6">
+              <p className="text-[12px] text-[#a0a0a0] text-center max-w-xs leading-relaxed border border-dashed border-[#2c2c32] rounded-2xl px-4 py-8 bg-[#17171a]">
+                Toque em <strong className="text-[#f0f0f2]">Buscar grupos na instância</strong> para carregar a lista.
+              </p>
+            </div>
+          )}
+
+          {groups.length > 0 && (
+            <>
+              <div className="shrink-0 px-4 pt-3 pb-2 space-y-2 border-b border-dark-border/60 bg-dark-bg/40">
+                <p className="text-[11px] text-text-secondary/75">
+                  <span className="text-shopee-orange font-semibold">{totalGruposResposta}</span> grupo
+                  {totalGruposResposta !== 1 ? "s" : ""} ·{" "}
+                  <span className="text-text-primary font-medium">{alcanceTotalResposta.toLocaleString("pt-BR")}</span>{" "}
+                  participantes no total
+                </p>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-secondary/45 pointer-events-none" />
+                  <input
+                    type="search"
+                    placeholder="Filtrar por nome do grupo…"
+                    value={groupFilter}
+                    onChange={(e) => setGroupFilter(e.target.value)}
+                    className={metaSearchInputCls}
+                  />
+                </div>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto p-3 scrollbar-shopee space-y-2">
+                <button
+                  type="button"
+                  onClick={toggleAllFiltered}
+                  className={pickerRowCls(allFilteredSelected)}
+                >
+                  <span className="flex-1 min-w-0">
+                    <span className="block truncate">
+                      {allFilteredSelected ? "Desmarcar todos (visíveis)" : "Selecionar todos (visíveis)"}
+                    </span>
+                    <span className="block text-[11px] text-text-secondary/55 font-normal mt-0.5">
+                      {filteredGroups.length} grupo{filteredGroups.length !== 1 ? "s" : ""} na lista filtrada
+                    </span>
+                  </span>
+                  {allFilteredSelected ? (
+                    <Check className="h-4 w-4 text-shopee-orange shrink-0 mt-0.5" aria-hidden />
+                  ) : someFilteredSelected ? (
+                    <span className="text-[10px] font-semibold text-shopee-orange shrink-0">{visibleSelectedCount}</span>
+                  ) : null}
+                </button>
+
+                {filteredGroups.length === 0 ? (
+                  <p className="text-sm text-text-secondary text-center py-6">Nada encontrado.</p>
+                ) : (
+                  filteredGroups.map((g) => {
+                    const isSelected = selectedGroupIds.has(g.id);
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => toggleGroup(g.id)}
+                        className={pickerRowCls(isSelected)}
+                      >
+                        <span className="flex-1 min-w-0">
+                          <span className="block truncate">{g.nome}</span>
+                          <span className="block text-[11px] text-text-secondary/55 font-normal truncate mt-0.5">
+                            {g.qtdMembros.toLocaleString("pt-BR")} participantes
+                          </span>
+                        </span>
+                        {isSelected ? <Check className="h-4 w-4 text-shopee-orange shrink-0 mt-0.5" aria-hidden /> : null}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Rodapé — padrão Meta */}
+        <div className="shrink-0 border-t border-dark-border/60 bg-dark-bg/30 px-4 py-3 space-y-3">
           {criarListaMode && selectedGroupIds.size > 0 && (
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Nome da lista</label>
+              <label className="block text-[11px] font-semibold text-text-secondary uppercase tracking-wide mb-1.5">
+                Nome da lista
+              </label>
               <input
                 type="text"
                 value={nomeLista}
                 onChange={(e) => setNomeLista(e.target.value)}
-                placeholder="Ex: Vendas CN, Ofertas Diárias"
-                className="w-full px-3 py-2 rounded-md border border-dark-border bg-[#232323] text-text-primary text-sm placeholder-text-secondary/60 focus:outline-none focus:border-shopee-orange"
+                placeholder="Ex: Vendas CN, Ofertas diárias"
+                className={metaTextInputCls}
               />
             </div>
           )}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="text-xs text-text-secondary">
+
+          <div className="space-y-3">
+            <p className="text-[11px] text-text-secondary/70">
               {selectedGroupIds.size > 0 ? (
                 <>
-                  {selectedGroupIds.size} grupo{selectedGroupIds.size !== 1 ? "s" : ""} selecionado
+                  <span className="text-shopee-orange font-semibold">{selectedGroupIds.size}</span> grupo
                   {selectedGroupIds.size !== 1 ? "s" : ""} ·{" "}
-                  {totalParticipantesSelected.toLocaleString("pt-BR")} participantes selecionados
+                  <span className="text-text-primary font-medium">
+                    {totalParticipantesSelected.toLocaleString("pt-BR")}
+                  </span>{" "}
+                  participantes
                 </>
               ) : (
-                "Selecione um ou mais grupos"
+                "Toque em cada grupo para marcar ou desmarcar."
               )}
+            </p>
+            <div className="flex gap-2 justify-end shrink-0">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl border border-dark-border px-4 py-2 text-sm font-medium text-text-secondary hover:bg-dark-bg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirm}
+                disabled={!canConfirm}
+                className="rounded-xl bg-shopee-orange px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_2px_12px_rgba(238,77,45,0.25)] transition-opacity"
+              >
+                {criarListaMode ? "Criar lista de grupo" : "Confirmar"}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleConfirm}
-              disabled={!canConfirm}
-              className="px-4 py-2 rounded-md bg-shopee-orange text-white text-sm font-semibold hover:bg-shopee-orange/90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
-            >
-              {criarListaMode ? "CRIAR LISTA DE GRUPO" : "Confirmar Seleção"}
-            </button>
           </div>
         </div>
       </div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 }
