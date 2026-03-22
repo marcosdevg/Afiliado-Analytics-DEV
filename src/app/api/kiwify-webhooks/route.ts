@@ -68,6 +68,7 @@ async function sendSetupEmail(toEmail: string, toName: string, resetUrl: string)
     <tr>
       <td align="center" style="padding:40px 20px;">
 
+
         <!-- Card -->
         <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:600px; background-color:#ffffff; border:1px solid #e0e0e0; border-radius:4px;">
           
@@ -80,6 +81,7 @@ async function sendSetupEmail(toEmail: string, toName: string, resetUrl: string)
             </td>
           </tr>
 
+
           <!-- Título e intro -->
           <tr>
             <td style="padding:0 40px 20px 40px; text-align:center;">
@@ -89,6 +91,7 @@ async function sendSetupEmail(toEmail: string, toName: string, resetUrl: string)
               </p>
             </td>
           </tr>
+
 
           <!-- Botão -->
           <tr>
@@ -100,6 +103,7 @@ async function sendSetupEmail(toEmail: string, toName: string, resetUrl: string)
             </td>
           </tr>
 
+
           <!-- Observação pós-ação -->
           <tr>
             <td style="padding:0 40px 10px 40px; text-align:center;">
@@ -108,6 +112,7 @@ async function sendSetupEmail(toEmail: string, toName: string, resetUrl: string)
               </p>
             </td>
           </tr>
+
 
           <!-- Fallback de link -->
           <tr>
@@ -121,12 +126,14 @@ async function sendSetupEmail(toEmail: string, toName: string, resetUrl: string)
             </td>
           </tr>
 
+
           <!-- Divisor -->
           <tr>
             <td style="padding:0 40px;">
               <div style="border-top:1px solid #eeeeee; height:1px; line-height:1px;">&nbsp;</div>
             </td>
           </tr>
+
 
           <!-- Avisos e suporte -->
           <tr>
@@ -136,7 +143,9 @@ async function sendSetupEmail(toEmail: string, toName: string, resetUrl: string)
             </td>
           </tr>
 
+
         </table>
+
 
         <!-- Rodapé -->
         <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:600px; margin-top:20px;">
@@ -146,6 +155,7 @@ async function sendSetupEmail(toEmail: string, toName: string, resetUrl: string)
             </td>
           </tr>
         </table>
+
 
       </td>
     </tr>
@@ -294,34 +304,76 @@ async function maybeCarryOverTime(params: {
   return extended
 }
 
+// ---------- AJUSTES (apenas assinatura + payload wrapper) ----------
+function getKiwifySecrets(): string[] {
+  const raw = process.env.KIWIFY_WEBHOOK_SECRETS || process.env.KIWIFY_WEBHOOK_SECRET || ""
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function safeTimingEqualHex(aHex: string, bHex: string) {
+  try {
+    const a = Buffer.from(aHex, "hex")
+    const b = Buffer.from(bHex, "hex")
+    if (a.length === 0 || b.length === 0) return false
+    if (a.length !== b.length) return false
+    return timingSafeEqual(a, b)
+  } catch {
+    return false
+  }
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v)
+}
+
 // ---------- Handler ----------
 export async function POST(req: NextRequest) {
   const raw = await req.text()
 
-  // 1) Verificação HMAC
-  const signature = req.nextUrl.searchParams.get("signature")
-  const secret = process.env.KIWIFY_WEBHOOK_SECRET
-  if (!secret || !signature) {
-    return NextResponse.json({ error: "Configuração de segurança incompleta." }, { status: 400 })
-  }
-  const digest = createHmac("sha1", secret).update(raw).digest("hex")
-  const valid = timingSafeEqual(Buffer.from(digest, "hex"), Buffer.from(signature, "hex"))
-  if (!valid) {
-    return NextResponse.json({ error: "Assinatura inválida." }, { status: 401 })
-  }
-
-  // 2) Parse
+  // 1) Parse (precisamos para: pegar signature do body e suportar payload vindo em { order: {...} })
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   } catch {
     return NextResponse.json({ error: "JSON inválido." }, { status: 400 })
   }
-  const data = parsed as KiwifyWebhookPayload
+
+  // Mantém o comportamento: se vier algo que não seja objeto, só não encontra signature/order no body.
+  const parsedObj: Record<string, unknown> = isRecord(parsed) ? parsed : {}
+
+  // 2) Verificação HMAC (agora aceita: signature na query OU no body; e aceita múltiplos secrets)
+  const signatureFromQuery = req.nextUrl.searchParams.get("signature")
+  const signatureFromBody =
+    typeof parsedObj.signature === "string" || typeof parsedObj.signature === "number"
+      ? String(parsedObj.signature)
+      : undefined
+  const signature = String(signatureFromQuery || signatureFromBody || "").trim().toLowerCase()
+
+  const secrets = getKiwifySecrets()
+  if (!signature || secrets.length === 0) {
+    return NextResponse.json({ error: "Configuração de segurança incompleta." }, { status: 400 })
+  }
+
+  const valid = secrets.some((secret) => {
+    const digest = createHmac("sha1", secret).update(raw).digest("hex")
+    return safeTimingEqualHex(digest, signature)
+  })
+
+  if (!valid) {
+    return NextResponse.json({ error: "Assinatura inválida." }, { status: 401 })
+  }
+
+  // 3) Payload: se vier no formato novo { order: {...} }, usamos order como "data" (sem mudar sua lógica)
+  const payload = isRecord(parsedObj.order) ? parsedObj.order : parsedObj
+  const data = payload as KiwifyWebhookPayload
+
   const supabase = admin()
   const eventType = String(data.webhook_event_type || "")
 
-  // 3) Eventos (sem auditoria/idempotência)
+  // 4) (resto do seu código: INALTERADO)
   if (eventType === "order_approved" || eventType === "subscription_renewed") {
     const customer = data.Customer
     const product = data.Product
@@ -438,8 +490,8 @@ export async function POST(req: NextRequest) {
           freq.includes("annual") || freq.includes("year")
             ? 365
             : freq.includes("quarter") || freq.includes("trim")
-            ? 90
-            : 30
+              ? 90
+              : 30
 
         const durationMs = planDurationDays * 24 * 60 * 60 * 1000
         const stacked = new Date(baseMs + durationMs).toISOString()
