@@ -67,6 +67,10 @@ export async function POST(req: Request) {
     }
 
     if (groupIds.length === 0) return NextResponse.json({ error: "Nenhum grupo nesta lista (ou instância). Salve grupos na lista primeiro." }, { status: 400 });
+    if (!instance) return NextResponse.json({ error: "Instância não resolvida." }, { status: 500 });
+
+    const instanceName = instance.nome_instancia;
+    const hash = instance.hash ?? "";
 
     const host = req.headers.get("host") ?? "localhost:3000";
     const proto = req.headers.get("x-forwarded-proto") ?? "http";
