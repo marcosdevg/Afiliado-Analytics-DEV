@@ -276,7 +276,6 @@ export default function GplCalculatorPage() {
   const [activeTab, setActiveTab] = useState<"grupos" | "campanhas">("grupos");
   const [groupSearchFilter, setGroupSearchFilter] = useState("");
   const [campaignSearchFilter, setCampaignSearchFilter] = useState("");
-  const [groupListPage, setGroupListPage] = useState(1);
   const [campaignListPage, setCampaignListPage] = useState(1);
 
   const LIST_PAGE_SIZE = 10;
@@ -546,25 +545,13 @@ export default function GplCalculatorPage() {
     return traficoGruposCampaigns.filter((c) => normalizeStr(c.name).includes(q));
   }, [traficoGruposCampaigns, campaignSearchFilter]);
 
-  const groupTotalPages = Math.max(1, Math.ceil(sortedFilteredGroups.length / LIST_PAGE_SIZE));
-  const safeGroupPage = Math.min(groupListPage, groupTotalPages);
-  const pagedGroups = sortedFilteredGroups.slice((safeGroupPage - 1) * LIST_PAGE_SIZE, safeGroupPage * LIST_PAGE_SIZE);
-
   const campaignTotalPages = Math.max(1, Math.ceil(filteredCampaigns.length / LIST_PAGE_SIZE));
   const safeCampaignPage = Math.min(campaignListPage, campaignTotalPages);
   const pagedCampaigns = filteredCampaigns.slice((safeCampaignPage - 1) * LIST_PAGE_SIZE, safeCampaignPage * LIST_PAGE_SIZE);
 
   useEffect(() => {
-    setGroupListPage(1);
-  }, [groupSearchFilter, selectedInstanceId]);
-
-  useEffect(() => {
     setCampaignListPage(1);
   }, [campaignSearchFilter, activeTab]);
-
-  useEffect(() => {
-    setGroupListPage((p) => Math.min(p, groupTotalPages));
-  }, [groupTotalPages]);
 
   useEffect(() => {
     setCampaignListPage((p) => Math.min(p, campaignTotalPages));
@@ -573,7 +560,6 @@ export default function GplCalculatorPage() {
   const handleInstancePickerChange = (newId: string) => {
     setSelectedInstanceId(newId);
     setSelectedGroupIds(new Set());
-    setGroupListPage(1);
     if (!newId) {
       setGroups([]);
       setBaseGroups(null);
@@ -673,15 +659,17 @@ export default function GplCalculatorPage() {
   if (!hasShopeeKeys && isDataLoading) return <LoadingOverlay message="Carregando dados..." />;
 
   return (
-    <div className="flex flex-col h-full min-h-[calc(100vh-2rem)] text-text-primary space-y-4">
+    <div className="flex flex-col  text-text-primary space-y-4">
       <style jsx>{`
         input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(56%) sepia(93%) saturate(1573%) hue-rotate(358deg) brightness(100%) contrast(103%); cursor: pointer; }
         input[type="date"]:disabled::-webkit-calendar-picker-indicator { filter: opacity(0.5); }
         input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #2c2c32; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #e24c30; }
+        /* Trilho preto + thumb cinza claro (alinhado ao app / mobile) */
+        .custom-scrollbar { scrollbar-width: thin; scrollbar-color: #9a9aa3 #000000; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #000000; border-radius: 999px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #9a9aa3; border-radius: 999px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #b8b8c0; }
       `}</style>
 
       {/* Header */}
@@ -935,7 +923,7 @@ export default function GplCalculatorPage() {
             ) : (
                       <>
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-                        {pagedGroups.map((g) => {
+                        {sortedFilteredGroups.map((g) => {
                   const cum = groupCumulative[g.id];
                   const delta = groupMemberDelta.get(g.id);
                   const novosValor = cum ? cum.total_novos : (delta !== undefined && delta.delta > 0 ? delta.delta : 0);
@@ -966,20 +954,6 @@ export default function GplCalculatorPage() {
                   );
                 })}
               </div>
-                      {groupTotalPages > 1 && (
-                        <div className="mt-3 pt-2 border-t border-[#2c2c32] flex flex-col items-center justify-center gap-2 text-[10px] text-text-secondary">
-                          <div className="flex items-center justify-center gap-2 flex-wrap">
-                            <button type="button" onClick={() => setGroupListPage((p) => Math.max(1, p - 1))} disabled={safeGroupPage <= 1} className="px-3 py-1.5 rounded-md border border-[#2c2c32] bg-[#1c1c1f] text-text-secondary hover:text-white disabled:opacity-30 min-w-[76px]">Anterior</button>
-                            <span className="text-text-primary/90 font-semibold tabular-nums px-2 shrink-0">Pág. {safeGroupPage}/{groupTotalPages}</span>
-                            <button type="button" onClick={() => setGroupListPage((p) => Math.min(groupTotalPages, p + 1))} disabled={safeGroupPage >= groupTotalPages} className="px-3 py-1.5 rounded-md border border-[#2c2c32] bg-[#1c1c1f] text-text-secondary hover:text-white disabled:opacity-30 min-w-[76px]">Próxima</button>
-          </div>
-                          <p className="text-center text-text-secondary/85 leading-relaxed max-w-md">
-                            {(safeGroupPage - 1) * LIST_PAGE_SIZE + 1}–{Math.min(safeGroupPage * LIST_PAGE_SIZE, sortedFilteredGroups.length)} de {sortedFilteredGroups.length} grupos
-                            <span className="text-text-secondary/60"> · </span>
-                            {pagedGroups.reduce((acc, g) => acc + g.qtdMembros, 0).toLocaleString("pt-BR")} membros nesta página
-              </p>
-            </div>
-          )}
                       </>
                     )
                   ) : (

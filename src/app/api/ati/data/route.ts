@@ -152,9 +152,12 @@ export async function GET(req: Request) {
       const cpa = orders > 0 ? cost / orders : 0;
       const roas = cost > 0 ? commission / cost : 0;
       const epc = clicksMeta > 0 ? commission / clicksMeta : 0;
-      const clicksShopee = 0;
+      // A Shopee (Open API / relatório de conversão) não expõe contagem de cliques por link/sub_id —
+      // só pedidos e comissão. Usamos os cliques do Meta como proxy para `clicksShopee` (mesmo valor).
+      const clicksShopee = clicksMeta;
       const cpcShopee = 0;
-      const clickDiscrepancyPct = clicksMeta > 0 ? ((clicksMeta - clicksShopee) / clicksMeta) * 100 : 0;
+      const clickDiscrepancyPct =
+        clicksMeta > 0 ? ((clicksMeta - clicksShopee) / clicksMeta) * 100 : 0;
 
       const levelCpcMeta = getLevelCpcMeta(m.cpc);
       const levelClickDiscrepancy = getLevelClickDiscrepancy(clickDiscrepancyPct);

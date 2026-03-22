@@ -69,7 +69,7 @@ export interface ATICreativeRow {
   cpa: number;
   roas: number;
   epc: number;
-  /** Discrepância de cliques (%). (clicksMeta - clicksShopee) / clicksMeta * 100 */
+  /** Discrepância de cliques (%). (clicksMeta - clicksShopee) / clicksMeta * 100. Com proxy Shopee=Meta, tende a 0. */
   clickDiscrepancyPct: number;
   /** Níveis por métrica (para bolinhas) */
   levelCpcMeta: MetricLevel;

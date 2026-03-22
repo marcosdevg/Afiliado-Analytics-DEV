@@ -71,7 +71,7 @@ const ATI_HINT = {
   cpa:
     "Custo Meta ÷ pedidos com Sub ID. Quanto você gastou em média em anúncio para cada venda atribuída.",
   cliques:
-    "Chamamos de Cliques Shopee: são os cliques no seu anúncio que abrem o link da Shopee. O número vem do Meta (lifetime), pois é quem conta o clique no anúncio — na prática é o tráfego que foi para a Shopee.",
+    "Cliques Shopee: a API da Shopee não informa quantos cliques houve no seu link afiliado (só conversões). No ATI usamos o mesmo número de cliques do Meta como referência — cada clique no anúncio é tratado como chegada ao fluxo Shopee.",
 } as const;
 
 // ─── Portal Tooltip ───────────────────────────────────────────────────────────
@@ -1775,8 +1775,6 @@ export default function ATIClient() {
           </div>
         )}
       </section>
-        </>
-      )}
 
       {linkModalOpen && linkModalAd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onClick={() => setLinkModalOpen(false)}>
@@ -2129,6 +2127,9 @@ export default function ATIClient() {
             </div>
           </div>
         </div>
+      )}
+
+        </>
       )}
 
     </>

@@ -101,7 +101,7 @@ export function getCreativeDiagnosis(
 
   if (status === "bad") {
     if (levelClick === "bad" && roas < ATI_THRESHOLDS.creativeBadRoas)
-      return "O criativo atrai cliques baratos, mas as pessoas não estão chegando na Shopee. Verifique seu link ou o carregamento da página.";
+      return "O criativo atrai cliques baratos, mas as pessoas não estão comprando! Ajuste o criativo.";
     if (orders === 0 && roas === 0)
       return "O criativo é bom em cliques, mas a oferta/produto não está convertendo. Teste outro produto.";
     if (roas < ATI_THRESHOLDS.creativeBadRoas)
