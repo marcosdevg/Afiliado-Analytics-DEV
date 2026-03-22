@@ -1,12 +1,14 @@
 /**
  * Disparo contínuo: múltiplos por usuário, cada um ligado a uma lista de grupos.
+ * Janela obrigatória: início/fim HH:MM, duração máxima 14 horas (sem modo 24h).
  * GET → lista de configs (id, listaId, listaNome, instanceId, keywords, subIds, ativo, proximoIndice, ultimoDisparoAt)
- * POST { listaId, keywords, subId1, subId2, subId3, ativo } → criar config ou { id, ativo: false } → parar
+ * POST { listaId, keywords, subId1, subId2, subId3, horarioInicio, horarioFim, ativo } → criar/atualizar ou { id, ativo: false } → parar
  * DELETE ?id= → remover um config
  */
 
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../../utils/supabase/server";
+import { mensagemErroJanela } from "@/lib/grupos-venda-janela";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +140,9 @@ export async function POST(req: Request) {
       .select("group_id")
       .eq("lista_id", listaId);
     if (!groups?.length) return NextResponse.json({ error: "Nenhum grupo nesta lista. Adicione grupos à lista primeiro." }, { status: 400 });
+
+    const janelaErr = mensagemErroJanela(horarioInicio, horarioFim);
+    if (janelaErr) return NextResponse.json({ error: janelaErr }, { status: 400 });
 
     const payloadContinuo = {
       lista_id: listaId,

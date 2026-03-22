@@ -13,6 +13,7 @@ import BuscarGruposModal, {
   type EvolutionInstanceItem,
 } from "../gpl/BuscarGruposModal";
 import MetaSearchablePicker from "@/app/components/meta/MetaSearchablePicker";
+import { janelaDuracaoMinutos, mensagemErroJanela, MAX_JANELA_MINUTOS } from "@/lib/grupos-venda-janela";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type ListaGrupos = { id: string; instanceId: string; nomeLista: string; createdAt: string };
@@ -29,6 +30,13 @@ type Instance = EvolutionInstanceItem & { id: string };
 
 // ─── Utils ──────────────────────────────────────────────────────────────────────
 function cn(...classes: (string | false | undefined | null)[]): string { return classes.filter(Boolean).join(" "); }
+
+function formatDuracaoJanela(minutos: number): string {
+  const h = Math.floor(minutos / 60);
+  const m = Math.round(minutos % 60);
+  if (h <= 0) return `${m} min`;
+  return m > 0 ? `${h} h ${m} min` : `${h} h`;
+}
 
 // ─── Tooltip (portal) ──────────────────────────────────────────────────────────
 function Tooltip({ text, children, wide }: { text: string; children?: React.ReactNode; wide?: boolean }) {
@@ -246,7 +254,6 @@ export default function GruposVendaPage() {
   const [showStepInfo, setShowStepInfo] = useState(false);
   const [listSearch, setListSearch] = useState("");
   const [contentMode, setContentMode] = useState<"keywords" | "list">("keywords");
-  const [scheduleMode, setScheduleMode] = useState<"24h" | "window">("window");
   const [panelSearch, setPanelSearch] = useState("");
   const [panelPage, setPanelPage] = useState(1);
   /** Step 3 mobile: bloco Sub IDs recolhido por padrão */
@@ -375,20 +382,31 @@ export default function GruposVendaPage() {
   }, [selectedListaId, contentMode, selectedListaOfertasId, keywords, subId1, subId2, subId3]);
 
   const handleContinuoToggle = useCallback(async (configId: string, ativar: boolean) => {
-    setContinuoTogglingId(configId); setError(null);
+    setError(null);
+    if (ativar) {
+      const c = continuoList.find((x) => x.id === configId);
+      if (!c?.listaId) { setError("Config sem lista"); return; }
+      if (!c.horarioInicio?.trim() || !c.horarioFim?.trim()) {
+        setError("Esta automação não tem janela de horário. Exclua e crie outra com início e fim (máx. 14 h).");
+        return;
+      }
+      const jErr = mensagemErroJanela(c.horarioInicio, c.horarioFim);
+      if (jErr) { setError(jErr); return; }
+    }
+    setContinuoTogglingId(configId);
     try {
       if (!ativar) {
         const res = await fetch("/api/grupos-venda/continuo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: configId, ativo: false }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error ?? "Erro");
-        setFeedback("Disparo 24h pausado.");
+        setFeedback("Automação pausada.");
       } else {
         const c = continuoList.find((x) => x.id === configId);
         if (!c?.listaId) throw new Error("Config sem lista");
-        const res = await fetch("/api/grupos-venda/continuo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: configId, listaId: c.listaId, listaOfertasId: c.listaOfertasId || undefined, keywords: c.keywords, subId1: c.subId1, subId2: c.subId2, subId3: c.subId3, horarioInicio: c.horarioInicio || undefined, horarioFim: c.horarioFim || undefined, ativo: true }) });
+        const res = await fetch("/api/grupos-venda/continuo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: configId, listaId: c.listaId, listaOfertasId: c.listaOfertasId || undefined, keywords: c.keywords, subId1: c.subId1, subId2: c.subId2, subId3: c.subId3, horarioInicio: c.horarioInicio, horarioFim: c.horarioFim, ativo: true }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error ?? "Erro ao ativar");
-        setFeedback("Disparo 24h ativado.");
+        setFeedback("Automação ativada.");
       }
       setTimeout(() => setFeedback(""), 4000);
       await loadContinuo();
@@ -401,21 +419,23 @@ export default function GruposVendaPage() {
     const useListaOfertas = contentMode === "list" && !!selectedListaOfertasId;
     const kwList = keywords.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
     if (!useListaOfertas && kwList.length === 0) { setError("Digite ao menos uma keyword ou selecione uma lista de ofertas."); return; }
+    const jErr = mensagemErroJanela(horaInicio, horaFim);
+    if (jErr) { setError(jErr); return; }
     setContinuoTogglingId("new"); setError(null);
     try {
       const res = await fetch("/api/grupos-venda/continuo", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listaId: selectedListaId, listaOfertasId: useListaOfertas ? selectedListaOfertasId : undefined, keywords: useListaOfertas ? [] : kwList, subId1, subId2, subId3, horarioInicio: horaInicio || undefined, horarioFim: horaFim || undefined, ativo: true }),
+        body: JSON.stringify({ listaId: selectedListaId, listaOfertasId: useListaOfertas ? selectedListaOfertasId : undefined, keywords: useListaOfertas ? [] : kwList, subId1, subId2, subId3, horarioInicio: horaInicio.trim(), horarioFim: horaFim.trim(), ativo: true }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "Erro");
-      const horarioMsg = horaInicio && horaFim ? ` Ativo das ${horaInicio} às ${horaFim}.` : "";
-      setFeedback(useListaOfertas ? `Disparo 24h por lista de ofertas adicionado.${horarioMsg}` : `Disparo 24h adicionado.${horarioMsg}`);
+      const horarioMsg = ` Janela ${horaInicio} – ${horaFim}.`;
+      setFeedback(useListaOfertas ? `Automação por lista de ofertas criada.${horarioMsg}` : `Automação criada.${horarioMsg}`);
       setTimeout(() => setFeedback(""), 5000);
       setSelectedListaId(""); setKeywords(""); setSelectedListaOfertasId(""); setSubId1(""); setSubId2(""); setSubId3(""); setHoraInicio(""); setHoraFim("");
       setView("panel");
       await loadContinuo();
-    } catch (e) { setError(e instanceof Error ? e.message : "Erro ao adicionar disparo 24h"); }
+    } catch (e) { setError(e instanceof Error ? e.message : "Erro ao criar automação"); }
     finally { setContinuoTogglingId(null); }
   }, [selectedListaId, contentMode, selectedListaOfertasId, keywords, subId1, subId2, subId3, horaInicio, horaFim, loadContinuo]);
 
@@ -445,6 +465,20 @@ export default function GruposVendaPage() {
 
   const activeCount = continuoList.filter((c) => c.ativo).length;
   const keywordCount = keywords.split("\n").filter((k) => k.trim()).length;
+  const janelaPreviewText = useMemo(() => {
+    if (!horaInicio?.trim() || !horaFim?.trim()) return null;
+    const msg = mensagemErroJanela(horaInicio, horaFim);
+    if (msg) return { variant: "error" as const, text: msg };
+    const d = janelaDuracaoMinutos(horaInicio, horaFim);
+    if (d === null) return { variant: "error" as const, text: "Horários inválidos." };
+    return {
+      variant: "ok" as const,
+      text: `Duração: ${formatDuracaoJanela(d)} · limite: ${formatDuracaoJanela(MAX_JANELA_MINUTOS)}`,
+    };
+  }, [horaInicio, horaFim]);
+  /** Passo 4: só libera “Ativar automação” com janela válida (≤ 14 h, início ≠ fim). */
+  const erroJanelaAtivar = useMemo(() => mensagemErroJanela(horaInicio, horaFim), [horaInicio, horaFim]);
+  const podeAtivarAutomacao = erroJanelaAtivar === null;
   const selectedList = listas.find((l) => l.id === selectedListaId);
   const filteredLists = listas.filter((l) => l.nomeLista.toLowerCase().includes(listSearch.toLowerCase()));
   const filteredDisparos = continuoList
@@ -520,10 +554,9 @@ export default function GruposVendaPage() {
   function handleBack() { setShowStepInfo(false); if (wizardStep > 1) setWizardStep((s) => s - 1); }
   function handleFinish() {
     if (wizardStep === 4) {
-      /* Janela e 24h: sempre registrar em grupos_venda_continuo para aparecer no painel e rodar no cron.
-         Antes, só “24h” fazia isso; “Janela” chamava disparar (envio único) e não criava linha no painel. */
-      if (scheduleMode === "window" && (!horaInicio?.trim() || !horaFim?.trim())) {
-        setError("Defina o horário de início e fim da janela.");
+      const jErr = mensagemErroJanela(horaInicio, horaFim);
+      if (jErr) {
+        setError(jErr);
         return;
       }
       void handleAddContinuo();
@@ -536,7 +569,7 @@ export default function GruposVendaPage() {
     1: { title: "Selecionar Canal WhatsApp", description: "Selecione o número do WhatsApp que será usado para disparar mensagens nos grupos. Apenas instâncias conectadas estão disponíveis." },
     2: { title: "Definir Lista de Grupos Alvo", description: (<>Selecione uma lista já salva ou crie uma nova buscando os grupos da instância <span className="text-white font-semibold">{instances.find((i) => i.id === selectedInstanceId)?.nome_instancia ?? selectedInstanceId}</span>.</>) },
     3: { title: "Configurar Conteúdo e Rastreamento", description: "Defina o que será enviado nos grupos e configure os Sub IDs para rastreamento de vendas por canal." },
-    4: { title: "Definir Horário e Ativar Disparo", description: "Defina a janela de funcionamento e escolha como ativar. A automação aparecerá no Painel de Controle após confirmação." },
+    4: { title: "Definir Horário e Ativar Disparo", description: "Defina a janela diária (máximo 14 horas seguidas). A automação aparece no Painel de Controle e só dispara dentro desse horário." },
   };
 
   return (
@@ -557,7 +590,7 @@ export default function GruposVendaPage() {
           Grupos de Venda
         </h1>
         <p className="text-[11px] text-[#a0a0a0] mt-1 leading-relaxed max-md:hidden">
-          Dispare ofertas automaticamente em grupos do WhatsApp — uma vez ou em loop 24h.
+          Dispare ofertas automaticamente em grupos do WhatsApp dentro de uma janela de até 14 horas por dia.
         </p>
       </header>
 
@@ -998,43 +1031,32 @@ export default function GruposVendaPage() {
             {wizardStep === 4 && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                 <div className="bg-[#1c1c1f] border border-[#2c2c32] rounded-xl p-4 min-w-0">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                  <div className="flex flex-col gap-2 mb-4">
                     <label className="flex items-center gap-1.5 text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest leading-relaxed">
-                      <Clock className="w-2.5 h-2.5 text-[#e24c30] shrink-0" /> Horário de Funcionamento
+                      <Clock className="w-2.5 h-2.5 text-[#e24c30] shrink-0" /> Janela diária (máx. 14 h)
                     </label>
-                    <div className="flex rounded-lg overflow-hidden border border-[#2c2c32] text-[9px] font-bold self-start sm:self-auto">
-                      <button onClick={() => setScheduleMode("window")}
-                        className={cn("px-3 py-1.5 transition-all", scheduleMode === "window" ? "bg-[#e24c30]/20 text-[#e24c30]" : "bg-transparent text-[#a0a0a0] hover:text-white")}>
-                        JANELA
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setScheduleMode("24h");
-                          setHoraInicio("");
-                          setHoraFim("");
-                        }}
-                        className={cn("px-3 py-1.5 border-l border-[#2c2c32] transition-all", scheduleMode === "24h" ? "bg-[#e24c30]/20 text-[#e24c30]" : "bg-transparent text-[#a0a0a0] hover:text-white")}>
-                        24H
-                      </button>
+                    <p className="text-[10px] text-[#a0a0a0] leading-relaxed">
+                      O disparo automático só roda entre o horário de <span className="text-white font-semibold">início</span> e <span className="text-white font-semibold">fim</span>.
+                      A duração não pode passar de <span className="text-[#e24c30] font-semibold">14 horas seguidas</span> (pode atravessar meia-noite, ex.: 22:00 → 12:00).
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    <div className="flex-1">
+                      <p className="text-[8px] text-[#a0a0a0] mb-1.5 uppercase tracking-widest font-bold">Início</p>
+                      <input type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)}
+                        className="w-full bg-[#1c1c1f] border border-[#3e3e3e] rounded-lg px-3 py-2.5 text-xs text-white focus:border-[#e24c30] outline-none text-center transition" />
+                    </div>
+                    <span className="hidden sm:block text-[#a0a0a0] mt-4">→</span>
+                    <div className="flex-1">
+                      <p className="text-[8px] text-[#a0a0a0] mb-1.5 uppercase tracking-widest font-bold">Fim</p>
+                      <input type="time" value={horaFim} onChange={(e) => setHoraFim(e.target.value)}
+                        className="w-full bg-[#1c1c1f] border border-[#3e3e3e] rounded-lg px-3 py-2.5 text-xs text-white focus:border-[#e24c30] outline-none text-center transition" />
                     </div>
                   </div>
-                  {scheduleMode === "24h" ? (
-                    <p className="text-[10px] text-[#a0a0a0] leading-relaxed"><span className="text-emerald-400 font-semibold">✓ Sem restrição</span> — o disparo funciona o dia todo, sem interrupções.</p>
-                  ) : (
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                      <div className="flex-1">
-                        <p className="text-[8px] text-[#a0a0a0] mb-1.5 uppercase tracking-widest font-bold">Início</p>
-                        <input type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)}
-                          className="w-full bg-[#1c1c1f] border border-[#3e3e3e] rounded-lg px-3 py-2.5 text-xs text-white focus:border-[#e24c30] outline-none text-center transition" />
-                      </div>
-                      <span className="hidden sm:block text-[#a0a0a0] mt-4">→</span>
-                      <div className="flex-1">
-                        <p className="text-[8px] text-[#a0a0a0] mb-1.5 uppercase tracking-widest font-bold">Fim</p>
-                        <input type="time" value={horaFim} onChange={(e) => setHoraFim(e.target.value)}
-                          className="w-full bg-[#1c1c1f] border border-[#3e3e3e] rounded-lg px-3 py-2.5 text-xs text-white focus:border-[#e24c30] outline-none text-center transition" />
-                      </div>
-                    </div>
+                  {janelaPreviewText && (
+                    <p className={cn("text-[10px] mt-3 leading-relaxed", janelaPreviewText.variant === "error" ? "text-amber-400" : "text-emerald-400/90")}>
+                      {janelaPreviewText.text}
+                    </p>
                   )}
                 </div>
 
@@ -1054,7 +1076,7 @@ export default function GruposVendaPage() {
                         {contentMode === "keywords"
                           ? `${keywordCount} keyword${keywordCount !== 1 ? "s" : ""}`
                           : "Lista de ofertas"}{" "}
-                        · {scheduleMode === "24h" ? "24h" : horaInicio && horaFim ? `${horaInicio}–${horaFim}` : "Janela"}
+                        · {horaInicio && horaFim ? `${horaInicio}–${horaFim}` : "Definir janela"}
                       </p>
                     </div>
                     <ChevronDown
@@ -1081,7 +1103,7 @@ export default function GruposVendaPage() {
                       { icon: <Smartphone className="w-3.5 h-3.5 text-[#e24c30] shrink-0" />, label: "Canal", value: instances.find((i) => i.id === selectedInstanceId)?.nome_instancia ?? "Não selecionado", warn: !selectedInstanceId },
                       { icon: <ListIcon className="w-3.5 h-3.5 text-[#e24c30] shrink-0" />, label: "Lista", value: selectedList?.nomeLista ?? null, warn: !selectedList },
                       { icon: <Hash className="w-3.5 h-3.5 text-[#e24c30] shrink-0" />, label: "Conteúdo", value: contentMode === "keywords" ? `${keywordCount} keyword${keywordCount !== 1 ? "s" : ""}` : "Lista de ofertas", warn: false },
-                      { icon: <Clock className="w-3.5 h-3.5 text-[#e24c30] shrink-0" />, label: "Horário", value: scheduleMode === "24h" ? "24h — sem restrição" : (horaInicio && horaFim ? `${horaInicio} – ${horaFim}` : "Janela configurada"), warn: false },
+                      { icon: <Clock className="w-3.5 h-3.5 text-[#e24c30] shrink-0" />, label: "Horário", value: horaInicio && horaFim ? `${horaInicio} – ${horaFim} (máx. 14 h)` : "Defina início e fim da janela", warn: false },
                     ].map(({ icon, label, value, warn }) => (
                       <div key={label} className="flex items-start gap-3 py-2 border-b border-[#2c2c32] last:border-0 min-w-0">
                         <div className="w-6 h-6 rounded-lg bg-[#1c1c1f] border border-[#2c2c32] flex items-center justify-center shrink-0">{icon}</div>
@@ -1124,15 +1146,19 @@ export default function GruposVendaPage() {
                   Avançar <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               ) : (
-                <button onClick={handleFinish} disabled={continuoTogglingId === "new"}
-                  className={cn("w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-bold transition-all shadow-lg group disabled:opacity-40",
-                    scheduleMode === "24h"
-                      ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 shadow-emerald-500/5"
-                      : "bg-[#e24c30]/10 border border-[#e24c30]/25 text-[#e24c30] hover:bg-[#e24c30] hover:text-white shadow-[#e24c30]/5")}>
+                <button
+                  type="button"
+                  onClick={handleFinish}
+                  disabled={continuoTogglingId === "new" || !podeAtivarAutomacao}
+                  title={!podeAtivarAutomacao && erroJanelaAtivar ? erroJanelaAtivar : undefined}
+                  className={cn(
+                    "w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-bold transition-all shadow-lg group bg-[#e24c30]/10 border border-[#e24c30]/25 text-[#e24c30] hover:bg-[#e24c30] hover:text-white shadow-[#e24c30]/5",
+                    "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#e24c30]/10 disabled:hover:text-[#e24c30] disabled:shadow-none",
+                  )}
+                >
                   {continuoTogglingId === "new" ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : scheduleMode === "24h" ? <PlusCircle className="w-3.5 h-3.5 group-hover:rotate-90 transition-transform duration-300" />
                     : <Play className="w-3.5 h-3.5 fill-current" />}
-                  {scheduleMode === "24h" ? "Disparo 24h" : "Ativar automação"}
+                  Ativar automação
                 </button>
               )}
             </div>

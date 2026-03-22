@@ -1,11 +1,12 @@
 /**
- * Cron: roda a cada 2 minutos. Para cada usuário com disparo contínuo ativo,
- * busca 1 produto pela keyword atual, envia ao webhook e avança para a próxima keyword (em loop).
+ * Cron: dispara ofertas para configs ativas com janela válida (início/fim obrigatórios, máx. 14 h).
+ * Ignora configs sem janela ou com janela inválida (economia de backend).
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { mensagemErroJanela } from "@/lib/grupos-venda-janela";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 55;
@@ -74,6 +75,16 @@ export async function GET(req: NextRequest) {
     const subIds = [cfg.sub_id_1, cfg.sub_id_2, cfg.sub_id_3].filter(Boolean) as string[];
     const horarioInicio = (cfg as { horario_inicio?: string | null }).horario_inicio ?? null;
     const horarioFim = (cfg as { horario_fim?: string | null }).horario_fim ?? null;
+
+    if (!horarioInicio?.trim() || !horarioFim?.trim()) {
+      results.push({ userId, ok: true, error: "Sem janela — configure início e fim no app (máx. 14 h)" });
+      continue;
+    }
+    const janelaInv = mensagemErroJanela(horarioInicio, horarioFim);
+    if (janelaInv) {
+      results.push({ userId, ok: true, error: janelaInv });
+      continue;
+    }
 
     if (!isWithinBrasiliaWindow(horarioInicio, horarioFim)) {
       results.push({ userId, ok: true, error: "Fora do horário configurado" });
