@@ -1,3 +1,4 @@
+import { assertVideoEditorPro } from "@/lib/gate-video-editor-request";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,9 @@ type JamendoTrack = {
 
 export async function GET(req: Request) {
   try {
+    const gate = await assertVideoEditorPro();
+    if (!gate.ok) return gate.response;
+
     const clientId = process.env.JAMENDO_CLIENT_ID;
     if (!clientId) {
       return NextResponse.json(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import Link from "next/link";
 import {
   Link2,
@@ -16,12 +16,24 @@ import {
   MessageCircle,
   ListChecks,
   Film,
+  Lock,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
+import {
+  PlanEntitlementsProvider,
+  usePlanEntitlements,
+} from "./PlanEntitlementsContext";
 
 const LS_KEY = "hasSeenCaptureFeature";
 
-const sidebarNavItems = [
+type NavItem = {
+  title: string;
+  href: string;
+  icon: React.ReactNode;
+  proOnly?: boolean;
+};
+
+const sidebarNavItems: NavItem[] = [
   {
     title: "Análise de Comissões",
     href: "/dashboard",
@@ -51,11 +63,13 @@ const sidebarNavItems = [
     title: "Tráfego Inteligente (ATI)",
     href: "/dashboard/ati",
     icon: <TrendingUp className="h-5 w-5" />,
+    proOnly: true,
   },
   {
     title: "Criar Campanha Meta",
     href: "/dashboard/meta-ads",
     icon: <Megaphone className="h-5 w-5" />,
+    proOnly: true,
   },
   {
     title: "Gerador de Links Shopee",
@@ -76,6 +90,7 @@ const sidebarNavItems = [
     title: "Gerador de Criativos",
     href: "/dashboard/video-editor",
     icon: <Film className="h-5 w-5" />,
+    proOnly: true,
   },
 ];
 
@@ -84,9 +99,26 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
+  return (
+    <PlanEntitlementsProvider>
+      <DashboardLayoutInner>{children}</DashboardLayoutInner>
+    </PlanEntitlementsProvider>
+  );
+}
+
+function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
+  const { entitlements, tier } = usePlanEntitlements();
+  const isPro = tier === "pro";
+
+  const visibleItems = useMemo(() => {
+    return sidebarNavItems.map((item) => ({
+      ...item,
+      locked: item.proOnly === true && !isPro,
+    }));
+  }, [isPro]);
 
   // Badge "NOVO"
   const [showCaptureBadge, setShowCaptureBadge] = useState(false);
@@ -172,7 +204,7 @@ export default function DashboardLayout({
           aria-label="Navegação do dashboard"
           className="flex flex-col space-y-2"
         >
-          {sidebarNavItems.map((item) => {
+          {visibleItems.map((item) => {
             const isActive = pathname === item.href;
             const isCapture = item.href === "/dashboard/captura";
 
@@ -185,6 +217,8 @@ export default function DashboardLayout({
                 className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                   isActive
                     ? "bg-shopee-orange text-text-primary"
+                    : item.locked
+                    ? "text-text-secondary/40 hover:bg-dark-bg hover:text-text-secondary/60"
                     : "text-text-secondary hover:bg-dark-bg hover:text-text-primary"
                 }`}
               >
@@ -192,6 +226,10 @@ export default function DashboardLayout({
 
                 <span className="flex items-center gap-2 min-w-0">
                   <span className="truncate">{item.title}</span>
+
+                  {item.locked && (
+                    <Lock className="h-3 w-3 text-text-secondary/40 shrink-0" />
+                  )}
 
                   {isCapture && showCaptureBadge && (
                     <span

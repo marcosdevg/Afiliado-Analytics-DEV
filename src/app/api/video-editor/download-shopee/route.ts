@@ -1,3 +1,4 @@
+import { assertVideoEditorPro } from "@/lib/gate-video-editor-request";
 import { NextResponse } from "next/server";
 import { scrape } from "../../../../server/shopee-scraper-light";
 
@@ -8,6 +9,9 @@ const VIDEO_RE = /\.(mp4|m3u8|webm|ts)(\?|$)/i;
 
 export async function POST(req: Request) {
   try {
+    const gate = await assertVideoEditorPro();
+    if (!gate.ok) return gate.response;
+
     const body = await req.json().catch(() => ({}));
     const shopeeUrl = String(body?.url ?? "").trim();
     const mode = String(body?.mode ?? "scrape");

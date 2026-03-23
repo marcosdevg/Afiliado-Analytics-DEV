@@ -15,6 +15,7 @@ import {
   canValidateCreative,
 } from "@/lib/ati/rules";
 import type { ATICreativeRow } from "@/lib/ati/types";
+import { gateAti } from "@/lib/require-entitlements";
 
 type ShopeeRow = {
   "Comissão líquida do afiliado(R$)": string;
@@ -51,6 +52,9 @@ function aggregateShopeeBySubId(rows: ShopeeRow[]): Map<string, { commission: nu
 
 export async function GET(req: Request) {
   try {
+    const gate = await gateAti();
+    if (!gate.allowed) return gate.response;
+
     const supabase = await createClient();
     const {
       data: { user },

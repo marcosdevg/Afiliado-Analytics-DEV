@@ -1,3 +1,4 @@
+import { assertVideoEditorPro } from "@/lib/gate-video-editor-request";
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { formatUploadError } from "../../../../lib/remotion/format-upload-error";
@@ -7,6 +8,9 @@ export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  const gate = await assertVideoEditorPro();
+  if (!gate.ok) return gate.response;
+
   const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
   if (!token) {
     return NextResponse.json(

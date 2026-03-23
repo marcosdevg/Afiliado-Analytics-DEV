@@ -1,3 +1,4 @@
+import { assertVideoEditorPro } from "@/lib/gate-video-editor-request";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,9 @@ const FONT_SOURCES = [
 
 /** Fonte TTF para legendas no export (FFmpeg WASM); busca no servidor evita 403 no cliente. */
 export async function GET() {
+  const gate = await assertVideoEditorPro();
+  if (!gate.ok) return gate.response;
+
   for (const url of FONT_SOURCES) {
     try {
       const res = await fetch(url, { next: { revalidate: 86400 } });

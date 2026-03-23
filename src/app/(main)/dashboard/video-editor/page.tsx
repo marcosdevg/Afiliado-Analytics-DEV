@@ -16,6 +16,7 @@ import {
 } from "../../../../../remotion/types";
 import { useRemotionSandboxRender } from "../../../../hooks/use-remotion-sandbox-render";
 import { resolveInputPropsForRender } from "../../../../lib/remotion/resolve-input-props-for-render";
+import ProFeatureGate from "../ProFeatureGate";
 
 type Voice = { voice_id: string; name: string; preview_url: string | null; labels: Record<string, string> };
 type MusicTrack = { id: string; name: string; artist: string; duration: number; audioUrl: string; downloadUrl: string; coverUrl: string };
@@ -113,7 +114,15 @@ const ASPECT_RATIOS = [
   { value: "16:9", label: "Paisagem", sub: "16:9", icon: "▭" },
 ] as const;
 
-export default function VideoEditorPage() {
+export default function VideoEditorPageWrapper() {
+  return (
+    <ProFeatureGate feature="geradorCriativos">
+      <VideoEditorPageInner />
+    </ProFeatureGate>
+  );
+}
+
+function VideoEditorPageInner() {
   const [step, setStep] = useState(1);
 
   // ── Step 1: Media ──

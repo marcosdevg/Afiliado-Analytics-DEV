@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "utils/supabase/server";
+import { getEntitlementsForUser, getUsageSnapshot } from "@/lib/plan-server";
 
 export async function GET() {
   const supabase = await createClient();
@@ -24,6 +25,15 @@ export async function POST(req: Request) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+
+  const ent = await getEntitlementsForUser(supabase, user.id);
+  const usage = await getUsageSnapshot(supabase, user.id);
+  if (usage.evolutionInstances >= ent.evolutionInstances) {
+    return NextResponse.json(
+      { error: `Limite de ${ent.evolutionInstances} instância(s) atingido. Faça upgrade para conectar mais.` },
+      { status: 403 }
+    );
+  }
 
   const body = await req.json().catch(() => ({}));
   const nome_instancia = typeof body.nome_instancia === "string" ? body.nome_instancia.trim() : "";

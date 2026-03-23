@@ -3,6 +3,7 @@
  * GET → { voices: [{ voice_id, name, preview_url, labels }] }
  */
 
+import { assertVideoEditorPro } from "@/lib/gate-video-editor-request";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,9 @@ const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY || "sk_ee8e7c34a6083c306e7
 
 export async function GET() {
   try {
+    const gate = await assertVideoEditorPro();
+    if (!gate.ok) return gate.response;
+
     const res = await fetch("https://api.elevenlabs.io/v1/voices", {
       headers: { "xi-api-key": ELEVEN_API_KEY },
     });

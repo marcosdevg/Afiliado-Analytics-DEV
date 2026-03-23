@@ -7,6 +7,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../../utils/supabase/server";
+import { gateAti } from "@/lib/require-entitlements";
 
 const TAG_TRAFICO_GRUPOS = "Tráfego para Grupos";
 
@@ -48,6 +49,9 @@ export type TraficoGruposCampaignDetail = {
 
 export async function GET(req: Request) {
   try {
+    const gate = await gateAti();
+    if (!gate.allowed) return gate.response;
+
     const supabase = await createClient();
     const {
       data: { user },

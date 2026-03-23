@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import LoadingOverlay from "@/app/components/ui/LoadingOverlay";
 import MetaSearchablePicker from "@/app/components/meta/MetaSearchablePicker";
+import { usePlanEntitlements } from "../PlanEntitlementsContext";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface CommissionDataRow {
@@ -223,6 +224,9 @@ function ResultCard({ title, value, footer, valueClassName, highlight }: {
 export default function GplCalculatorPage() {
   const context = useSupabase();
   const session = context?.session;
+  const { entitlements } = usePlanEntitlements();
+  const showSummaryCards = entitlements?.gpl.showSummaryCards ?? false;
+  const showGroupsCampaignsInstance = entitlements?.gpl.showGroupsCampaignsInstance ?? false;
 
   const [idbRawData, , isDataLoading] = useIdbKeyState<CommissionDataRow[]>("commissionsRawData_idb", []);
   const [apiRowsCache, setApiRowsCache, isApiRowsCacheLoading] = useIdbKeyState<CommissionDataRow[]>("gplApiRows_idb", []);
@@ -781,6 +785,7 @@ export default function GplCalculatorPage() {
           {/* ── Centro: Resumo + Grupos/Campanhas ── */}
           <div className="md:col-span-8 lg:col-span-6 flex flex-col gap-4 min-h-0">
             {/* Cards resumo */}
+            {showSummaryCards ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 shrink-0">
               {summaryCards.map((card) => (
                 <div key={card.label} className="bg-[#27272a] border border-[#2c2c32] rounded-lg p-2.5 flex flex-col justify-center">
@@ -799,8 +804,14 @@ export default function GplCalculatorPage() {
                 </div>
               ))}
         </div>
+            ) : (
+              <div className="bg-dark-card border border-dark-border rounded-xl p-4 text-center text-sm text-text-secondary shrink-0">
+                Cards de resumo disponíveis no Plano Pro.
+              </div>
+            )}
 
             {/* Panel grupos/campanhas */}
+            {showGroupsCampaignsInstance ? (
             <div className=" rounded-xl  flex-1 relative min-h-[400px] lg:min-h-0">
               <div className="absolute inset-0 flex flex-col p-4">
                 {/* Mobile: abas | (busca + instância na mesma linha). Desktop lg+: abas + instância | busca full width. */}
@@ -1056,6 +1067,11 @@ export default function GplCalculatorPage() {
                     </div>
               </div>
             </div>
+            ) : (
+              <div className="bg-dark-card border border-dark-border rounded-xl p-4 text-center text-sm text-text-secondary flex-1 flex items-center justify-center">
+                Painel de grupos e campanhas disponível no Plano Pro.
+              </div>
+            )}
           </div>
 
           {/* ── Coluna direita: Visão Executiva ── */}

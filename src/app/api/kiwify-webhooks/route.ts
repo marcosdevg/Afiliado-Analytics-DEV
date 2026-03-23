@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js"
 import { NextResponse, type NextRequest } from "next/server"
 import { createHmac, timingSafeEqual } from "crypto"
 import * as SibApiV3Sdk from "@getbrevo/brevo"
+import { resolveTierFromKiwifyIds, bestPlanTier } from "@/lib/kiwify-plan-catalog"
+import type { PlanTier } from "@/lib/plan-entitlements"
 
 // ---------- Supabase (service role) ---------
 function admin() {
@@ -42,6 +44,7 @@ interface KiwifyWebhookPayload {
   id?: string | number
   order_id?: string | number
   subscription_id?: string | number
+  checkout_link?: string
   Order?: KiwifyOrder
   Customer?: KiwifyCustomer
   Product?: KiwifyProduct
@@ -205,15 +208,20 @@ function deriveAccessUntil(sub?: KiwifySubscription): string | null {
 
 async function recomputeProfileStatus(supabase: ReturnType<typeof admin>, email: string, userId: string | null) {
   const now = nowIso()
-  const { data: subs } = await supabase.from("subscriptions").select("status, access_until").eq("email", email)
+  const { data: subs } = await supabase
+    .from("subscriptions")
+    .select("status, access_until, plan_id, product_id, checkout_url")
+    .eq("email", email)
 
-  const anyValid = (subs || []).some((s) => {
+  const validSubs = (subs || []).filter((s) => {
     const au = s.access_until ? new Date(s.access_until).toISOString() : null
     const notRefunded = s.status !== "refunded"
     const notExpired = au ? au >= now : false
     const okStatus = s.status === "active" || s.status === "past_due" || s.status === "canceled"
     return notRefunded && notExpired && okStatus
   })
+
+  const anyValid = validSubs.length > 0
 
   const maxAccess =
     (subs || [])
@@ -222,12 +230,26 @@ async function recomputeProfileStatus(supabase: ReturnType<typeof admin>, email:
       .sort()
       .slice(-1)[0] || null
 
+  // Resolve plan_tier from active subscriptions
+  let planTier: PlanTier = "padrao"
+  if (anyValid) {
+    const tiers = validSubs.map((s) =>
+      resolveTierFromKiwifyIds({
+        checkoutLink: s.checkout_url,
+        planId: s.plan_id,
+        productId: s.product_id,
+      })
+    )
+    planTier = bestPlanTier(tiers)
+  }
+
   if (userId) {
     await supabase
       .from("profiles")
       .update({
         subscription_status: anyValid ? "active" : "canceled",
         access_until: anyValid ? maxAccess : null,
+        plan_tier: planTier,
       })
       .eq("id", userId)
   }
@@ -390,6 +412,7 @@ export async function POST(req: NextRequest) {
 
     const productId = String(product?.product_id || "")
     const providerSubId = data.subscription_id ? String(data.subscription_id) : `${data.order_id || ""}`
+    const checkoutLink = typeof data.checkout_link === "string" ? data.checkout_link.trim() : null
 
     let accessUntil = deriveAccessUntil(sub)
     const frequency = sub?.plan?.frequency || null
@@ -418,12 +441,18 @@ export async function POST(req: NextRequest) {
       userId = created.user.id
       isNewUser = true
 
+      const initialTier = resolveTierFromKiwifyIds({
+        checkoutLink,
+        planId,
+        productId,
+      })
       const { error: profErr } = await supabase.from("profiles").insert([
         {
           id: userId,
           email,
           subscription_status: "active",
           plan_name: planName,
+          plan_tier: initialTier,
           account_setup_pending: true,
         },
       ])
@@ -465,6 +494,7 @@ export async function POST(req: NextRequest) {
           access_until: accessUntil,
           email,
           user_id: userId,
+          ...(checkoutLink ? { checkout_url: checkoutLink } : {}),
         },
       ],
       { onConflict: "provider,provider_subscription_id" }

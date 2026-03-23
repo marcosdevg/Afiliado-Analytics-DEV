@@ -7,6 +7,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../../utils/supabase/server";
+import { getEntitlementsForUser, getUsageSnapshot } from "@/lib/plan-server";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +80,15 @@ export async function POST(req: Request) {
       }));
 
     if (toInsert.length === 0) return NextResponse.json({ error: "Nenhum grupo válido." }, { status: 400 });
+
+    const ent = await getEntitlementsForUser(supabase, user.id);
+    const usage = await getUsageSnapshot(supabase, user.id);
+    if (usage.gruposVendaGroupsTotal + toInsert.length > ent.gruposVenda.maxGroupsTotal) {
+      return NextResponse.json(
+        { error: `Limite de ${ent.gruposVenda.maxGroupsTotal} grupo(s) total atingido. Faça upgrade para adicionar mais.` },
+        { status: 403 }
+      );
+    }
 
     const { data: inserted, error } = await supabase
       .from("grupos_venda")

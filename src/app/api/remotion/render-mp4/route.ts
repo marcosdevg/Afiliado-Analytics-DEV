@@ -8,6 +8,9 @@ import { waitUntil } from "@vercel/functions";
 import { NextResponse } from "next/server";
 import fs from "node:fs";
 import path from "node:path";
+import { gateGeradorCriativos } from "@/lib/require-entitlements";
+import { createClient } from "../../../../../utils/supabase/server";
+import { getEntitlementsForUser, getUsageSnapshot, recordVideoExportUsage } from "@/lib/plan-server";
 import { REMOTION_COMPOSITION_ID } from "../../../../../remotion/constants";
 import type { VideoInputProps } from "../../../../../remotion/types";
 import { formatUploadError } from "../../../../lib/remotion/format-upload-error";
@@ -46,6 +49,23 @@ function assertBundleExists(): void {
 }
 
 export async function POST(req: Request) {
+  // Gate: apenas Pro pode exportar vídeos
+  const gate = await gateGeradorCriativos();
+  if (!gate.allowed) return gate.response;
+
+  // Limite diário de exports
+  const supabase = await createClient();
+  const ent = await getEntitlementsForUser(supabase, gate.userId);
+  if (ent.videoExportsPerDay !== null) {
+    const usage = await getUsageSnapshot(supabase, gate.userId);
+    if (usage.videoExportsToday >= ent.videoExportsPerDay) {
+      return NextResponse.json(
+        { error: `Limite de ${ent.videoExportsPerDay} exportação(ões) por dia atingido. Tente novamente amanhã.` },
+        { status: 403 },
+      );
+    }
+  }
+
   const blobToken = process.env.BLOB_READ_WRITE_TOKEN?.trim();
   if (!blobToken) {
     return NextResponse.json(
@@ -150,6 +170,7 @@ export async function POST(req: Request) {
         access: "public",
       });
 
+      await recordVideoExportUsage(supabase, gate.userId);
       await send({ type: "done", url, size });
     } catch (err) {
       console.error("render-mp4", err);

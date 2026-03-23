@@ -7,6 +7,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../../utils/supabase/server";
+import { gateAti, gateCriarCampanhaMeta } from "@/lib/require-entitlements";
 
 const GRAPH_BASE = "https://graph.facebook.com/v21.0";
 
@@ -361,6 +362,16 @@ function applyMappingAndMerge(rows: MetaAdInsight[], mapping: Map<string, string
 
 export async function GET(req: Request) {
   try {
+    const reqUrl = new URL(req.url);
+    const isAtiMode = reqUrl.searchParams.get("ati") === "1";
+    if (isAtiMode) {
+      const gate = await gateAti();
+      if (!gate.allowed) return gate.response;
+    } else {
+      const gate = await gateCriarCampanhaMeta();
+      if (!gate.allowed) return gate.response;
+    }
+
     const supabase = await createClient();
     const {
       data: { user },

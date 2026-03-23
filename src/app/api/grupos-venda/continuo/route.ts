@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../../utils/supabase/server";
 import { mensagemErroJanela } from "@/lib/grupos-venda-janela";
+import { getEntitlementsForUser, getUsageSnapshot } from "@/lib/plan-server";
 
 export const dynamic = "force-dynamic";
 
@@ -113,6 +114,20 @@ export async function POST(req: Request) {
         proximoIndice: updated?.proximo_indice ?? 0,
         ultimoDisparoAt: updated?.ultimo_disparo_at,
       });
+    }
+
+    // Verificar limite de campanhas ativas antes de criar/ativar
+    if (ativo) {
+      const ent = await getEntitlementsForUser(supabase, user.id);
+      const usage = await getUsageSnapshot(supabase, user.id);
+      const alreadyActive = id ? usage.activeCampaigns : usage.activeCampaigns;
+      const wouldBe = id ? alreadyActive : alreadyActive + 1;
+      if (wouldBe > ent.gruposVenda.maxActiveCampaigns) {
+        return NextResponse.json(
+          { error: `Limite de ${ent.gruposVenda.maxActiveCampaigns} campanha(s) ativa(s) atingido. Faça upgrade para ativar mais.` },
+          { status: 403 }
+        );
+      }
     }
 
     if (!listaId) return NextResponse.json({ error: "Lista de grupos é obrigatória." }, { status: 400 });

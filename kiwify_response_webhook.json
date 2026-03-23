@@ -1,0 +1,162 @@
+{
+    "url": "https://www.afiliadoanalytics.com.br/api/kiwify-webhooks",
+    "signature": "8a15fbc18f1ec3726487fe4cc02a6ac05c95cf17",
+    "order": {
+        "order_id": "87080a4e-58fc-4475-95de-add2aec6461a",
+        "order_ref": "JAS06u3",
+        "order_status": "paid",
+        "product_type": "payment",
+        "payment_method": "credit_card",
+        "store_id": "uXFlLYdfYTvfHk3",
+        "payment_merchant_id": "33789aac-b057-4058-b586-ab5eca906eda",
+        "installments": 1,
+        "card_type": "mastercard",
+        "card_last4digits": "9853",
+        "boleto_barcode": null,
+        "boleto_expiry_date": null,
+        "pix_code": null,
+        "pix_expiration": null,
+        "sale_type": "producer",
+        "created_at": "2026-03-22 15:08",
+        "updated_at": "2026-03-22 15:08",
+        "approved_date": "2026-03-22 15:08",
+        "refunded_at": null,
+        "webhook_event_type": "order_approved",
+        "Product": {
+            "product_id": "da415550-9caf-11f0-8961-f353f012e41a",
+            "product_name": "Afiliado Analytics"
+        },
+        "Customer": {
+            "full_name": "Luana de Oliveira da Silva",
+            "first_name": "Luana",
+            "email": "luh.rs.92@hotmail.com",
+            "mobile": "+5551980305434",
+            "CPF": "03293227023",
+            "ip": "2804:7f6:af02:b7b9:dcc1:bf5c:9ded:3542",
+            "instagram": "adeiraa",
+            "country": "br"
+        },
+        "Commissions": {
+            "charge_amount": 6790,
+            "product_base_price": 6790,
+            "product_base_price_currency": "BRL",
+            "kiwify_fee": 859,
+            "kiwify_fee_currency": "BRL",
+            "commissioned_stores": [
+                {
+                    "id": "092b754d-5ec9-4de8-a11a-932288f9ca70",
+                    "type": "coproducer",
+                    "custom_name": "39.463.220 BRENDA RAYANE DURVAL DA SILVA",
+                    "email": "brendarayanejulien@gmail.com",
+                    "value": "1779"
+                },
+                {
+                    "id": "df9e0a7b-f9b1-448e-baf0-1daaf32ecf4e",
+                    "type": "coproducer",
+                    "custom_name": "Marcos da Silva Gomes",
+                    "email": "marcosdev.gomes@gmail.com",
+                    "value": "1384"
+                },
+                {
+                    "id": "d6d16317-beb4-42fe-835c-2eb3576cab63",
+                    "type": "coproducer",
+                    "custom_name": "JOSE CLEVERTON CARDOSO SANTOS",
+                    "email": "codenxtonline@gmail.com",
+                    "value": "1384"
+                },
+                {
+                    "id": "d0d150b3-c994-4f68-965f-edc5b5ecff80",
+                    "type": "producer",
+                    "custom_name": "ERIK ALCANTARA SANTOS",
+                    "email": "erik15branca@gmail.com",
+                    "value": "1384"
+                }
+            ],
+            "currency": "BRL",
+            "my_commission": 1384,
+            "funds_status": "waiting",
+            "estimated_deposit_date": "2026-04-06T03:00:00.000Z",
+            "deposit_date": null
+        },
+        "TrackingParameters": {
+            "src": null,
+            "sck": null,
+            "utm_source": null,
+            "utm_medium": null,
+            "utm_campaign": null,
+            "utm_content": null,
+            "utm_term": null,
+            "s1": null,
+            "s2": null,
+            "s3": null
+        },
+        "checkout_link": "KdYiM5M",
+        "Subscription": {
+            "start_date": "2026-03-22T18:08:50.688Z",
+            "next_payment": "2026-04-22T18:08:53.390Z",
+            "status": "active",
+            "customer_access": {
+                "has_access": true,
+                "active_period": true,
+                "access_until": "2026-04-22T18:08:53.390Z"
+            },
+            "plan": {
+                "id": "13296838-3e47-47fa-aab7-c7f99949cd27",
+                "name": "Plano Mensal",
+                "frequency": "monthly",
+                "qty_charges": 0
+            },
+            "charges": {
+                "completed": [
+                    {
+                        "order_id": "87080a4e-58fc-4475-95de-add2aec6461a",
+                        "amount": 5931,
+                        "status": "paid",
+                        "installments": 1,
+                        "card_type": "mastercard",
+                        "card_last_digits": "9853",
+                        "card_first_digits": "543966",
+                        "created_at": "2026-03-22T18:08:50.725Z"
+                    }
+                ],
+                "future": [
+                    {
+                        "charge_date": "2026-04-22T18:08:53.390Z"
+                    },
+                    {
+                        "charge_date": "2026-05-22T18:08:53.390Z"
+                    },
+                    {
+                        "charge_date": "2026-06-22T18:08:53.390Z"
+                    },
+                    {
+                        "charge_date": "2026-07-22T18:08:53.390Z"
+                    },
+                    {
+                        "charge_date": "2026-08-22T18:08:53.390Z"
+                    },
+                    {
+                        "charge_date": "2026-09-22T18:08:53.390Z"
+                    },
+                    {
+                        "charge_date": "2026-10-22T18:08:53.390Z"
+                    },
+                    {
+                        "charge_date": "2026-11-22T18:08:53.390Z"
+                    },
+                    {
+                        "charge_date": "2026-12-22T18:08:53.390Z"
+                    },
+                    {
+                        "charge_date": "2027-01-22T18:08:53.390Z"
+                    },
+                    {
+                        "charge_date": "2027-02-22T18:08:53.390Z"
+                    }
+                ]
+            }
+        },
+        "subscription_id": "38e8ffb3-c02a-46b8-a8ec-1de5172ba68a",
+        "access_url": null
+    }
+}

@@ -5,9 +5,13 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../../utils/supabase/server";
+import { gateAti } from "@/lib/require-entitlements";
 
 export async function POST(req: Request) {
   try {
+    const gate = await gateAti();
+    if (!gate.allowed) return gate.response;
+
     const supabase = await createClient();
     const {
       data: { user },
@@ -55,6 +59,9 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    const gate = await gateAti();
+    if (!gate.allowed) return gate.response;
+
     const supabase = await createClient();
     const {
       data: { user },

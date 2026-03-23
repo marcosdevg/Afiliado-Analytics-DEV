@@ -7,6 +7,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../../utils/supabase/server";
+import { getEntitlementsForUser, getUsageSnapshot } from "@/lib/plan-server";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,22 @@ export async function POST(req: Request) {
         group_name: String(g.nome ?? g.name ?? "").trim() || "Grupo",
       }));
     if (toInsert.length === 0) return NextResponse.json({ error: "Selecione ao menos um grupo." }, { status: 400 });
+
+    const ent = await getEntitlementsForUser(supabase, user.id);
+    const usage = await getUsageSnapshot(supabase, user.id);
+
+    if (ent.gruposVenda.maxLists !== null && usage.gruposVendaLists >= ent.gruposVenda.maxLists) {
+      return NextResponse.json(
+        { error: `Limite de ${ent.gruposVenda.maxLists} lista(s) atingido. Faça upgrade para criar mais.` },
+        { status: 403 }
+      );
+    }
+    if (usage.gruposVendaGroupsTotal + toInsert.length > ent.gruposVenda.maxGroupsTotal) {
+      return NextResponse.json(
+        { error: `Limite de ${ent.gruposVenda.maxGroupsTotal} grupo(s) total atingido. Faça upgrade para adicionar mais.` },
+        { status: 403 }
+      );
+    }
 
     const { data: lista, error: errLista } = await supabase
       .from("listas_grupos_venda")

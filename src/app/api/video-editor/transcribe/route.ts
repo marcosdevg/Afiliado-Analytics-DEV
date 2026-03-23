@@ -4,12 +4,16 @@
  * POST FormData { audio: File } → { words: { text, startMs, endMs }[] }
  */
 
+import { assertVideoEditorPro } from "@/lib/gate-video-editor-request";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
+    const gate = await assertVideoEditorPro();
+    if (!gate.ok) return gate.response;
+
     const formData = await req.formData();
     const audioFile = formData.get("audio") as File | null;
     if (!audioFile) {

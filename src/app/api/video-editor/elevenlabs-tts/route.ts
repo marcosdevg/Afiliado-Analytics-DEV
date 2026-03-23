@@ -4,6 +4,7 @@
  * POST { text, voiceId } → { audioBase64, captions: { text, startMs, endMs }[] }
  */
 
+import { assertVideoEditorPro } from "@/lib/gate-video-editor-request";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,9 @@ function charsToWords(alignment: CharAlignment): CaptionWord[] {
 
 export async function POST(req: Request) {
   try {
+    const gate = await assertVideoEditorPro();
+    if (!gate.ok) return gate.response;
+
     const body = await req.json().catch(() => ({}));
     const text = String(body?.text ?? "").trim();
     const voiceId = String(body?.voiceId ?? "").trim();
