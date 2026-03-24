@@ -169,6 +169,11 @@ export default function MetaAdsClient() {
 
   const IMG_PER_PAGE = 12; // 4 colunas × 3 linhas
   const VID_PER_PAGE = 6;  // 2 colunas × 3 linhas
+  const selectedAccount = adAccounts.find((a) => a.id === adAccountId);
+  const isPortfolioAccount = Boolean(selectedAccount?.business_id);
+  const pageList = isPortfolioAccount ? pages : (promotePages.length ? promotePages : pages);
+  const selectedPage = pageList.find((p) => p.id === pageId) || pages.find((p) => p.id === pageId);
+  const pageInstagram = selectedPage?.instagram_account ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -231,9 +236,23 @@ export default function MetaAdsClient() {
     return () => { cancelled = true; };
   }, [adAccountId, pageId, adAccounts]);
 
-  const selectedAccount = adAccounts.find((a) => a.id === adAccountId);
-  const isPortfolioAccount = Boolean(selectedAccount?.business_id);
-  const pageList = isPortfolioAccount ? pages : (promotePages.length ? promotePages : pages);
+  useEffect(() => {
+    const selectedPageLocal = pageList.find((p) => p.id === pageId) || pages.find((p) => p.id === pageId);
+    const pageInstagramId = selectedPageLocal?.instagram_account?.id;
+    // Mantém seleção atual se ainda existir
+    if (instagramAccountId && igAccounts.some((ig) => ig.id === instagramAccountId)) return;
+    // Prefere o IG vinculado à página selecionada
+    if (pageInstagramId) {
+      setInstagramAccountId(pageInstagramId);
+      return;
+    }
+    // Fallback para o primeiro IG encontrado
+    if (igAccounts.length > 0) {
+      setInstagramAccountId(igAccounts[0].id);
+      return;
+    }
+    setInstagramAccountId("");
+  }, [igAccounts, instagramAccountId, pageId, pageList, pages]);
 
   useEffect(() => {
     if (!adAccountId) { setPixels([]); return; }
@@ -271,6 +290,15 @@ export default function MetaAdsClient() {
   const pagePickerOptions = useMemo(
     () => (adAccountId ? pageList : pages).map((p) => ({ value: p.id, label: p.name })),
     [adAccountId, pageList, pages]
+  );
+  const instagramPickerOptions = useMemo(
+    () =>
+      igAccounts.map((ig) => ({
+        value: ig.id,
+        label: `@${ig.username}`,
+        description: ig.id,
+      })),
+    [igAccounts]
   );
   const pixelPickerOptions = useMemo(
     () => pixels.map((p) => ({ value: p.id, label: p.name || "Pixel", description: p.id })),
@@ -618,6 +646,69 @@ export default function MetaAdsClient() {
                   </>
                 )}
               </div>
+              <div>
+                <FieldLabel hint="Selecione Conta de anúncios e Página do Facebook para ver contas do Instagram disponíveis.">
+                  Perfil do Instagram
+                </FieldLabel>
+                {!adAccountId || !pageId ? (
+                  <div className="py-1">
+                    <Loader2 className="h-4 w-4 animate-spin text-text-secondary/60" />
+                  </div>
+                ) : loadingIgAccounts ? (
+                  <div className="w-full rounded-xl border border-dark-border bg-dark-bg py-2 px-3 text-sm text-text-secondary/70">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-shopee-orange" />
+                      <span>Carregando perfis do Instagram...</span>
+                    </div>
+                  </div>
+                ) : instagramPickerOptions.length > 0 ? (
+                  <MetaSearchablePicker
+                    value={instagramAccountId}
+                    onChange={(v) => {
+                      setInstagramAccountId(v);
+                      setIgManualMode(false);
+                    }}
+                    options={instagramPickerOptions}
+                    modalTitle="Perfil do Instagram"
+                    modalDescription="Selecione o perfil para anunciar no posicionamento Instagram."
+                    searchPlaceholder="Filtrar perfis…"
+                    emptyButtonLabel="Selecionar perfil do Instagram"
+                  />
+                ) : (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+                    <p className="text-xs text-amber-300">
+                      Nenhum perfil do Instagram encontrado automaticamente para esta conta/página.
+                    </p>
+                    {!igManualMode ? (
+                      <button
+                        type="button"
+                        onClick={() => setIgManualMode(true)}
+                        className="text-xs text-shopee-orange hover:underline font-semibold"
+                      >
+                        Inserir ID do Instagram manualmente
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={instagramAccountId}
+                          onChange={(e) => setInstagramAccountId(e.target.value.trim())}
+                          placeholder="Ex: 17841400000000000"
+                          className={inputCls}
+                        />
+                        <p className="text-[11px] text-text-secondary/70">
+                          Use se você já sabe o IG User ID e o token tem as permissões de Instagram.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {pageInstagram?.username && (
+                  <p className="text-[11px] text-emerald-400 mt-1.5">
+                    IG vinculado à Página selecionada: @{pageInstagram.username}
+                  </p>
+                )}
+              </div>
 
             </>
           )}
@@ -924,6 +1015,15 @@ export default function MetaAdsClient() {
                   <p className="text-xs font-semibold text-text-primary truncate">
                     {pages.find((p) => p.id === pageId)?.name || pageList.find((p) => p.id === pageId)?.name || "—"}
                   </p>
+                  {instagramAccountId && (
+                    <p className="text-[11px] text-text-secondary truncate">
+                      Instagram: {
+                        igAccounts.find((ig) => ig.id === instagramAccountId)?.username
+                          ? `@${igAccounts.find((ig) => ig.id === instagramAccountId)?.username}`
+                          : instagramAccountId
+                      }
+                    </p>
+                  )}
                 </div>
               </div>
 
