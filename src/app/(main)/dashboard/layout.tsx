@@ -26,11 +26,17 @@ import {
 
 const LS_KEY = "hasSeenCaptureFeature";
 
+/** Qual flag de `PlanEntitlements` libera o item na sidebar (não use só `tier === "pro"` — staff/custom também podem ter essas flags). */
+type ProSidebarFeature = "ati" | "criarCampanhaMeta" | "geradorCriativos";
+
 type NavItem = {
   title: string;
   href: string;
   icon: React.ReactNode;
+  /** Item só para quem tem a feature Pro correspondente */
   proOnly?: boolean;
+  /** Obrigatório quando `proOnly`: usado para cadeado/estilo, espelha o backend */
+  proFeature?: ProSidebarFeature;
 };
 
 const sidebarNavItems: NavItem[] = [
@@ -64,12 +70,14 @@ const sidebarNavItems: NavItem[] = [
     href: "/dashboard/ati",
     icon: <TrendingUp className="h-5 w-5" />,
     proOnly: true,
+    proFeature: "ati",
   },
   {
     title: "Criar Campanha Meta",
     href: "/dashboard/meta-ads",
     icon: <Megaphone className="h-5 w-5" />,
     proOnly: true,
+    proFeature: "criarCampanhaMeta",
   },
   {
     title: "Gerador de Links Shopee",
@@ -91,6 +99,7 @@ const sidebarNavItems: NavItem[] = [
     href: "/dashboard/video-editor",
     icon: <Film className="h-5 w-5" />,
     proOnly: true,
+    proFeature: "geradorCriativos",
   },
 ];
 
@@ -110,15 +119,19 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
-  const { entitlements, tier } = usePlanEntitlements();
-  const isPro = tier === "pro";
+  const { entitlements } = usePlanEntitlements();
 
   const visibleItems = useMemo(() => {
-    return sidebarNavItems.map((item) => ({
-      ...item,
-      locked: item.proOnly === true && !isPro,
-    }));
-  }, [isPro]);
+    return sidebarNavItems.map((item) => {
+      const feature = item.proFeature;
+      const hasFeature =
+        feature && entitlements ? Boolean(entitlements[feature]) : false;
+      return {
+        ...item,
+        locked: item.proOnly === true && !hasFeature,
+      };
+    });
+  }, [entitlements]);
 
   // Badge "NOVO"
   const [showCaptureBadge, setShowCaptureBadge] = useState(false);

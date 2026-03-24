@@ -321,7 +321,7 @@ export default function EvolutionIntegrationCard() {
           Integração WhatsApp 
         </h2>
         <p className="text-xs text-text-secondary mt-1">
-          Conecte instâncias WhatsApp via o webhook n8n (URL definida no servidor em <code className="bg-dark-bg/80 px-1 rounded">EVOLUTION_N8N_WEBHOOK_URL</code>). Gerencie as instâncias abaixo.
+        Ao adicionar uma nova instância, você deve clicar em "Conectar" para gerar o QR code e escanear no celular.
         </p>
       </div>
 
