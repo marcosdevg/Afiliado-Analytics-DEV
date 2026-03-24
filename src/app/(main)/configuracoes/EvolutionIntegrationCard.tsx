@@ -321,7 +321,7 @@ export default function EvolutionIntegrationCard() {
           Integração WhatsApp 
         </h2>
         <p className="text-xs text-text-secondary mt-1">
-        Ao adicionar uma nova instância, você deve clicar em "Conectar" para gerar o QR code e escanear no celular.
+        Ao adicionar uma nova instância, você deve clicar em &quot;Conectar&quot; para gerar o QR code e escanear no celular.
         </p>
       </div>
 
