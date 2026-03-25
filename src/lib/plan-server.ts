@@ -46,6 +46,54 @@ export async function getEntitlementsForUser(
   return getEntitlementsForTier(tier);
 }
 
+/**
+ * Plano padrão: só 1 site público; mantém o mais antigo ativo e desativa os demais (sem `DELETE`).
+ * Pro/Staff: reativa todos os sites para o link público voltar.
+ */
+export async function reconcileCaptureSitesForPlan(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<void> {
+  const ent = await getEntitlementsForUser(supabase, userId);
+  const limit = ent.captureLinks;
+
+  const { data: rows, error } = await supabase
+    .from("capture_sites")
+    .select("id")
+    .eq("userid", userId)
+    .order("created_at", { ascending: true });
+
+  if (error || !rows?.length) return;
+
+  const now = new Date().toISOString();
+
+  if (limit <= 1) {
+    const keepId = rows[0]!.id;
+    await Promise.all(
+      rows.map((r) =>
+        supabase
+          .from("capture_sites")
+          .update({
+            active: r.id === keepId,
+            updated_at: now,
+          })
+          .eq("id", r.id)
+          .eq("userid", userId)
+      )
+    );
+  } else {
+    await Promise.all(
+      rows.map((r) =>
+        supabase
+          .from("capture_sites")
+          .update({ active: true, updated_at: now })
+          .eq("id", r.id)
+          .eq("userid", userId)
+      )
+    );
+  }
+}
+
 export async function getUsageSnapshot(
   supabase: SupabaseClient,
   userId: string
@@ -65,7 +113,7 @@ export async function getUsageSnapshot(
     supabase
       .from("capture_sites")
       .select("id", { count: "exact", head: true })
-      .eq("user_id", userId),
+      .eq("userid", userId),
     supabase
       .from("listas_grupos_venda")
       .select("id", { count: "exact", head: true })

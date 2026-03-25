@@ -27,7 +27,11 @@ export type PlanEntitlements = {
   analiseComissoes: boolean;
   analiseCliques: boolean;
   meusLinks: boolean;
-  /** Máximo de sites de captura */
+  /**
+   * Máximo de sites de captura gravados em `capture_sites` para o usuário.
+   * Valor > 1 (ex.: pro/staff) exige no Postgres **sem** UNIQUE só em `userid`;
+   * ver migration `20250325_capture_sites_multiple_per_user.sql`.
+   */
   captureLinks: number;
   gpl: GplUiLimits;
   geradorLinksShopee: boolean;

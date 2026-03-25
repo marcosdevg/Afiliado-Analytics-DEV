@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { resolveCaptureSiteIdForUser } from "@/lib/captura-resolve-site";
 
 function getEnv(name: string) {
   const v = process.env[name];
@@ -36,10 +37,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
     }
 
-    // 1 site por usuário
-    const { data: site, error: siteErr } = await supabase.from("capture_sites").select("id").maybeSingle();
-    if (siteErr) return NextResponse.json({ error: siteErr.message }, { status: 400 });
-    if (!site) return NextResponse.json({ error: "Site não encontrado." }, { status: 404 });
+    const body = await req.json().catch(() => ({}));
+    const siteIdFromClient = typeof body?.site_id === "string" ? body.site_id : undefined;
+    const resolved = await resolveCaptureSiteIdForUser(supabase, siteIdFromClient);
+    if (!resolved.ok) {
+      return NextResponse.json({ error: resolved.message }, { status: resolved.status });
+    }
+    const site = { id: resolved.siteId };
 
     const { error: upErr } = await supabase
       .from("capture_sites")

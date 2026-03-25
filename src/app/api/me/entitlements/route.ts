@@ -3,6 +3,7 @@ import { createClient } from "../../../../../utils/supabase/server";
 import {
   getPlanTierForUser,
   getUsageSnapshot,
+  reconcileCaptureSitesForPlan,
 } from "@/lib/plan-server";
 import { getEntitlementsForTier } from "@/lib/plan-entitlements";
 
@@ -20,6 +21,7 @@ export async function GET() {
 
   const tier = await getPlanTierForUser(supabase, user.id);
   const entitlements = getEntitlementsForTier(tier);
+  await reconcileCaptureSitesForPlan(supabase, user.id);
   const usage = await getUsageSnapshot(supabase, user.id);
 
   return NextResponse.json({ tier, entitlements, usage });

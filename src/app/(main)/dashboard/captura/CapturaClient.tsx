@@ -21,6 +21,7 @@ import {
 
 import { useSupabase } from "../../../components/auth/AuthProvider";
 import LoadingOverlay from "../../../components/ui/LoadingOverlay";
+import { usePlanEntitlements } from "../PlanEntitlementsContext";
 
 import type { CaptureSiteRow, LayoutVariant } from "./_lib/types";
 import { formatDateTimePtBR, isExpired, sanitizeSlug } from "./_lib/captureUtils";
@@ -32,6 +33,7 @@ import ResetMetricsModal from "./_components/ResetMetricsModal";
 
 const DOMAIN = "s.afiliadoanalytics.com.br";
 const LOGO_BUCKET = "capture-logos";
+const PRO_CAPTURE_CHECKOUT_URL = "https://pay.kiwify.com.br/0mRaPls";
 
 const DEFAULT_BUTTON_TEXT = "Acessar Grupo Vip";
 
@@ -95,14 +97,23 @@ function getButtonTextFromRow(row: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
 
+function rowPublicUrl(row: CaptureSiteRow) {
+  return `https://${DOMAIN}/${row.slug}`;
+}
+
 type Mode = "empty" | "create" | "view" | "edit";
 
 export default function CapturaClient() {
   const ctx = useSupabase();
   const supabase = ctx?.supabase;
   const session = ctx?.session;
+  const { entitlements, refresh } = usePlanEntitlements();
+  const captureLimit = entitlements?.captureLinks ?? 1;
 
   const [pageLoading, setPageLoading] = useState(true);
+
+  const [sites, setSites] = useState<CaptureSiteRow[]>([]);
+  const [deleteTargetSite, setDeleteTargetSite] = useState<CaptureSiteRow | null>(null);
 
   const [site, setSite] = useState<CaptureSiteRow | null>(null);
   const [mode, setMode] = useState<Mode>("empty");
@@ -154,7 +165,7 @@ export default function CapturaClient() {
   // UI states
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -189,20 +200,17 @@ export default function CapturaClient() {
     return s ? `https://${DOMAIN}/${s}` : `https://${DOMAIN}/seu-slug`;
   }, [site?.slug, slug]);
 
-  const previewTitle = useMemo(() => (mode === "view" ? site?.title ?? "" : title), [mode, site?.title, title]);
-  const previewDesc = useMemo(
-    () => (mode === "view" ? site?.description ?? "" : description),
-    [mode, site?.description, description]
-  );
-  const previewColor = useMemo(
-    () => (mode === "view" ? site?.button_color ?? "#25D366" : buttonColor),
-    [mode, site?.button_color, buttonColor]
-  );
+  const publicUrlForDelete = useMemo(() => {
+    const t = deleteTargetSite ?? site;
+    const s = t?.slug;
+    return s ? `https://${DOMAIN}/${s}` : `https://${DOMAIN}/`;
+  }, [deleteTargetSite, site?.slug]);
 
-  const previewLayout = useMemo<LayoutVariant>(() => {
-    if (mode === "view") return (site?.layout_variant ?? "icons") as LayoutVariant;
-    return layoutVariant;
-  }, [mode, site?.layout_variant, layoutVariant]);
+  const previewTitle = useMemo(() => title, [title]);
+  const previewDesc = useMemo(() => description, [description]);
+  const previewColor = useMemo(() => buttonColor, [buttonColor]);
+
+  const previewLayout = useMemo<LayoutVariant>(() => layoutVariant, [layoutVariant]);
 
   const previewLogoSrc = useMemo(() => logoLocalPreviewUrl ?? logoUrl ?? null, [logoLocalPreviewUrl, logoUrl]);
 
@@ -233,9 +241,9 @@ export default function CapturaClient() {
   );
 
   // -------------------------
-  // Fetch (sem derrubar wizard)
+  // Fetch (sem derrubar wizard) — vários sites (Pro/Staff)
   // -------------------------
-  const fetchSite = useCallback(async () => {
+  const fetchSites = useCallback(async () => {
     if (!supabase || !session) return;
 
     const wizardOpen = modeRef.current === "create" || modeRef.current === "edit";
@@ -243,11 +251,15 @@ export default function CapturaClient() {
     if (!wizardOpen) setPageLoading(true);
     setError(null);
 
-    const { data, error } = await supabase.from("capture_sites").select("*").maybeSingle();
+    const { data, error } = await supabase
+      .from("capture_sites")
+      .select("*")
+      .order("created_at", { ascending: true });
 
     if (error) {
       setError(error.message);
       setSite(null);
+      setSites([]);
 
       if (!wizardOpen) {
         modeRef.current = "empty";
@@ -259,10 +271,11 @@ export default function CapturaClient() {
       return;
     }
 
-    const row = (data as CaptureSiteRow | null) ?? null;
-    setSite(row);
+    const rows = (data as CaptureSiteRow[]) ?? [];
+    setSites(rows);
 
-    if (!row) {
+    if (rows.length === 0) {
+      setSite(null);
       if (!wizardOpen) {
         modeRef.current = "empty";
         setMode("empty");
@@ -277,37 +290,35 @@ export default function CapturaClient() {
       return;
     }
 
-    // Normal (fora do wizard): hidrata estado a partir do banco
-    setSlug(row.slug);
-    setTitle(row.title ?? "");
-    setDescription(row.description ?? "");
-    setButtonText(getButtonTextFromRow(row) ?? DEFAULT_BUTTON_TEXT);
-    setWhatsappUrl(row.whatsapp_url ?? "");
-    setButtonColor(row.button_color ?? "#25D366");
-    setLayoutVariant((row.layout_variant ?? "icons") as LayoutVariant);
-    setMetaPixelId(row.meta_pixel_id ?? "");
-    setLogoFromLogopath(row.logopath);
-
+    setSite(null);
     modeRef.current = "view";
     setMode("view");
     setPageLoading(false);
-  }, [supabase, session, setLogoFromLogopath]);
+  }, [supabase, session]);
 
   useEffect(() => {
-    if (session && supabase) fetchSite();
-  }, [session, supabase, fetchSite]);
+    refresh();
+  }, [refresh]);
 
-  async function copyToClipboard(text: string) {
+  useEffect(() => {
+    if (session && supabase) fetchSites();
+  }, [session, supabase, fetchSites]);
+
+  async function copyToClipboard(text: string, rowId: string) {
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setCopiedId(rowId);
+      setTimeout(() => setCopiedId(null), 1500);
     } catch {
       // ignore
     }
   }
 
   function startCreate() {
+    if (sites.length >= captureLimit) {
+      setError(`Limite de ${captureLimit} site(s) de captura atingido.`);
+      return;
+    }
     setError(null);
     setStep(1);
 
@@ -333,29 +344,28 @@ export default function CapturaClient() {
     setMode("create");
   }
 
-  function startEdit() {
-    if (!site) return;
-
+  function startEdit(row: CaptureSiteRow) {
     setError(null);
     setStep(1);
 
-    setTitle(site.title ?? "");
-    setDescription(site.description ?? "");
-    setButtonText(getButtonTextFromRow(site) ?? DEFAULT_BUTTON_TEXT);
-    setWhatsappUrl(site.whatsapp_url ?? "");
-    setButtonColor(site.button_color ?? "#25D366");
-    setLayoutVariant((site.layout_variant ?? "icons") as LayoutVariant);
-    setMetaPixelId(site.meta_pixel_id ?? "");
+    setSite(row);
+    setTitle(row.title ?? "");
+    setDescription(row.description ?? "");
+    setButtonText(getButtonTextFromRow(row) ?? DEFAULT_BUTTON_TEXT);
+    setWhatsappUrl(row.whatsapp_url ?? "");
+    setButtonColor(row.button_color ?? "#25D366");
+    setLayoutVariant((row.layout_variant ?? "icons") as LayoutVariant);
+    setMetaPixelId(row.meta_pixel_id ?? "");
 
     setLogoFile(null);
     setLogoPendingAction("keep");
     setLogoToast(null);
 
-    originalButtonUrlRef.current = (site.whatsapp_url ?? "").trim();
+    originalButtonUrlRef.current = (row.whatsapp_url ?? "").trim();
 
     modeRef.current = "edit";
     setMode("edit");
-    setLogoFromLogopath(site.logopath);
+    setLogoFromLogopath(row.logopath);
   }
 
   function cancelEditOrCreate() {
@@ -381,7 +391,15 @@ export default function CapturaClient() {
 
       modeRef.current = "view";
       setMode("view");
-      setLogoFromLogopath(site.logopath);
+      setSite(null);
+      setLogoFromLogopath(null);
+      setLogoUrl(null);
+    } else if (sites.length > 0) {
+      originalButtonUrlRef.current = "";
+      modeRef.current = "view";
+      setMode("view");
+      setLogoUrl(null);
+      setMetaPixelId("");
     } else {
       originalButtonUrlRef.current = "";
       modeRef.current = "empty";
@@ -441,7 +459,7 @@ export default function CapturaClient() {
   }
 
   // Usado no CREATE (logo sobe imediatamente após criar)
-  async function uploadLogoNow(fileOverride?: File) {
+  async function uploadLogoNow(fileOverride?: File, siteId?: string) {
     const f = fileOverride ?? logoFile;
     if (!f) return;
 
@@ -449,21 +467,26 @@ export default function CapturaClient() {
 
     const fd = new FormData();
     fd.append("file", f);
+    if (siteId) fd.append("site_id", siteId);
 
     const r = await fetch("/api/captura/logo-upload", { method: "POST", body: fd });
     const j = await r.json();
     if (!r.ok) throw new Error(j?.error || "Erro no upload da logo.");
   }
 
-  async function resetMetrics() {
-    const r = await fetch("/api/captura/metrics-reset", { method: "POST" });
+  async function resetMetrics(siteId: string) {
+    const r = await fetch("/api/captura/metrics-reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ site_id: siteId }),
+    });
     const j = await r.json();
     if (!r.ok) throw new Error(j?.error || "Erro ao resetar métricas.");
   }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!supabase || !session) return;
+    if (!session) return;
 
     setSaving(true);
     setError(null);
@@ -514,36 +537,36 @@ export default function CapturaClient() {
 
     const fileToUploadAfterCreate = logoFile;
 
-    const { error: insertErr } = await supabase.from("capture_sites").insert({
-      userid: session.user.id,
-      domain: DOMAIN,
-      slug: cleanSlug,
-      title: title.trim() || null,
-      description: description.trim() || null,
-      button_text: bt,
-      whatsapp_url: url,
-      button_color: buttonColor,
-      layout_variant: layoutVariant,
-      meta_pixel_id: metaPixelId.trim() || null,
+    const res = await fetch("/api/captura/site-create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        domain: DOMAIN,
+        slug: cleanSlug,
+        title: title.trim() || null,
+        description: description.trim() || null,
+        button_text: bt,
+        whatsapp_url: url,
+        button_color: buttonColor,
+        layout_variant: layoutVariant,
+        meta_pixel_id: metaPixelId.trim() || null,
+      }),
     });
+    const created = (await res.json()) as { id?: string; error?: string };
 
-    if (insertErr) {
-      if ("code" in insertErr && insertErr.code === "23505") {
-        setError("Esse slug já está em uso. Escolha outro.");
-      } else {
-        setError(insertErr.message);
-      }
+    if (!res.ok) {
+      setError(created?.error || "Erro ao criar site.");
       setSaving(false);
       return;
     }
 
     try {
-      await fetchSite();
+      await fetchSites();
 
-      if (fileToUploadAfterCreate) {
-        await uploadLogoNow(fileToUploadAfterCreate);
+      if (fileToUploadAfterCreate && created?.id) {
+        await uploadLogoNow(fileToUploadAfterCreate, created.id);
         setLogoFile(null);
-        await fetchSite();
+        await fetchSites();
       }
 
       setPageLoading(true);
@@ -551,8 +574,9 @@ export default function CapturaClient() {
       modeRef.current = "view";
       setMode("view");
 
-      await fetchSite();
+      await fetchSites();
       setSaving(false);
+      await refresh();
     } catch (e2: unknown) {
       setError(getErrorMessage(e2, "Erro ao criar site."));
       setSaving(false);
@@ -619,7 +643,11 @@ export default function CapturaClient() {
 
     try {
       if (logoPendingAction === "remove") {
-        const r = await fetch("/api/captura/logo-delete", { method: "POST" });
+        const r = await fetch("/api/captura/logo-delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ site_id: site.id }),
+        });
         const j = await r.json();
         if (!r.ok) throw new Error(j?.error || "Erro ao remover a logo.");
         setLogoToast("Logo removida!");
@@ -630,6 +658,7 @@ export default function CapturaClient() {
 
         const fd = new FormData();
         fd.append("file", logoFile);
+        fd.append("site_id", site.id);
 
         const r = await fetch("/api/captura/logo-upload", { method: "POST", body: fd });
         const j = await r.json();
@@ -637,7 +666,7 @@ export default function CapturaClient() {
       }
 
       if (opts.resetAfterSave) {
-        await resetMetrics();
+        await resetMetrics(site.id);
       }
 
       originalButtonUrlRef.current = url;
@@ -650,8 +679,9 @@ export default function CapturaClient() {
       modeRef.current = "view";
       setMode("view");
 
-      await fetchSite();
+      await fetchSites();
       setSaving(false);
+      await refresh();
     } catch (e2: unknown) {
       setError(getErrorMessage(e2, "Erro ao salvar."));
       setSaving(false);
@@ -670,8 +700,8 @@ export default function CapturaClient() {
     await performSave({ resetAfterSave: false });
   }
 
-  async function toggleActive() {
-    if (!supabase || !site) return;
+  async function toggleActive(row: CaptureSiteRow) {
+    if (!supabase) return;
 
     setSaving(true);
     setError(null);
@@ -679,54 +709,54 @@ export default function CapturaClient() {
     const { error: upErr } = await supabase
       .from("capture_sites")
       .update({
-        active: !site.active,
+        active: !row.active,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", site.id);
+      .eq("id", row.id);
 
     if (upErr) setError(upErr.message);
 
-    await fetchSite();
+    await fetchSites();
+    await refresh();
     setSaving(false);
   }
 
   async function confirmDelete() {
-    if (!site) return;
+    const target = deleteTargetSite ?? site;
+    if (!target) return;
 
     setIsDeleting(true);
     setError(null);
 
     try {
-      const r = await fetch("/api/captura/site-delete", { method: "POST" });
+      const r = await fetch("/api/captura/site-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ site_id: target.id }),
+      });
       const j = await r.json();
       if (!r.ok) throw new Error(j?.error || "Erro ao apagar o site.");
 
       setShowDeleteModal(false);
       setIsDeleting(false);
-
-      setSite(null);
-      modeRef.current = "empty";
-      setMode("empty");
-
+      setDeleteTargetSite(null);
       setStep(1);
       setSlug("");
       setTitle("");
       setDescription("");
-
-      // não auto preencher depois de apagar
       setButtonText("");
-
       setWhatsappUrl("");
       setButtonColor("#25D366");
       setLayoutVariant("icons");
       setMetaPixelId("");
-
       setLogoFile(null);
       setLogoUrl(null);
       setLogoPendingAction("keep");
       setLogoToast(null);
-
       originalButtonUrlRef.current = "";
+
+      await fetchSites();
+      await refresh();
     } catch (e2: unknown) {
       setError(getErrorMessage(e2, "Erro ao apagar o site."));
       setIsDeleting(false);
@@ -739,16 +769,12 @@ export default function CapturaClient() {
 
   if (saving && (mode === "create" || mode === "edit")) return <LoadingOverlay message="Salvando..." />;
 
-  const expired = site ? isExpired(site.expiresat) : false;
+  const canCreateAnotherSite = sites.length < captureLimit;
 
   const colorPresets = ["#25D366", "#F97316", "#2563EB", "#16A34A", "#DC2626", "#111827"];
 
-  const previewButtonText =
-    mode === "view"
-      ? (getButtonTextFromRow(site) ?? DEFAULT_BUTTON_TEXT)
-      : (buttonText.trim() || DEFAULT_BUTTON_TEXT);
-
-  const previewButtonUrl = mode === "view" ? (site?.whatsapp_url ?? "") : whatsappUrl;
+  const previewButtonText = buttonText.trim() || DEFAULT_BUTTON_TEXT;
+  const previewButtonUrl = whatsappUrl;
 
   return (
     <div className="px-4 sm:px-0">
@@ -759,16 +785,28 @@ export default function CapturaClient() {
           <p className="text-sm text-text-secondary mt-1">Crie uma página simples com botão e acompanhe visitas e cliques.</p>
         </div>
 
-        {mode === "empty" && (
-          <button
-            onClick={startCreate}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-shopee-orange text-white rounded-md hover:opacity-90 transition-opacity font-semibold"
-            type="button"
-          >
-            <Plus className="h-5 w-5" />
-            Criar site
-          </button>
-        )}
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          {mode === "empty" && canCreateAnotherSite && (
+            <button
+              onClick={startCreate}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-shopee-orange text-white rounded-md hover:opacity-90 transition-opacity font-semibold"
+              type="button"
+            >
+              <Plus className="h-5 w-5" />
+              Criar site
+            </button>
+          )}
+          {mode === "view" && canCreateAnotherSite && (
+            <button
+              onClick={startCreate}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-shopee-orange text-white rounded-md hover:opacity-90 transition-opacity font-semibold"
+              type="button"
+            >
+              <Plus className="h-5 w-5" />
+              Criar outro site
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Error */}
@@ -783,128 +821,168 @@ export default function CapturaClient() {
       {mode === "empty" && (
         <div className="bg-dark-card p-8 sm:p-12 rounded-lg border border-dark-border text-center">
           <h2 className="text-lg sm:text-xl font-semibold text-text-primary mb-2">Nenhum site criado ainda</h2>
-          <p className="text-sm sm:text-base text-text-secondary/80 mb-6">
-            Clique no botão abaixo para criar seu primeiro site de captura e gerar seu link com slug.
-          </p>
-          <button
-            onClick={startCreate}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-shopee-orange text-white rounded-md hover:opacity-90 transition-opacity font-semibold"
-            type="button"
-          >
-            <Plus className="h-5 w-5" />
-            Criar meu primeiro site
-          </button>
+          {canCreateAnotherSite ? (
+            <>
+              <p className="text-sm sm:text-base text-text-secondary/80 mb-6">
+                Clique no botão abaixo para criar seu primeiro site de captura e gerar seu link com slug.
+              </p>
+              <button
+                onClick={startCreate}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-shopee-orange text-white rounded-md hover:opacity-90 transition-opacity font-semibold"
+                type="button"
+              >
+                <Plus className="h-5 w-5" />
+                Criar meu primeiro site
+              </button>
+            </>
+          ) : (
+            <p className="text-sm sm:text-base text-text-secondary/80">
+              Seu plano não inclui sites de captura ou o limite foi atingido. Faça upgrade para criar páginas de captura.
+            </p>
+          )}
         </div>
       )}
 
-      {/* VIEW */}
-      {mode === "view" && site && (
-        <div className="bg-dark-card rounded-lg border border-dark-border overflow-hidden">
-          <div className="p-4 sm:p-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            <div className="flex-grow min-w-0 space-y-3">
-              <div className="flex items-start gap-3">
-                {logoUrl ? (
-                  <div className="relative h-12 w-12 shrink-0">
-                    <Image src={logoUrl} alt="Logo" fill sizes="48px" className="object-contain" />
+      {/* VIEW — lista de cards (mais antigo primeiro) */}
+      {mode === "view" && sites.length > 0 && (
+        <div className="space-y-4">
+          {sites.map((row) => {
+            const url = rowPublicUrl(row);
+            const lockedByPlan = captureLimit === 1 && !row.active;
+            const logoSrc =
+              row.logopath && supabase
+                ? supabase.storage.from(LOGO_BUCKET).getPublicUrl(row.logopath).data.publicUrl
+                : null;
+            const rowExpired = isExpired(row.expiresat);
+
+            return (
+              <div key={row.id} className="relative rounded-lg border border-dark-border overflow-hidden bg-dark-card">
+                {lockedByPlan && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/45 backdrop-blur-sm px-4">
+                    <a
+                      href={PRO_CAPTURE_CHECKOUT_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center px-5 py-2.5 bg-shopee-orange text-white rounded-md font-semibold hover:opacity-90 transition-opacity text-sm sm:text-base"
+                    >
+                      Desbloquear com PRO
+                    </a>
                   </div>
-                ) : (
-                  <div className="h-12 w-12 shrink-0 rounded-md bg-dark-bg border border-dark-border" />
                 )}
 
-                <div className="min-w-0 flex-grow">
-                  <h3 className="text-base sm:text-lg font-semibold text-text-primary break-words">
-                    {site.title?.trim() || "Site de Captura"}
-                  </h3>
+                <div className="p-4 sm:p-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                  <div className="flex-grow min-w-0 space-y-3">
+                    <div className="flex items-start gap-3">
+                      {logoSrc ? (
+                        <div className="relative h-12 w-12 shrink-0">
+                          <Image src={logoSrc} alt="Logo" fill sizes="48px" className="object-contain" />
+                        </div>
+                      ) : (
+                        <div className="h-12 w-12 shrink-0 rounded-md bg-dark-bg border border-dark-border" />
+                      )}
 
-                  <div className="mt-3 flex items-center gap-2 flex-wrap text-sm">
-                    <span className="text-text-secondary">Link</span>
-                    <button
-                      onClick={() => copyToClipboard(publicUrl)}
-                      className="text-shopee-orange hover:underline flex items-center gap-1 font-mono break-all text-left"
-                      type="button"
-                      title="Copiar link"
-                    >
-                      {publicUrl}
-                      {copied ? <CheckCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                    </button>
+                      <div className="min-w-0 flex-grow">
+                        <h3 className="text-base sm:text-lg font-semibold text-text-primary break-words">
+                          {row.title?.trim() || "Site de Captura"}
+                        </h3>
+
+                        <div className="mt-3 flex items-center gap-2 flex-wrap text-sm">
+                          <span className="text-text-secondary">Link</span>
+                          <button
+                            onClick={() => copyToClipboard(url, row.id)}
+                            className="text-shopee-orange hover:underline flex items-center gap-1 font-mono break-all text-left"
+                            type="button"
+                            title="Copiar link"
+                            disabled={lockedByPlan}
+                          >
+                            {url}
+                            {copiedId === row.id ? <CheckCircle className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                          </button>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
+                          <div className="flex items-center gap-2">
+                            <MousePointerClick className="h-4 w-4 text-text-secondary" />
+                            <span className="text-emerald-400 font-semibold">{row.cta_click_count}</span>
+                            <span className="text-text-secondary">cliques</span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <Eye className="h-4 w-4 text-text-secondary" />
+                            <span className="text-sky-400 font-semibold">{row.view_count}</span>
+                            <span className="text-text-secondary">views</span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="text-text-secondary">Criado em</span>
+                            <span className="text-text-secondary">{formatDateTimePtBR(row.created_at)}</span>
+                          </div>
+
+                          {rowExpired && (
+                            <span className="text-red-400 text-xs font-semibold border border-red-500/30 bg-red-500/10 px-2 py-1 rounded">
+                              Expirado
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-2 text-xs text-text-secondary">
+                          Slug não pode ser alterado. Para mudar o slug, apague o site e crie outro.
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      <MousePointerClick className="h-4 w-4 text-text-secondary" />
-                      <span className="text-emerald-400 font-semibold">{site.cta_click_count}</span>
-                      <span className="text-text-secondary">cliques</span>
+                  {!lockedByPlan && (
+                    <div className="flex items-center gap-2 flex-shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 border-dark-border">
+                      <button
+                        onClick={() => toggleActive(row)}
+                        className={`p-2 rounded-md transition-colors ${
+                          row.active
+                            ? "bg-green-500/10 text-green-500 hover:bg-green-500/20"
+                            : "bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                        }`}
+                        title={row.active ? "Desativar" : "Ativar"}
+                        type="button"
+                      >
+                        {row.active ? <CheckCircle className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
+                      </button>
+
+                      <button
+                        onClick={() => startEdit(row)}
+                        className="p-2 rounded-md bg-dark-bg text-text-secondary hover:text-shopee-orange hover:bg-dark-border transition-colors"
+                        title="Editar"
+                        type="button"
+                      >
+                        <Edit className="h-5 w-5" />
+                      </button>
+
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 rounded-md bg-dark-bg text-text-secondary hover:text-link hover:bg-dark-border transition-colors"
+                        title="Abrir em nova guia"
+                      >
+                        <ExternalLink className="h-5 w-5" />
+                      </a>
+
+                      <button
+                        onClick={() => {
+                          setDeleteTargetSite(row);
+                          setShowDeleteModal(true);
+                        }}
+                        className="p-2 rounded-md bg-dark-bg text-text-secondary hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                        title="Apagar site"
+                        type="button"
+                      >
+                        <Trash2 className="h-5 w-5" />
+                      </button>
                     </div>
-
-                    <div className="flex items-center gap-2">
-                      <Eye className="h-4 w-4 text-text-secondary" />
-                      <span className="text-sky-400 font-semibold">{site.view_count}</span>
-                      <span className="text-text-secondary">views</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <span className="text-text-secondary">Criado em</span>
-                      <span className="text-text-secondary">{formatDateTimePtBR(site.created_at)}</span>
-                    </div>
-
-                    {expired && (
-                      <span className="text-red-400 text-xs font-semibold border border-red-500/30 bg-red-500/10 px-2 py-1 rounded">
-                        Expirado
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mt-2 text-xs text-text-secondary">
-                    Slug não pode ser alterado. Para mudar o slug, apague o site e crie outro.
-                  </div>
+                  )}
                 </div>
               </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center gap-2 flex-shrink-0 pt-3 lg:pt-0 border-t lg:border-t-0 border-dark-border">
-              <button
-                onClick={toggleActive}
-                className={`p-2 rounded-md transition-colors ${
-                  site.active
-                    ? "bg-green-500/10 text-green-500 hover:bg-green-500/20"
-                    : "bg-red-500/10 text-red-500 hover:bg-red-500/20"
-                }`}
-                title={site.active ? "Desativar" : "Ativar"}
-                type="button"
-              >
-                {site.active ? <CheckCircle className="h-5 w-5" /> : <XCircle className="h-5 w-5" />}
-              </button>
-
-              <button
-                onClick={startEdit}
-                className="p-2 rounded-md bg-dark-bg text-text-secondary hover:text-shopee-orange hover:bg-dark-border transition-colors"
-                title="Editar"
-                type="button"
-              >
-                <Edit className="h-5 w-5" />
-              </button>
-
-              <a
-                href={publicUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2 rounded-md bg-dark-bg text-text-secondary hover:text-link hover:bg-dark-border transition-colors"
-                title="Abrir em nova guia"
-              >
-                <ExternalLink className="h-5 w-5" />
-              </a>
-
-              <button
-                onClick={() => setShowDeleteModal(true)}
-                className="p-2 rounded-md bg-dark-bg text-text-secondary hover:text-red-500 hover:bg-red-500/10 transition-colors"
-                title="Apagar site"
-                type="button"
-              >
-                <Trash2 className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
+            );
+          })}
         </div>
       )}
 
@@ -920,7 +998,10 @@ export default function CapturaClient() {
 
               {mode === "edit" && (
                 <button
-                  onClick={() => setShowDeleteModal(true)}
+                  onClick={() => {
+                    setDeleteTargetSite(null);
+                    setShowDeleteModal(true);
+                  }}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors text-sm font-semibold"
                   type="button"
                   title="Apagar para poder mudar o slug"
@@ -959,7 +1040,10 @@ export default function CapturaClient() {
                           required
                         />
                       </div>
-                      <p className="mt-1.5 text-xs text-text-secondary/80">Apenas letras minúsculas, números e hífen.</p>
+                      <p className="mt-1.5 text-xs text-text-secondary/80">
+                        Apenas letras minúsculas, números e hífen. O slug é único no link público ({DOMAIN}
+                        /…): não pode repetir em outra conta nem em outro seu site.
+                      </p>
                     </div>
                   ) : (
                     <div>
@@ -1295,11 +1379,14 @@ export default function CapturaClient() {
       )}
 
       <DeleteSiteModal
-        open={showDeleteModal && !!site}
+        open={showDeleteModal && !!(deleteTargetSite ?? site)}
         isDeleting={isDeleting}
-        publicUrl={publicUrl}
+        publicUrl={publicUrlForDelete}
         onClose={() => {
-          if (!isDeleting) setShowDeleteModal(false);
+          if (!isDeleting) {
+            setShowDeleteModal(false);
+            setDeleteTargetSite(null);
+          }
         }}
         onConfirm={confirmDelete}
       />

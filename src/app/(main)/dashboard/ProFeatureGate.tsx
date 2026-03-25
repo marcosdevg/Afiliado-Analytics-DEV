@@ -37,7 +37,7 @@ export default function ProFeatureGate({
           Pro. Faça upgrade para desbloquear todos os recursos avançados.
         </p>
         <a
-          href="https://pay.kiwify.com.br/4fAAtkD"
+          href="https://pay.kiwify.com.br/0mRaPls"
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-2 px-6 py-3 bg-shopee-orange hover:bg-shopee-orange/90 text-white font-semibold rounded-xl text-sm transition-colors shadow-[0_4px_16px_rgba(238,77,45,0.3)]"

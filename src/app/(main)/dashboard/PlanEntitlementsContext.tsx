@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
@@ -53,7 +54,7 @@ export function PlanEntitlementsProvider({ children }: { children: ReactNode }) 
     };
   }, [tick]);
 
-  const refresh = () => setTick((t) => t + 1);
+  const refresh = useCallback(() => setTick((t) => t + 1), []);
 
   return (
     <Ctx.Provider value={{ tier, entitlements, usage, loading, refresh }}>

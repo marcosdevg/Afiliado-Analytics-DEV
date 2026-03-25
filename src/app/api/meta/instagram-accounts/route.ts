@@ -11,6 +11,12 @@ import { createClient } from "../../../../../utils/supabase/server";
 
 const GRAPH_BASE = "https://graph.facebook.com/v21.0";
 
+function normalizeAdAccountId(id: string): string {
+  const raw = String(id).trim();
+  if (!raw) return raw;
+  return raw.startsWith("act_") ? raw : `act_${raw}`;
+}
+
 type IgNode = { id: string; username?: string; profile_pic?: string; name?: string; profile_picture_url?: string };
 
 export async function GET(req: Request) {
@@ -29,7 +35,7 @@ export async function GET(req: Request) {
     if (!token) return NextResponse.json({ error: "Token do Meta não configurado." }, { status: 400 });
 
     const url = new URL(req.url);
-    const adAccountId = url.searchParams.get("ad_account_id")?.trim();
+    const adAccountId = normalizeAdAccountId(url.searchParams.get("ad_account_id")?.trim() ?? "");
     const pageId = url.searchParams.get("page_id")?.trim();
     const businessId = url.searchParams.get("business_id")?.trim();
 
@@ -38,6 +44,9 @@ export async function GET(req: Request) {
     const seen = new Set<string>();
     const accounts: { id: string; username: string; profile_pic: string | null; source: string }[] = [];
     const debug: string[] = [];
+    const adEligibleIds = new Set<string>();
+    /** true só se /{ad_account}/instagram_accounts retornou pelo menos 1 conta (aí podemos comparar com o picker). */
+    let adAccountIgListNonEmpty = false;
 
     const addAccount = (node: IgNode, source: string) => {
       if (!node.id || seen.has(node.id)) return;
@@ -55,6 +64,19 @@ export async function GET(req: Request) {
       return res.json();
     };
 
+    // 0) SEMPRE buscar /{ad_account_id}/instagram_accounts — são os únicos garantidos para ads
+    try {
+      const json = await fetchJson(`${GRAPH_BASE}/${adAccountId}/instagram_accounts?fields=id,username,profile_picture_url&access_token=${encodeURIComponent(token)}`);
+      debug.push(`adacct/ig: ${json.data?.length ?? 0}${json.error ? ` err:${json.error.message}` : ""}`);
+      if (json.data?.length) {
+        adAccountIgListNonEmpty = true;
+        (json.data as IgNode[]).forEach((n) => {
+          adEligibleIds.add(n.id);
+          addAccount(n, "ad_account");
+        });
+      }
+    } catch { debug.push("adacct/ig: erro"); }
+
     // Obter page access token
     let pageAccessToken: string | null = null;
     if (pageId) {
@@ -66,35 +88,33 @@ export async function GET(req: Request) {
       } catch { debug.push("page_token: erro"); }
     }
 
+    // Preferir sempre o ID de instagram_business_account (profissional) para anúncios — não o connected (pessoal), quando forem diferentes.
+    if (pageId && pageAccessToken) {
+      try {
+        const json = await fetchJson(
+          `${GRAPH_BASE}/${pageId}?fields=instagram_business_account{id,username,profile_picture_url},connected_instagram_account{id,username,profile_picture_url}&access_token=${encodeURIComponent(pageAccessToken)}`
+        );
+        const biz = json.instagram_business_account as IgNode | undefined;
+        const conn = json.connected_instagram_account as IgNode | undefined;
+        if (biz?.id) addAccount(biz, "page_iba");
+        if (conn?.id && (!biz?.id || String(conn.id) !== String(biz.id))) {
+          if (!biz?.id) addAccount(conn, "page_conn");
+        }
+        debug.push(
+          `page_iba: biz=${biz?.id ?? "-"} conn=${conn?.id ?? "-"}${json.error ? ` err:${json.error.message}` : ""}`
+        );
+      } catch {
+        debug.push("page_iba: erro");
+      }
+    }
+
     // 1) /{page_id}/instagram_accounts com page token
     if (pageId && pageAccessToken) {
       try {
-        const json = await fetchJson(`${GRAPH_BASE}/${pageId}/instagram_accounts?fields=id,username,profile_pic&access_token=${encodeURIComponent(pageAccessToken)}`);
+        const json = await fetchJson(`${GRAPH_BASE}/${pageId}/instagram_accounts?fields=id,username,profile_picture_url&access_token=${encodeURIComponent(pageAccessToken)}`);
         debug.push(`page/ig: ${json.data?.length ?? 0}${json.error ? ` err:${json.error.message}` : ""}`);
         if (json.data) (json.data as IgNode[]).forEach((n) => addAccount(n, "page"));
       } catch { debug.push("page/ig: erro"); }
-    }
-
-    // 2) /{page_id} fields direto (instagram_business_account + connected_instagram_account)
-    if (pageId && accounts.length === 0) {
-      const tkn = pageAccessToken || token;
-      try {
-        const json = await fetchJson(`${GRAPH_BASE}/${pageId}?fields=instagram_business_account{id,username,profile_picture_url},connected_instagram_account{id,username,profile_picture_url}&access_token=${encodeURIComponent(tkn)}`);
-        const biz = json.instagram_business_account;
-        const conn = json.connected_instagram_account;
-        if (biz) addAccount({ id: biz.id, username: biz.username, profile_picture_url: biz.profile_picture_url }, "page_biz");
-        if (conn) addAccount({ id: conn.id, username: conn.username, profile_picture_url: conn.profile_picture_url }, "page_conn");
-        debug.push(`page_fields: biz=${biz?.id ?? "-"} conn=${conn?.id ?? "-"}${json.error ? ` err:${json.error.message}` : ""}`);
-      } catch { debug.push("page_fields: erro"); }
-    }
-
-    // 3) /{ad_account_id}/instagram_accounts
-    if (accounts.length === 0) {
-      try {
-        const json = await fetchJson(`${GRAPH_BASE}/${adAccountId}/instagram_accounts?fields=id,username,profile_pic&access_token=${encodeURIComponent(token)}`);
-        debug.push(`adacct/ig: ${json.data?.length ?? 0}${json.error ? ` err:${json.error.message}` : ""}`);
-        if (json.data) (json.data as IgNode[]).forEach((n) => addAccount(n, "ad_account"));
-      } catch { debug.push("adacct/ig: erro"); }
     }
 
     // Resolver business_id
@@ -105,34 +125,34 @@ export async function GET(req: Request) {
       } catch { return undefined; }
     })();
 
-    // 4) /{business_id}/instagram_accounts
+    // 3) /{business_id}/instagram_accounts
     if (bizId && accounts.length === 0) {
       try {
-        const json = await fetchJson(`${GRAPH_BASE}/${bizId}/instagram_accounts?fields=id,username,profile_pic&access_token=${encodeURIComponent(token)}`);
+        const json = await fetchJson(`${GRAPH_BASE}/${bizId}/instagram_accounts?fields=id,username,profile_picture_url&access_token=${encodeURIComponent(token)}`);
         debug.push(`biz/ig: ${json.data?.length ?? 0}${json.error ? ` err:${json.error.message}` : ""}`);
         if (json.data) (json.data as IgNode[]).forEach((n) => addAccount(n, "business"));
       } catch { debug.push("biz/ig: erro"); }
     }
 
-    // 5) /{business_id}/owned_instagram_accounts
+    // 4) /{business_id}/owned_instagram_accounts
     if (bizId && accounts.length === 0) {
       try {
-        const json = await fetchJson(`${GRAPH_BASE}/${bizId}/owned_instagram_accounts?fields=id,username,profile_pic&access_token=${encodeURIComponent(token)}`);
+        const json = await fetchJson(`${GRAPH_BASE}/${bizId}/owned_instagram_accounts?fields=id,username,profile_picture_url&access_token=${encodeURIComponent(token)}`);
         debug.push(`biz/owned_ig: ${json.data?.length ?? 0}${json.error ? ` err:${json.error.message}` : ""}`);
         if (json.data) (json.data as IgNode[]).forEach((n) => addAccount(n, "biz_owned"));
       } catch { debug.push("biz/owned_ig: erro"); }
     }
 
-    // 6) /{business_id}/client_instagram_accounts
+    // 5) /{business_id}/client_instagram_accounts
     if (bizId && accounts.length === 0) {
       try {
-        const json = await fetchJson(`${GRAPH_BASE}/${bizId}/client_instagram_accounts?fields=id,username,profile_pic&access_token=${encodeURIComponent(token)}`);
+        const json = await fetchJson(`${GRAPH_BASE}/${bizId}/client_instagram_accounts?fields=id,username,profile_picture_url&access_token=${encodeURIComponent(token)}`);
         debug.push(`biz/client_ig: ${json.data?.length ?? 0}${json.error ? ` err:${json.error.message}` : ""}`);
         if (json.data) (json.data as IgNode[]).forEach((n) => addAccount(n, "biz_client"));
       } catch { debug.push("biz/client_ig: erro"); }
     }
 
-    // 7) Fallback: me/accounts → instagram_business_account
+    // 6) Fallback: me/accounts → instagram_business_account
     if (accounts.length === 0) {
       try {
         const json = await fetchJson(`${GRAPH_BASE}/me/accounts?fields=id,instagram_business_account{id,username,profile_picture_url}&access_token=${encodeURIComponent(token)}`);
@@ -149,7 +169,12 @@ export async function GET(req: Request) {
       } catch { debug.push("me/accounts: erro"); }
     }
 
-    return NextResponse.json({ accounts, _debug: debug });
+    return NextResponse.json({
+      accounts,
+      ad_eligible_ids: Array.from(adEligibleIds),
+      ad_account_ig_list_nonempty: adAccountIgListNonEmpty,
+      _debug: debug,
+    });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Erro ao listar contas Instagram" }, { status: 500 });
   }

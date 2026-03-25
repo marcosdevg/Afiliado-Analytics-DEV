@@ -85,11 +85,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
 
-  // Como é 1 site por usuário, pegamos o site do usuário logado
-  const { data: site, error: siteErr } = await supaUser
-    .from("capture_sites")
-    .select("id")
-    .maybeSingle();
+  const body = await req.json().catch(() => ({}));
+  const siteIdFromBody = typeof body?.site_id === "string" ? body.site_id.trim() : "";
+
+  let site: { id: string } | null = null;
+  let siteErr: { message: string } | null = null;
+
+  if (siteIdFromBody) {
+    const r = await supaUser.from("capture_sites").select("id").eq("id", siteIdFromBody).maybeSingle();
+    site = r.data;
+    siteErr = r.error;
+  } else {
+    const r = await supaUser.from("capture_sites").select("id").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    site = r.data;
+    siteErr = r.error;
+  }
 
   if (siteErr) return NextResponse.json({ error: siteErr.message }, { status: 400 });
   if (!site) return NextResponse.json({ error: "Site não encontrado." }, { status: 404 });

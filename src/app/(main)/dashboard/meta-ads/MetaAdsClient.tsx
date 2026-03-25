@@ -23,6 +23,7 @@ import {
   Check,
   X,
   Info,
+  AlertTriangle,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import LoadingOverlay from "@/app/components/ui/LoadingOverlay";
@@ -149,6 +150,7 @@ export default function MetaAdsClient() {
   const [libraryImages, setLibraryImages] = useState<LibraryImage[]>([]);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [instagramAccountId, setInstagramAccountId] = useState("");
+  const [useInstagramIdentity, setUseInstagramIdentity] = useState(false);
   const [createdAdId, setCreatedAdId] = useState("");
   const [mediaType, setMediaType] = useState<"image" | "video">("image");
   const [videoId, setVideoId] = useState("");
@@ -164,11 +166,17 @@ export default function MetaAdsClient() {
   const [loadingIgAccounts, setLoadingIgAccounts] = useState(false);
   const [igDebug, setIgDebug] = useState<string | null>(null);
   const [igManualMode, setIgManualMode] = useState(false);
+  const [adEligibleIgIds, setAdEligibleIgIds] = useState<Set<string>>(new Set());
+  const [adAccountIgListNonEmpty, setAdAccountIgListNonEmpty] = useState(false);
   const [imgPage, setImgPage] = useState(0);
   const [vidPage, setVidPage] = useState(0);
 
   const IMG_PER_PAGE = 12; // 4 colunas × 3 linhas
   const VID_PER_PAGE = 6;  // 2 colunas × 3 linhas
+  const selectedAccount = adAccounts.find((a) => a.id === adAccountId);
+  const isPortfolioAccount = Boolean(selectedAccount?.business_id);
+  const pageList = isPortfolioAccount ? pages : (promotePages.length ? promotePages : pages);
+  const selectedPage = pageList.find((p) => p.id === pageId) || pages.find((p) => p.id === pageId);
 
   useEffect(() => {
     let cancelled = false;
@@ -216,24 +224,51 @@ export default function MetaAdsClient() {
   }, [adAccountId, adAccounts]);
 
   useEffect(() => {
-    if (!adAccountId) { setIgAccounts([]); setInstagramAccountId(""); return; }
+    if (!adAccountId) {
+      setIgAccounts([]);
+      setInstagramAccountId("");
+      setAdEligibleIgIds(new Set());
+      setAdAccountIgListNonEmpty(false);
+      return;
+    }
     let cancelled = false;
     setLoadingIgAccounts(true);
+    setAdAccountIgListNonEmpty(false);
     const params = new URLSearchParams({ ad_account_id: adAccountId });
     if (pageId) params.set("page_id", pageId);
     const acct = adAccounts.find((a) => a.id === adAccountId);
     if (acct?.business_id) params.set("business_id", acct.business_id);
     fetch(`/api/meta/instagram-accounts?${params.toString()}`)
       .then((r) => r.json())
-      .then((json) => { if (!cancelled) { setIgAccounts(json.accounts ?? []); setIgDebug(json._debug ? json._debug.join(" | ") : null); } })
-      .catch(() => { if (!cancelled) { setIgAccounts([]); setIgDebug(null); } })
+      .then((json) => {
+        if (cancelled) return;
+        setIgAccounts(json.accounts ?? []);
+        setAdEligibleIgIds(new Set(json.ad_eligible_ids ?? []));
+        setAdAccountIgListNonEmpty(Boolean(json.ad_account_ig_list_nonempty));
+        setIgDebug(json._debug ? json._debug.join(" | ") : null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setIgAccounts([]);
+          setAdEligibleIgIds(new Set());
+          setAdAccountIgListNonEmpty(false);
+          setIgDebug(null);
+        }
+      })
       .finally(() => { if (!cancelled) setLoadingIgAccounts(false); });
     return () => { cancelled = true; };
   }, [adAccountId, pageId, adAccounts]);
 
-  const selectedAccount = adAccounts.find((a) => a.id === adAccountId);
-  const isPortfolioAccount = Boolean(selectedAccount?.business_id);
-  const pageList = isPortfolioAccount ? pages : (promotePages.length ? promotePages : pages);
+  useEffect(() => {
+    // Mantém seleção atual se ainda existir
+    if (instagramAccountId && igAccounts.some((ig) => ig.id === instagramAccountId)) return;
+    // Seleção automática apenas entre IDs retornados pelo endpoint de IG para anúncios.
+    if (igAccounts.length > 0) {
+      setInstagramAccountId(igAccounts[0].id);
+      return;
+    }
+    setInstagramAccountId("");
+  }, [igAccounts, instagramAccountId]);
 
   useEffect(() => {
     if (!adAccountId) { setPixels([]); return; }
@@ -269,8 +304,22 @@ export default function MetaAdsClient() {
     [adAccounts]
   );
   const pagePickerOptions = useMemo(
-    () => (adAccountId ? pageList : pages).map((p) => ({ value: p.id, label: p.name })),
+    () =>
+      (adAccountId ? pageList : pages).map((p) => ({
+        value: p.id,
+        label: p.name,
+        description: p.id,
+      })),
     [adAccountId, pageList, pages]
+  );
+  const instagramPickerOptions = useMemo(
+    () =>
+      igAccounts.map((ig) => ({
+        value: ig.id,
+        label: `@${ig.username}`,
+        description: ig.id,
+      })),
+    [igAccounts]
   );
   const pixelPickerOptions = useMemo(
     () => pixels.map((p) => ({ value: p.id, label: p.name || "Pixel", description: p.id })),
@@ -378,6 +427,10 @@ export default function MetaAdsClient() {
   const createAd = async () => {
     const hasImage = imageHash.trim() || imageUrl.trim();
     const hasVideo = mediaType === "video" && videoId.trim();
+    if (useInstagramIdentity && !instagramAccountId.trim()) {
+      setError("Selecione uma conta do Instagram antes de criar o anúncio.");
+      return;
+    }
     if (!adMessage.trim()) { setError("Preencha o texto do anúncio."); return; }
     if (mediaType === "image" && !hasImage) { setError("Escolha uma imagem da biblioteca, envie uma nova ou use a URL."); return; }
     if (mediaType === "video") {
@@ -390,7 +443,7 @@ export default function MetaAdsClient() {
         ad_account_id: adAccountId, adset_id: adsetId, name: adName || "Anúncio",
         page_id: pageId, link: adLink.trim(), message: adMessage.trim(),
         title: adTitle.trim() || undefined, call_to_action: callToAction,
-        instagram_actor_id: instagramAccountId || undefined,
+        instagram_actor_id: useInstagramIdentity ? (instagramAccountId || undefined) : undefined,
       };
       if (mediaType === "video") {
         body.video_id = videoId.trim();
@@ -408,8 +461,18 @@ export default function MetaAdsClient() {
       const res = await fetch("/api/meta/ads", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Erro ao criar anúncio");
+      const json = await res.json() as {
+        error?: string;
+        meta_error?: { message?: string; error_user_msg?: string; error_subcode?: number };
+        ad_id?: string;
+      };
+      if (!res.ok) {
+        let errMsg = json?.error ?? "Erro ao criar anúncio";
+        const meta = json?.meta_error;
+        if (meta?.error_user_msg) errMsg += ` — ${meta.error_user_msg}`;
+        else if (meta?.message && !errMsg.includes(meta.message)) errMsg += ` — ${meta.message}`;
+        throw new Error(errMsg);
+      }
       setCreatedAdId(json.ad_id ?? ""); setStep(4);
     } catch (e) { setError(e instanceof Error ? e.message : "Erro ao criar anúncio"); }
     finally { setLoading(false); }
@@ -616,6 +679,92 @@ export default function MetaAdsClient() {
                       <p className="text-xs text-amber-400 mt-1.5">Nenhuma Página disponível. Vincule uma Página ao negócio no Facebook.</p>
                     )}
                   </>
+                )}
+              </div>
+              <div>
+                <FieldLabel hint="Selecione Conta de anúncios e Página do Facebook para ver contas do Instagram disponíveis. Caso você não selecione uma conta do Instagram, o Meta fará isso por você; esse campo não é obrigatório.">
+                  Perfil do Instagram
+                </FieldLabel>
+                <div className="flex items-center gap-2 mb-2">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={useInstagramIdentity}
+                    title={useInstagramIdentity ? "Desativar identidade do Instagram no anúncio" : "Ativar identidade do Instagram no anúncio"}
+                    onClick={() => setUseInstagramIdentity((v) => !v)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-shopee-orange/50 ${
+                      useInstagramIdentity ? "bg-shopee-orange border-transparent" : "bg-dark-border border-gray-600"
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow ring-0 transition ${
+                        useInstagramIdentity ? "translate-x-4" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                  <span className="text-xs text-text-secondary">Usar Conta Instagram</span>
+                </div>
+                {!useInstagramIdentity ? null : !adAccountId || !pageId ? (
+                  <div className="py-1">
+                    <Loader2 className="h-4 w-4 animate-spin text-text-secondary/60" />
+                  </div>
+                ) : loadingIgAccounts ? (
+                  <div className="w-full rounded-xl border border-dark-border bg-dark-bg py-2 px-3 text-sm text-text-secondary/70">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-shopee-orange" />
+                      <span>Carregando perfis do Instagram...</span>
+                    </div>
+                  </div>
+                ) : instagramPickerOptions.length > 0 ? (
+                  <MetaSearchablePicker
+                    value={instagramAccountId}
+                    onChange={(v) => {
+                      setInstagramAccountId(v);
+                      setIgManualMode(false);
+                    }}
+                    options={instagramPickerOptions}
+                    modalTitle="Perfil do Instagram"
+                    modalDescription="Selecione o perfil para anunciar no posicionamento Instagram."
+                    searchPlaceholder="Filtrar perfis…"
+                    emptyButtonLabel="Selecionar perfil do Instagram"
+                  />
+                ) : (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
+                    <p className="text-xs text-amber-300">
+                      Nenhum perfil do Instagram encontrado automaticamente para esta conta/página.
+                    </p>
+                    {!igManualMode ? (
+                      <button
+                        type="button"
+                        onClick={() => setIgManualMode(true)}
+                        className="text-xs text-shopee-orange hover:underline font-semibold"
+                      >
+                        Inserir ID do Instagram manualmente
+                      </button>
+                    ) : (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={instagramAccountId}
+                          onChange={(e) => setInstagramAccountId(e.target.value.trim())}
+                          placeholder="Ex: 17841400000000000"
+                          className={inputCls}
+                        />
+                        <p className="text-[11px] text-text-secondary/70">
+                          Use se você já sabe o IG User ID e o token tem as permissões de Instagram.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {useInstagramIdentity && instagramAccountId && adAccountIgListNonEmpty && !adEligibleIgIds.has(instagramAccountId) && !loadingIgAccounts && (
+                  <div className="flex items-start gap-2 mt-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-2.5">
+                    <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-300 leading-relaxed">
+                      O Meta listou outras contas de Instagram para esta conta de anúncios, mas <strong>não esta</strong>.
+                      Verifique se você selecionou a mesma conta de anúncios do Business Manager (ex.: HGARDEN1) e se a Página do anúncio é a vinculada a esse Instagram.
+                    </p>
+                  </div>
                 )}
               </div>
 
@@ -924,6 +1073,15 @@ export default function MetaAdsClient() {
                   <p className="text-xs font-semibold text-text-primary truncate">
                     {pages.find((p) => p.id === pageId)?.name || pageList.find((p) => p.id === pageId)?.name || "—"}
                   </p>
+                  {instagramAccountId && (
+                    <p className="text-[11px] text-text-secondary truncate">
+                      Instagram: {
+                        igAccounts.find((ig) => ig.id === instagramAccountId)?.username
+                          ? `@${igAccounts.find((ig) => ig.id === instagramAccountId)?.username}`
+                          : instagramAccountId
+                      }
+                    </p>
+                  )}
                 </div>
               </div>
 

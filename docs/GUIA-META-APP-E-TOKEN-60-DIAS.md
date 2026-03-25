@@ -112,6 +112,7 @@ O token que o Explorer gera primeiro costuma durar **poucas horas** (token de us
    - `business_management`
    - `pages_show_list`
    - `pages_read_engagement`
+   - `pages_manage_ads`
 5. Confirme com **“Salvar”** / **“Done”** e faça login/autorize com a conta Facebook que administra o negócio e as contas de anúncios.
 6. Copie o **token** que aparece no campo (string longa começando com `EAAG...` ou similar).
 
