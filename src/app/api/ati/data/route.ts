@@ -73,10 +73,13 @@ export async function GET(req: Request) {
 
     const baseUrl = new URL(req.url).origin;
 
-    const metaRes = await fetch(`${baseUrl}/api/meta/insights?ati=1`, {
-      headers: { cookie: req.headers.get("cookie") ?? "" },
-      cache: "no-store",
-    });
+    const metaRes = await fetch(
+      `${baseUrl}/api/meta/insights?ati=1&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+      {
+        headers: { cookie: req.headers.get("cookie") ?? "" },
+        cache: "no-store",
+      }
+    );
 
     if (!metaRes.ok) {
       const err = (await metaRes.json()) as { error?: string };
@@ -246,7 +249,7 @@ export async function GET(req: Request) {
       adStatusMap,
       shopeePeriodStart: start,
       shopeePeriodEnd: end,
-      metaMetricsMode: "lifetime",
+      metaMetricsMode: "range",
       ...(shopeeWarning ? { shopeeWarning } : {}),
     });
   } catch (e) {

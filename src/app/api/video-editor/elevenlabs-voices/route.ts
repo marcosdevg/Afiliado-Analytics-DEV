@@ -4,19 +4,21 @@
  */
 
 import { assertVideoEditorPro } from "@/lib/gate-video-editor-request";
+import { requireElevenLabsApiKey } from "@/lib/elevenlabs-api-key";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
-
-const ELEVEN_API_KEY = process.env.ELEVENLABS_API_KEY || "sk_ee8e7c34a6083c306e7840b42cfcc65d6748619bed210fa0";
 
 export async function GET() {
   try {
     const gate = await assertVideoEditorPro();
     if (!gate.ok) return gate.response;
 
+    const keyRes = requireElevenLabsApiKey();
+    if (!keyRes.ok) return keyRes.response;
+
     const res = await fetch("https://api.elevenlabs.io/v1/voices", {
-      headers: { "xi-api-key": ELEVEN_API_KEY },
+      headers: { "xi-api-key": keyRes.key },
     });
 
     if (!res.ok) {

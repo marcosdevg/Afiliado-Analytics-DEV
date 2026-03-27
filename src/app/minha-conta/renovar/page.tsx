@@ -7,7 +7,7 @@ import { createClient } from '../../../../utils/supabase/server'
 import { LogoutButton } from './LogoutButton'
 
 const kiwifyLoginUrl = 'https://dashboard.kiwify.com/login?lang=pt'
-const whatsappUrl = 'https://wa.me/5579999407366'
+const whatsappUrl = 'https://wa.me/5579999144028'
 
 export default async function RenewPage() {
   const supabase = await createClient()

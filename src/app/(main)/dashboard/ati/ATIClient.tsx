@@ -41,6 +41,13 @@ import {
   writeAtiSessionCache,
 } from "@/lib/ati/session-cache";
 import type { MetricLevel } from "@/lib/ati/types";
+import {
+  canValidateCreative,
+  getCreativeDiagnosis,
+  getCreativeStatus,
+  getLevelCpcMeta,
+  getLevelClickDiscrepancy,
+} from "@/lib/ati/rules";
 import { META_CREATE_CAMPAIGN_OBJECTIVES, META_CAMPAIGN_OBJECTIVES } from "@/lib/meta-ads-constants";
 import MetaAdSetForm from "@/app/components/meta/MetaAdSetForm";
 import MetaAdForm from "@/app/components/meta/MetaAdForm";
@@ -57,7 +64,7 @@ function formatPct(value: number): string {
 /** Afiliado Shopee: valor da venda ≠ comissão. ROAS e lucro líquido usam comissão. */
 const ATI_HINT = {
   custo:
-    "Afiliado Shopee: quanto você gastou em anúncio no Meta (Facebook) neste anúncio — lifetime. Não tem relação com o valor do produto na Shopee.",
+    "Quanto você gastou em anúncio no Meta (Facebook) neste anúncio, no mesmo período selecionado acima (Meta + vendas Shopee). Não tem relação com o valor do produto na Shopee.",
   valorVendas:
     "Soma do que os clientes pagaram nos pedidos (Valor de Compra no relatório Shopee), com seu Sub ID no período. Ex.: produto sai R$ 50 — aqui entra R$ 50. Isso NÃO é o que cai na sua conta; sua grana é a comissão.",
   comissao:
@@ -240,6 +247,69 @@ function AdAccordionItem({
     if (isOpen && row) onExpandedFetchLink(row);
   }, [isOpen, row.adId]);
 
+  // Permite ao usuário sobrescrever manualmente "Cliques Shopee" (API Shopee não retorna cliques).
+  // "Cliques Meta" continua vindo do Meta (API) via `row.clicksMeta`.
+  const [clicksShopeeDraft, setClicksShopeeDraft] = useState<string>(() =>
+    String(row.clicksShopee ?? row.clicksMeta ?? 0)
+  );
+  useEffect(() => {
+    setClicksShopeeDraft(String(row.clicksShopee ?? row.clicksMeta ?? 0));
+  }, [row.adId, row.clicksShopee, row.clicksMeta]);
+
+  const effectiveClicksShopee = useMemo(() => {
+    const trimmed = clicksShopeeDraft.trim();
+    if (!trimmed) return 0;
+    const n = Number(trimmed);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.floor(n));
+  }, [clicksShopeeDraft]);
+
+  const clickDiscrepancyPct = useMemo(() => {
+    return row.clicksMeta > 0 ? ((row.clicksMeta - effectiveClicksShopee) / row.clicksMeta) * 100 : 0;
+  }, [row.clicksMeta, effectiveClicksShopee]);
+
+  const effectiveEpc = useMemo(() => {
+    return effectiveClicksShopee > 0 ? row.commission / effectiveClicksShopee : 0;
+  }, [row.commission, effectiveClicksShopee]);
+
+  const effectiveLevelCpcMeta = useMemo(() => getLevelCpcMeta(row.cpcMeta), [row.cpcMeta]);
+  const effectiveLevelClickDiscrepancy = useMemo(
+    () => getLevelClickDiscrepancy(clickDiscrepancyPct),
+    [clickDiscrepancyPct]
+  );
+
+  const effectiveStatus = useMemo(() => {
+    return getCreativeStatus(
+      row.roas,
+      row.cpcMeta,
+      clickDiscrepancyPct,
+      row.cpa,
+      row.cost > 0 || row.clicksMeta > 0
+    );
+  }, [row.roas, row.cpcMeta, clickDiscrepancyPct, row.cpa, row.cost, row.clicksMeta]);
+
+  const effectiveDiagnosis = useMemo(() => {
+    return getCreativeDiagnosis(
+      effectiveStatus,
+      row.roas,
+      row.cpcMeta,
+      effectiveLevelCpcMeta,
+      clickDiscrepancyPct,
+      effectiveLevelClickDiscrepancy,
+      row.orders
+    );
+  }, [
+    effectiveStatus,
+    row.roas,
+    row.cpcMeta,
+    effectiveLevelCpcMeta,
+    clickDiscrepancyPct,
+    effectiveLevelClickDiscrepancy,
+    row.orders,
+  ]);
+
+  const effectiveCanValidate = useMemo(() => canValidateCreative(effectiveStatus), [effectiveStatus]);
+
   const profit = row.commission - row.cost;
   const isProfitPositive = profit >= 0;
 
@@ -272,7 +342,7 @@ function AdAccordionItem({
               <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow ring-0 transition ${adStatus === "ACTIVE" ? "translate-x-4" : "translate-x-0.5"}`} />
             </button>
           )}
-          <StatusBadge status={row.status} />
+          <StatusBadge status={effectiveStatus} />
           {isOpen ? <ChevronUp className="h-4 w-4 text-text-secondary" /> : <ChevronDown className="h-4 w-4 text-text-secondary" />}
         </span>
       </button>
@@ -444,7 +514,14 @@ function AdAccordionItem({
             </div>
             <div className="rounded-lg bg-dark-card border border-dark-border p-3">
               <MetricHint icon={MousePointerClick} label="Cliques Shopee" hint={ATI_HINT.cliques} />
-              <p className="text-text-primary font-bold text-sm">{row.clicksShopee || row.clicksMeta}</p>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={clicksShopeeDraft}
+                onChange={(e) => setClicksShopeeDraft(e.target.value)}
+                className="w-full rounded-md border border-shopee-orange/60 bg-dark-card py-1.5 px-2 text-text-primary font-bold text-sm text-center focus:outline-none focus:border-shopee-orange/90 focus:ring-1 focus:ring-shopee-orange/20"
+              />
             </div>
           </div>
 
@@ -473,7 +550,7 @@ function AdAccordionItem({
                   <tr className="bg-dark-bg/50 border-b border-dark-border text-text-primary">
                     <td className="py-2 px-3">{dateLabel}</td>
                     <td className="text-right py-2 px-2 text-red-400">{formatBRL(row.cost)}</td>
-                    <td className="text-right py-2 px-2">{row.clicksShopee || row.clicksMeta}</td>
+                    <td className="text-right py-2 px-2">{row.clicksMeta}</td>
                     <td className="text-right py-2 px-2">{formatBRL(row.cpcMeta)}</td>
                     <td className="text-right py-2 px-2">{row.ctrMeta.toFixed(2)}%</td>
                     <td className="text-right py-2 px-2">{row.orders}</td>
@@ -482,7 +559,7 @@ function AdAccordionItem({
                     <td className="text-right py-2 px-2 text-shopee-orange">{formatBRL(row.commission)}</td>
                     <td className={`text-right py-2 px-2 ${isProfitPositive ? "text-emerald-400" : "text-red-400"}`}>{formatBRL(profit)}</td>
                     <td className="text-right py-2 px-2">{row.roas.toFixed(2)}</td>
-                    <td className="text-right py-2 px-2">{formatBRL(row.epc)}</td>
+                    <td className="text-right py-2 px-2">{formatBRL(effectiveEpc)}</td>
                   </tr>
                 </tbody>
               </table>
@@ -490,26 +567,32 @@ function AdAccordionItem({
           </div>
 
           {/* Diagnóstico / Aviso abaixo da tabela */}
-          {row.diagnosis && (
+          {effectiveDiagnosis && (
             <div
               className={`rounded-lg border p-3 text-sm ${
-                row.status === "excellent"
+                effectiveStatus === "excellent"
                   ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-200"
-                  : row.status === "bad"
+                  : effectiveStatus === "bad"
                     ? "bg-red-500/10 border-red-500/30 text-red-200"
-                    : row.status === "pending"
+                    : effectiveStatus === "pending"
                       ? "bg-dark-border/20 border-dark-border text-text-secondary"
                       : "bg-amber-500/10 border-amber-500/30 text-amber-200"
               }`}
             >
               <p className="font-semibold mb-0.5">
-                {row.status === "excellent" ? "Pronto para escala" : row.status === "bad" ? "Criativo ruim" : row.status === "pending" ? "Aguardando dados" : "Criativo bom"}
+                {effectiveStatus === "excellent"
+                  ? "Pronto para escala"
+                  : effectiveStatus === "bad"
+                    ? "Criativo ruim"
+                    : effectiveStatus === "pending"
+                      ? "Aguardando dados"
+                      : "Criativo bom"}
               </p>
-              <p className="opacity-90">{row.diagnosis}</p>
+              <p className="opacity-90">{effectiveDiagnosis}</p>
             </div>
           )}
 
-          {row.canValidate && (
+          {effectiveCanValidate && (
             <button
               onClick={() => onValidate(row)}
               disabled={!!validatingId}
@@ -1248,8 +1331,8 @@ export default function ATIClient() {
     setCampaignListPage((p) => (p > max ? max : p < 1 ? 1 : p));
   }, [filteredAndGrouped.length]);
 
-  const shopeePeriodLabel = `${new Date(start).toLocaleDateString("pt-BR")} – ${new Date(end).toLocaleDateString("pt-BR")}`;
-  const dateLabel = `Vendas Shopee: ${shopeePeriodLabel}`;
+  const periodLabel = `${new Date(start).toLocaleDateString("pt-BR")} – ${new Date(end).toLocaleDateString("pt-BR")}`;
+  const dateLabel = `Meta + Shopee: ${periodLabel}`;
 
   return (
     <>
@@ -1268,10 +1351,10 @@ export default function ATIClient() {
             </div>
           </div>
 
-          {/* Período (vendas Shopee no relatório) + um único botão que atualiza Meta + Shopee */}
+          {/* Período: métricas Meta (insights) + vendas Shopee no relatório */}
           <div className="flex flex-col items-end gap-1 shrink-0 max-w-full">
             <span className="text-[10px] text-text-secondary/80 font-medium uppercase tracking-wide text-right">
-              Período das vendas Shopee
+              Período Meta + Shopee
             </span>
             <div className="flex flex-wrap items-center justify-end gap-2">
             <div className="flex items-center gap-1.5 bg-dark-card border border-dark-border rounded-xl px-3 py-1.5">

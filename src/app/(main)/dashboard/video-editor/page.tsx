@@ -5,8 +5,8 @@ import { createPortal } from "react-dom";
 import { Player } from "@remotion/player";
 import {
   Film, Upload, Loader2, Wand2, Mic, Image as ImageIcon,
-  Music, AlertCircle, ChevronLeft, ChevronRight, Sparkles, Download,
-  Check, CheckCircle2, Volume2, Search, Trash2, Play, Zap, ShoppingBag,
+  Music, AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, Sparkles, Download,
+  Check, CheckCircle2, Volume2, Search, Trash2, Play, Zap, ShoppingBag, X,
   TrendingUp, Timer, Star, LayoutGrid, Maximize2, Video, Info,
 } from "lucide-react";
 import { VideoComposition } from "../../../../../remotion/VideoComposition";
@@ -43,6 +43,8 @@ const inputCls = "w-full rounded-xl border border-dark-border bg-dark-bg py-2.5 
 const selectCls = inputCls;
 const btnPrimary = "inline-flex items-center justify-center gap-2 rounded-xl bg-shopee-orange px-5 py-2.5 text-sm font-semibold text-white hover:bg-shopee-orange/90 active:scale-[0.98] disabled:opacity-40 transition-all shadow-[0_4px_16px_rgba(238,77,45,0.3)]";
 const btnSecondary = "inline-flex items-center gap-1.5 rounded-xl border border-dark-border px-4 py-2.5 text-sm font-medium text-text-secondary hover:bg-white/5 hover:border-dark-border/80 active:scale-[0.98] transition-all";
+const DAILY_LIMIT_TOOLTIP =
+  "Prezado usuário, seu limite diário do Gerador de Criativos foi atingido, para liberar mais limite diário falar com nosso suporte. Lembre-se: no momento (caso você seja Pro) só é possível gerar dois áudios + legenda e exportar dois vídeos completos no gerador. Agradecemos sua compreensão!";
 
 // ─── Tooltip (estilo do app: portal, bg #111, ícone Info) ─────────────────────
 function Tooltip({ text, wide }: { text: string; wide?: boolean }) {
@@ -69,6 +71,51 @@ function Tooltip({ text, wide }: { text: string; wide?: boolean }) {
       <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#333]/80 text-[#888] hover:bg-shopee-orange/20 hover:text-shopee-orange transition-colors">
         <Info className="h-2.5 w-2.5" />
       </span>
+      {tip}
+    </span>
+  );
+}
+
+function LimitAlertTooltipIcon({ iconClassName }: { iconClassName: string }) {
+  const [visible, setVisible] = useState(false);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const anchorRef = useRef<HTMLSpanElement>(null);
+
+  const show = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setCoords({ top: rect.top + window.scrollY - 8, left: rect.left + rect.width / 2 + window.scrollX });
+    setVisible(true);
+  }, []);
+
+  const hide = useCallback(() => setVisible(false), []);
+
+  const tip = visible
+    ? createPortal(
+        <span
+          style={{ position: "absolute", top: coords.top, left: coords.left, transform: "translate(-50%, -100%)", zIndex: 99999 }}
+          className="pointer-events-none w-72 p-2.5 bg-[#111] border border-[#333] rounded-lg shadow-2xl text-xs text-[#bbb] leading-relaxed whitespace-normal block"
+        >
+          {DAILY_LIMIT_TOOLTIP}
+          <span className="absolute left-1/2 -translate-x-1/2 top-full -mt-px border-4 border-transparent border-t-[#111]" />
+        </span>,
+        document.body
+      )
+    : null;
+
+  return (
+    <span
+      ref={anchorRef}
+      className="inline-flex cursor-help"
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      tabIndex={0}
+      aria-label="Informação sobre limite diário"
+    >
+      <AlertCircle className={iconClassName} />
       {tip}
     </span>
   );
@@ -140,10 +187,16 @@ function VideoEditorPageInner() {
   const [voices, setVoices] = useState<Voice[]>([]);
   const [voiceId, setVoiceId] = useState("");
   const [loadingVoices, setLoadingVoices] = useState(false);
-  const [generatingVoice, setGeneratingVoice] = useState(false);
+  const [voiceActionLoading, setVoiceActionLoading] = useState<"preview" | "full" | null>(null);
   const [voiceAudioUrl, setVoiceAudioUrl] = useState<string | null>(null);
+  const [voicePreviewUrl, setVoicePreviewUrl] = useState<string | null>(null);
+  const [voicePreviewFingerprint, setVoicePreviewFingerprint] = useState<string | null>(null);
+  const [voiceFinalFingerprint, setVoiceFinalFingerprint] = useState<string | null>(null);
+  const [voiceFullUsedToday, setVoiceFullUsedToday] = useState(0);
+  const [voiceFullLimitPerDay, setVoiceFullLimitPerDay] = useState(2);
+  const [videoExportsUsedToday, setVideoExportsUsedToday] = useState(0);
+  const [videoExportsLimitPerDay, setVideoExportsLimitPerDay] = useState<number | null>(2);
   const [voiceAudioDuration, setVoiceAudioDuration] = useState(0);
-  const [transcribing, setTranscribing] = useState(false);
   const [captions, setCaptions] = useState<CaptionWord[]>([]);
 
   // ── Step 3: Estilo ──
@@ -174,6 +227,8 @@ function VideoEditorPageInner() {
   const [error, setError] = useState<string | null>(null);
   const remotionExport = useRemotionSandboxRender();
   const [exportPrep, setExportPrep] = useState(false);
+  const [dailyLimitUsageLoaded, setDailyLimitUsageLoaded] = useState(false);
+  const [dailyLimitInfoDismissed, setDailyLimitInfoDismissed] = useState(false);
 
   const dimensions = useMemo(() => {
     switch (aspectRatio) {
@@ -189,6 +244,72 @@ function VideoEditorPageInner() {
     return [...picked, ...uploadedFiles];
   }, [selectedMedia, mediaAssets, uploadedFiles]);
 
+  const removeSelectedAssetAt = useCallback((globalIdx: number) => {
+    const pickedIndices = Array.from(selectedMedia).sort((a, b) => a - b);
+    const pickedCount = pickedIndices.length;
+    if (globalIdx < pickedCount) {
+      const mediaIndex = pickedIndices[globalIdx];
+      setSelectedMedia((prev) => {
+        const next = new Set(prev);
+        next.delete(mediaIndex);
+        return next;
+      });
+    } else {
+      const uploadIdx = globalIdx - pickedCount;
+      setUploadedFiles((prev) => {
+        const victim = prev[uploadIdx];
+        if (victim?.src?.startsWith("blob:")) {
+          try {
+            URL.revokeObjectURL(victim.src);
+          } catch {
+            /* ignore */
+          }
+        }
+        return prev.filter((_, j) => j !== uploadIdx);
+      });
+    }
+  }, [selectedMedia]);
+
+  useEffect(() => {
+    const perPage = 8;
+    const totalPages = Math.max(1, Math.ceil(selectedAssets.length / perPage));
+    setSelectedMediaPage((p) => Math.min(p, totalPages - 1));
+  }, [selectedAssets.length]);
+
+  const isVoiceDailyLimitReached = voiceFullUsedToday >= voiceFullLimitPerDay;
+  const isVideoDailyLimitReached =
+    videoExportsLimitPerDay !== null && videoExportsUsedToday >= videoExportsLimitPerDay;
+
+  const voiceFingerprint = useMemo(() => `${voiceId}|${copyText}`, [voiceId, copyText]);
+  const canRunFull =
+    voicePreviewFingerprint === voiceFingerprint && voicePreviewUrl !== null;
+  const editorDailyHardBlocked = isVoiceDailyLimitReached;
+  const voiceFullLimitBlocked =
+    canRunFull && voiceFullUsedToday >= voiceFullLimitPerDay;
+  const blockedByDailyLimit = voiceFullLimitBlocked || editorDailyHardBlocked;
+
+  useEffect(() => {
+    if (voicePreviewFingerprint !== null && voiceFingerprint !== voicePreviewFingerprint) {
+      setVoicePreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setVoicePreviewFingerprint(null);
+    }
+  }, [voiceFingerprint, voicePreviewFingerprint]);
+
+  useEffect(() => {
+    if (voiceFinalFingerprint !== null && voiceFingerprint !== voiceFinalFingerprint) {
+      setVoiceAudioUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setCaptions([]);
+      setVoiceFinalFingerprint(null);
+      setVoiceAudioDuration(0);
+    }
+  }, [voiceFingerprint, voiceFinalFingerprint]);
+
   const totalDurationSec = useMemo(() => {
     if (voiceAudioDuration > 0) return Math.ceil(voiceAudioDuration) + 3;
     return Math.max(10, selectedAssets.length * 4);
@@ -198,13 +319,14 @@ function VideoEditorPageInner() {
   const subtitleTheme: SubtitleTheme = SUBTITLE_THEMES[subtitleThemeKey] ?? SUBTITLE_THEMES.tiktokBold;
 
   const compositionProps: VideoInputProps = useMemo(() => ({
-    style: videoStyle, media: selectedAssets, voiceoverSrc: voiceAudioUrl, musicSrc: musicUrl,
+    style: videoStyle, media: selectedAssets, voiceoverSrc: voiceAudioUrl ?? voicePreviewUrl, musicSrc: musicUrl,
     musicVolume, captions, subtitleTheme, productName, price, ctaText, fps,
     width: dimensions.width, height: dimensions.height, durationInFrames,
-  }), [videoStyle, selectedAssets, voiceAudioUrl, musicUrl, musicVolume, captions, subtitleTheme, productName, price, ctaText, dimensions, durationInFrames]);
+  }), [videoStyle, selectedAssets, voiceAudioUrl, voicePreviewUrl, musicUrl, musicVolume, captions, subtitleTheme, productName, price, ctaText, dimensions, durationInFrames]);
 
   // ── Shopee search ──
   const handleShopeeSearch = useCallback(async () => {
+    if (editorDailyHardBlocked) return;
     if (!shopeeUrl.trim()) return;
     setSearching(true); setError(null);
     try {
@@ -226,7 +348,7 @@ function VideoEditorPageInner() {
     } finally {
       setSearching(false);
     }
-  }, [shopeeUrl]);
+  }, [editorDailyHardBlocked, shopeeUrl]);
 
   const MAX_VIDEO_SIZE = 50 * 1024 * 1024;
   const MAX_VIDEO_DURATION = 60;
@@ -235,6 +357,7 @@ function VideoEditorPageInner() {
 
   // ── File upload ──
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (editorDailyHardBlocked) return;
     const files = e.target.files;
     if (!files) return;
 
@@ -267,10 +390,11 @@ function VideoEditorPageInner() {
       const valid = results.filter(Boolean) as MediaAsset[];
       if (valid.length > 0) setUploadedFiles((prev) => [...prev, ...valid]);
     });
-  }, []);
+  }, [editorDailyHardBlocked]);
 
   // ── Generate copy ──
   const handleGenerateCopy = useCallback(async () => {
+    if (blockedByDailyLimit) return;
     if (!productName.trim()) return;
     setGeneratingCopy(true); setError(null);
     try {
@@ -286,7 +410,7 @@ function VideoEditorPageInner() {
     } finally {
       setGeneratingCopy(false);
     }
-  }, [productName, copyStyle, totalDurationSec]);
+  }, [blockedByDailyLimit, productName, copyStyle, totalDurationSec]);
 
   // ── Load voices ──
   useEffect(() => {
@@ -298,58 +422,148 @@ function VideoEditorPageInner() {
       .finally(() => setLoadingVoices(false));
   }, []);
 
-  // ── Generate voice ──
-  const handleGenerateVoice = useCallback(async () => {
-    if (!copyText.trim() || !voiceId) return;
-    setGeneratingVoice(true); setError(null); setTranscribing(true);
-    try {
-      const res = await fetch("/api/video-editor/elevenlabs-tts", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: copyText, voiceId }),
+  // ── Limites diários (GET no mount) ──
+  useEffect(() => {
+    let alive = true;
+    Promise.all([fetch("/api/video-editor/elevenlabs-tts"), fetch("/api/me/entitlements")])
+      .then(async ([rTts, rEnt]) => {
+        if (!alive) return;
+        const tts = rTts.ok ? await rTts.json().catch(() => ({})) : {};
+        const ent = rEnt.ok ? await rEnt.json().catch(() => ({})) : {};
+        if (typeof tts.fullGenerationsUsedToday === "number") setVoiceFullUsedToday(tts.fullGenerationsUsedToday);
+        if (typeof tts.fullGenerationsLimit === "number") setVoiceFullLimitPerDay(tts.fullGenerationsLimit);
+        if (typeof ent?.usage?.videoExportsToday === "number") {
+          setVideoExportsUsedToday(ent.usage.videoExportsToday);
+        }
+        if (typeof ent?.entitlements?.videoExportsPerDay === "number" || ent?.entitlements?.videoExportsPerDay === null) {
+          setVideoExportsLimitPerDay(ent.entitlements.videoExportsPerDay);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setDailyLimitUsageLoaded(true);
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Erro ao gerar voz");
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-      const audioBase64: string = json.audioBase64 ?? "";
-      const apiCaptions: CaptionWord[] = json.captions ?? [];
+  const showDailyLimitInfoModal =
+    dailyLimitUsageLoaded && editorDailyHardBlocked && !dailyLimitInfoDismissed;
+
+  useEffect(() => {
+    if (!showDailyLimitInfoModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDailyLimitInfoDismissed(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showDailyLimitInfoModal]);
+
+  // ── Prévia (TTS simples) → depois Voz + Legendas (with-timestamps) ──
+  const handleVoiceButton = useCallback(async () => {
+    if (!copyText.trim() || !voiceId) return;
+    setError(null);
+
+    const runFull = canRunFull;
+    if (runFull && voiceFullUsedToday >= voiceFullLimitPerDay) {
+      setError(
+        `Limite diário: ${voiceFullLimitPerDay} gerações de voz + legendas. Volte amanhã ou ajuste a copy e ouça nova prévia.`
+      );
+      return;
+    }
+
+    setVoiceActionLoading(runFull ? "full" : "preview");
+
+    const base64ToVoiceBlobUrl = (audioBase64: string) => {
       const byteString = atob(audioBase64);
       const ab = new ArrayBuffer(byteString.length);
       const ia = new Uint8Array(ab);
       for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
       const blob = new Blob([ab], { type: "audio/mpeg" });
-      const url = URL.createObjectURL(blob);
-      setVoiceAudioUrl(url);
+      return URL.createObjectURL(blob);
+    };
 
-      const audio = new Audio(url);
-      audio.onloadedmetadata = () => setVoiceAudioDuration(audio.duration);
+    try {
+      const res = await fetch("/api/video-editor/elevenlabs-tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: copyText,
+          voiceId,
+          mode: runFull ? "full" : "preview",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Erro ao gerar voz");
 
-      if (apiCaptions.length > 0) {
-        setCaptions(apiCaptions);
+      if (typeof json.fullGenerationsUsedToday === "number") {
+        setVoiceFullUsedToday(json.fullGenerationsUsedToday);
+      }
+
+      const audioBase64: string = json.audioBase64 ?? "";
+      const apiCaptions: CaptionWord[] = json.captions ?? [];
+      const url = base64ToVoiceBlobUrl(audioBase64);
+
+      if (!runFull) {
+        setVoicePreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
+        });
+        setVoicePreviewFingerprint(voiceFingerprint);
+        const audio = new Audio(url);
+        audio.onloadedmetadata = () => setVoiceAudioDuration(audio.duration);
+        setCaptions([]);
       } else {
-        const audioDur = await new Promise<number>((resolve) => {
-          const a = new Audio(url);
-          a.onloadedmetadata = () => resolve(a.duration * 1000);
-          a.onerror = () => resolve(totalDurationSec * 1000);
+        setVoicePreviewUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return null;
         });
-        const words = copyText.trim().split(/\s+/);
-        const totalChars = words.reduce((s, w) => s + w.length, 0);
-        let cursor = 0;
-        const fallback: CaptionWord[] = words.map((w) => {
-          const ratio = w.length / totalChars;
-          const dur = audioDur * ratio;
-          const cap: CaptionWord = { text: w, startMs: Math.round(cursor), endMs: Math.round(cursor + dur) };
-          cursor += dur;
-          return cap;
+        setVoicePreviewFingerprint(null);
+        setVoiceAudioUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return url;
         });
-        setCaptions(fallback);
+        setVoiceFinalFingerprint(voiceFingerprint);
+
+        const audio = new Audio(url);
+        audio.onloadedmetadata = () => setVoiceAudioDuration(audio.duration);
+
+        if (apiCaptions.length > 0) {
+          setCaptions(apiCaptions);
+        } else {
+          const audioDur = await new Promise<number>((resolve) => {
+            const a = new Audio(url);
+            a.onloadedmetadata = () => resolve(a.duration * 1000);
+            a.onerror = () => resolve(totalDurationSec * 1000);
+          });
+          const words = copyText.trim().split(/\s+/);
+          const totalChars = words.reduce((s, w) => s + w.length, 0);
+          let cursor = 0;
+          const fallback: CaptionWord[] = words.map((w) => {
+            const ratio = w.length / totalChars;
+            const dur = audioDur * ratio;
+            const cap: CaptionWord = { text: w, startMs: Math.round(cursor), endMs: Math.round(cursor + dur) };
+            cursor += dur;
+            return cap;
+          });
+          setCaptions(fallback);
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
     } finally {
-      setGeneratingVoice(false);
-      setTranscribing(false);
+      setVoiceActionLoading(null);
     }
-  }, [copyText, voiceId, totalDurationSec]);
+  }, [
+    copyText,
+    voiceId,
+    canRunFull,
+    voiceFingerprint,
+    voiceFullUsedToday,
+    voiceFullLimitPerDay,
+    totalDurationSec,
+  ]);
 
   // ── Music upload ──
   const handleMusicUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -380,6 +594,11 @@ function VideoEditorPageInner() {
 
   // ── Music library ──
   const fetchMusicTracks = useCallback(async (genre: string) => {
+    if (blockedByDailyLimit) {
+      setMusicTracks([]);
+      setMusicLibraryError(null);
+      return;
+    }
     setLoadingMusic(true);
     setMusicLibraryError(null);
     try {
@@ -405,7 +624,7 @@ function VideoEditorPageInner() {
         "Não foi possível carregar a biblioteca agora. Você pode enviar seu MP3."
       );
     } finally { setLoadingMusic(false); }
-  }, []);
+  }, [blockedByDailyLimit]);
 
   const handlePreviewTrack = useCallback((track: MusicTrack) => {
     if (previewingTrackId === track.id) {
@@ -431,10 +650,10 @@ function VideoEditorPageInner() {
   }, []);
 
   useEffect(() => {
-    if (step === 2 && musicTracks.length === 0 && !loadingMusic) {
+    if (step === 2 && !blockedByDailyLimit && musicTracks.length === 0 && !loadingMusic) {
       fetchMusicTracks(musicGenre);
     }
-  }, [step, musicTracks.length, loadingMusic, fetchMusicTracks, musicGenre]);
+  }, [step, blockedByDailyLimit, musicTracks.length, loadingMusic, fetchMusicTracks, musicGenre]);
 
   const videoCount = mediaAssets.filter(a => a.type === "video").length;
   const imageCount = mediaAssets.filter(a => a.type === "image").length;
@@ -442,6 +661,50 @@ function VideoEditorPageInner() {
 
   return (
     <div className="space-y-5">
+      {showDailyLimitInfoModal &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/65 backdrop-blur-[2px]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="daily-limit-modal-title"
+            onClick={() => setDailyLimitInfoDismissed(true)}
+          >
+            <div
+              className="relative w-full max-w-md rounded-2xl border border-dark-border bg-dark-card shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setDailyLimitInfoDismissed(true)}
+                className="absolute top-3 right-3 z-10 flex h-8 w-8 items-center justify-center rounded-lg text-text-secondary/60 hover:bg-white/10 hover:text-text-primary transition-colors"
+                aria-label="Fechar"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              <div className="px-6 pt-8 pb-6 flex flex-col items-center text-center">
+                <div className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-500/35 bg-amber-500/15">
+                  <AlertCircle className="h-7 w-7 text-amber-300" strokeWidth={2.2} />
+                </div>
+
+                <h2 id="daily-limit-modal-title" className="text-sm font-bold text-text-primary mb-3 uppercase">
+                  Limite diário atingido
+                </h2>
+                <p className="text-xs text-text-secondary/85 leading-relaxed mb-6">{DAILY_LIMIT_TOOLTIP}</p>
+                <button
+                  type="button"
+                  onClick={() => setDailyLimitInfoDismissed(true)}
+                  className={`${btnPrimary} w-full py-3 cursor-pointer`}
+                >
+                  Entendi
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -537,9 +800,27 @@ function VideoEditorPageInner() {
                     onKeyDown={(e) => e.key === "Enter" && handleShopeeSearch()}
                   />
                   </div>
-                <button type="button" onClick={handleShopeeSearch} disabled={searching || !shopeeUrl.trim()} className={btnPrimary}>
-                  {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                  {searching ? "Buscando…" : "Buscar"}
+                <button
+                  type="button"
+                  onClick={handleShopeeSearch}
+                  disabled={editorDailyHardBlocked || searching || !shopeeUrl.trim()}
+                  className={
+                    editorDailyHardBlocked
+                      ? "inline-flex items-center justify-center gap-2 rounded-xl border border-dark-border/80 bg-dark-bg/70 px-5 py-2.5 text-xs font-bold tracking-wide text-text-secondary/45 cursor-not-allowed shadow-inner"
+                      : btnPrimary
+                  }
+                >
+                  {editorDailyHardBlocked ? (
+                    <>
+                      <LimitAlertTooltipIcon iconClassName="h-4 w-4 shrink-0 opacity-70" />
+                      LIMITE DIÁRIO EXCEDIDO
+                    </>
+                  ) : (
+                    <>
+                      {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                      {searching ? "Buscando…" : "Buscar"}
+                    </>
+                  )}
                 </button>
                 </div>
 
@@ -662,10 +943,32 @@ function VideoEditorPageInner() {
             )}
 
               {/* Upload zone */}
-              <label className="group flex items-center justify-center gap-2.5 rounded-xl border-2 border-dashed border-shopee-orange/50 bg-shopee-orange/10 py-3.5 cursor-pointer hover:border-shopee-orange/60 hover:bg-shopee-orange/50 transition-all mt-auto">
-                <Upload className="h-3.5 w-3.5 text-shopee-orange/80 group-hover:text-shopee-orange/95 transition-colors" />
-                <span className="text-xs text-shopee-orange/70 group-hover:text-shopee-orange/95 transition-colors">Ou envie seus próprios arquivos</span>
-                <input type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
+              <label
+                className={`group flex items-center justify-center gap-2.5 rounded-xl border-2 border-dashed py-3.5 transition-all mt-auto ${
+                  editorDailyHardBlocked
+                    ? "border-dark-border/80 bg-dark-bg/70 cursor-not-allowed shadow-inner"
+                    : "border-shopee-orange/50 bg-shopee-orange/10 cursor-pointer hover:border-shopee-orange/60 hover:bg-shopee-orange/50"
+                }`}
+              >
+                {editorDailyHardBlocked ? (
+                  <>
+                    <LimitAlertTooltipIcon iconClassName="h-3.5 w-3.5 text-text-secondary/45" />
+                    <span className="text-xs font-bold tracking-wide text-text-secondary/45">LIMITE DIÁRIO EXCEDIDO</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-3.5 w-3.5 text-shopee-orange/80 group-hover:text-shopee-orange/95 transition-colors" />
+                    <span className="text-xs text-shopee-orange/70 group-hover:text-shopee-orange/95 transition-colors">Ou envie seus próprios arquivos</span>
+                  </>
+                )}
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,video/*"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                  disabled={editorDailyHardBlocked}
+                />
               </label>
             </div>
           </div>
@@ -709,18 +1012,27 @@ function VideoEditorPageInner() {
                         {paged.map((asset, idx) => {
                           const i = pageOffset + idx;
                           return (
-                            <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-dark-border/30 group">
+                            <div key={`${asset.src}-${i}`} className="relative aspect-square rounded-xl overflow-hidden border border-dark-border/30 group">
                               {asset.type === "image"
                                 ? <img src={asset.src} alt="" className="w-full h-full object-cover" />
                                 : <video src={asset.src} muted className="w-full h-full object-cover" />
                               }
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                              <span className="absolute bottom-1.5 left-1.5 text-[10px] font-bold text-white/90 bg-black/60 px-1.5 py-0.5 rounded-md">
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                              <span className="absolute bottom-1.5 left-1.5 text-[10px] font-bold text-white/90 bg-black/60 px-1.5 py-0.5 rounded-md pointer-events-none">
                                 {i + 1}
                               </span>
                               {asset.type === "video" && (
-                                <span className="absolute top-1.5 right-1.5 text-[9px] font-bold text-white bg-purple-600/80 px-1.5 py-0.5 rounded-md">▶</span>
+                                <span className="absolute top-1.5 right-8 text-[9px] font-bold text-white bg-purple-600/80 px-1.5 py-0.5 rounded-md pointer-events-none">▶</span>
                               )}
+                              <button
+                                type="button"
+                                aria-label="Remover mídia"
+                                title="Remover"
+                                onClick={() => removeSelectedAssetAt(i)}
+                                className="absolute top-1.5 right-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-lg bg-black/70 text-white/90 ring-1 ring-white/15 backdrop-blur-sm transition hover:bg-red-500/90 hover:text-white hover:ring-red-400/40"
+                              >
+                                <X className="h-3.5 w-3.5" strokeWidth={2.5} />
+                              </button>
                             </div>
                           );
                         })}
@@ -736,11 +1048,24 @@ function VideoEditorPageInner() {
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                disabled={selectedAssets.length === 0}
-                className={`w-full ${btnPrimary} py-3`}
+                disabled={editorDailyHardBlocked || selectedAssets.length === 0}
+                className={
+                  editorDailyHardBlocked
+                    ? "w-full inline-flex items-center justify-center gap-2 rounded-xl border border-dark-border/80 bg-dark-bg/70 py-3 text-xs font-bold tracking-wide text-text-secondary/45 cursor-not-allowed shadow-inner"
+                    : `w-full ${btnPrimary} py-3`
+                }
               >
-                Continuar para Copy & Voz
-                <ChevronRight className="h-4 w-4" />
+                {editorDailyHardBlocked ? (
+                  <>
+                    <LimitAlertTooltipIcon iconClassName="h-4 w-4 shrink-0 opacity-70" />
+                    LIMITE DIÁRIO EXCEDIDO
+                  </>
+                ) : (
+                  <>
+                    Continuar para Copy & Voz
+                    <ChevronRight className="h-4 w-4" />
+                  </>
+                )}
                     </button>
                 </div>
                 </div>
@@ -803,9 +1128,28 @@ function VideoEditorPageInner() {
                 </div>
               </div>
 
-              <button type="button" onClick={handleGenerateCopy} disabled={generatingCopy || !productName.trim()} className={btnPrimary}>
-                {generatingCopy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                {generatingCopy ? "Gerando copy…" : "Gerar Copy com IA"}
+              <button
+                type="button"
+                onClick={handleGenerateCopy}
+                disabled={generatingCopy || !productName.trim() || blockedByDailyLimit}
+                className={
+                  blockedByDailyLimit
+                    ? "w-full inline-flex items-center justify-center gap-2 rounded-xl border border-dark-border/80 bg-dark-bg/70 py-3 text-xs font-bold tracking-wide text-text-secondary/45 cursor-not-allowed shadow-inner"
+                    : btnPrimary
+                }
+              >
+                {generatingCopy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : blockedByDailyLimit ? (
+                  <LimitAlertTooltipIcon iconClassName="h-4 w-4 shrink-0 opacity-70" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                {generatingCopy
+                  ? "Gerando copy…"
+                  : blockedByDailyLimit
+                    ? "LIMITE DIÁRIO EXCEDIDO"
+                    : "Gerar Copy com IA"}
               </button>
 
               <div className="flex-1 flex flex-col">
@@ -858,58 +1202,127 @@ function VideoEditorPageInner() {
                 )}
               </div>
 
-              {/* Generate button */}
-              <button type="button" onClick={handleGenerateVoice}
-                disabled={generatingVoice || !copyText.trim() || !voiceId}
-                className={`${btnPrimary} py-3 w-full`}>
-                {generatingVoice
-                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Gerando voz e legendas…</>
-                  : <><Volume2 className="h-4 w-4" /> Gerar Voz + Legendas</>
+              <p className="text-[10px] text-text-secondary/45">
+                Gerações <span className="text-text-secondary/70 font-semibold">voz + legendas</span> hoje:{" "}
+                <span className="font-mono text-text-secondary/80">{voiceFullUsedToday}/{voiceFullLimitPerDay}</span>
+                <span className="text-text-secondary/35"> · prévia não conta</span>
+              </p>
+
+              <button
+                type="button"
+                onClick={handleVoiceButton}
+                disabled={
+                  voiceActionLoading !== null
+                  || !copyText.trim()
+                  || !voiceId
+                  || blockedByDailyLimit
                 }
+                className={
+                  blockedByDailyLimit
+                    ? "w-full inline-flex items-center justify-center gap-2 rounded-xl border border-dark-border/80 bg-dark-bg/70 py-3 text-xs font-bold tracking-wide text-text-secondary/45 cursor-not-allowed shadow-inner"
+                    : `${btnPrimary} py-3 w-full`
+                }
+              >
+                {voiceActionLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {voiceActionLoading === "preview" ? "Gerando prévia…" : "Gerando voz e legendas…"}
+                  </>
+                ) : blockedByDailyLimit ? (
+                  <>
+                    <LimitAlertTooltipIcon iconClassName="h-4 w-4 shrink-0 opacity-70" />
+                    LIMITE DIÁRIO EXCEDIDO
+                  </>
+                ) : canRunFull ? (
+                  <>
+                    <Volume2 className="h-4 w-4" /> Gerar Voz + Legendas
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4" /> Ouvir voz
+                  </>
+                )}
               </button>
 
-              {/* Audio result */}
+              {voicePreviewUrl && !voiceAudioUrl && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/8 overflow-hidden">
+                  <div className="px-4 py-2.5 flex items-center gap-2 border-b border-amber-500/15">
+                    <div className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                      <Play className="h-3.5 w-3.5 text-amber-300" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-amber-200">Prévia da voz</p>
+                      <p className="text-[10px] text-amber-400/60">Ouça antes de gerar legendas</p>
+                    </div>
+                  </div>
+                  <div className="px-4 py-3">
+                    <audio src={voicePreviewUrl} controls className="w-full h-9 rounded-lg" />
+                  </div>
+                </div>
+              )}
+
               {voiceAudioUrl && (
                 <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/6 overflow-hidden">
                   <div className="px-4 py-3 flex items-center gap-3 border-b border-emerald-500/15">
                     <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
                       <Check className="h-4 w-4 text-emerald-400" />
-                  </div>
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-emerald-300">Áudio gerado com sucesso</p>
-                      <p className="text-[11px] text-emerald-400/60">{voiceAudioDuration.toFixed(1)}s de narração</p>
-                </div>
+                      <p className="text-xs font-bold text-emerald-300">Narração com legendas</p>
+                      <p className="text-[11px] text-emerald-400/60">{voiceAudioDuration.toFixed(1)}s </p>
+                    </div>
                     {captions.length > 0 && (
                       <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-300 bg-emerald-500/20 px-2 py-1 rounded-lg">
                         <Check className="h-2.5 w-2.5" /> {captions.length} legendas
                       </span>
-            )}
-          </div>
+                    )}
+                  </div>
                   <div className="px-4 py-3">
                     <audio src={voiceAudioUrl} controls className="w-full h-9 rounded-lg" />
-        </div>
+                  </div>
                 </div>
               )}
 
-              {/* Captions status: dica curta */}
-              {!voiceAudioUrl && !generatingVoice && copyText && (
-                <p className="text-[11px] text-text-secondary/50 flex items-center gap-1.5">
-                  <Star className="h-3 w-3 text-amber-400/70 shrink-0" />
-                  Clique em <strong className="text-text-secondary/70">Gerar Voz + Legendas</strong> para narração e legendas sincronizadas.
+              {!voiceAudioUrl && !voiceActionLoading && copyText && (
+                <p className="text-[11px] text-text-secondary/50 flex items-start gap-1.5">
+                  <Star className="h-3 w-3 text-amber-400/70 shrink-0 mt-0.5" />
+                  {canRunFull ? (
+                    blockedByDailyLimit ? (
+                      <>
+                        Limite de <strong className="text-text-secondary/70">voz + legendas</strong> atingido hoje.
+                        Pode ouvir novas prévias; amanhã volta o botão de gerar.
+                      </>
+                    ) : (
+                      <>
+                        Gostou da prévia? Clique em <strong className="text-text-secondary/70">Gerar Voz + Legendas</strong> para timestamps e legendas sincronizadas.
+                      </>
+                    )
+                  ) : (
+                    <>
+                      Primeiro <strong className="text-text-secondary/70">Ouvir voz</strong> (prévia barata); depois gere narração + legendas se aprovar.
+                    </>
+                  )}
                 </p>
               )}
 
-              {generatingVoice && (
+              {voiceActionLoading && (
                 <div className="flex flex-col items-center gap-3 py-4">
                   <div className="flex items-center gap-1.5">
-                    {[0, 1, 2, 3, 4].map(i => (
-                      <div key={i} className="w-1 bg-shopee-orange rounded-full animate-pulse"
-                        style={{ height: `${12 + (i % 3) * 8}px`, animationDelay: `${i * 0.1}s` }} />
-            ))}
-          </div>
-                  <p className="text-xs text-text-secondary/50">Sintetizando voz e sincronizando legendas…</p>
-            </div>
-                )}
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <div
+                        key={i}
+                        className="w-1 bg-shopee-orange rounded-full animate-pulse"
+                        style={{ height: `${12 + (i % 3) * 8}px`, animationDelay: `${i * 0.1}s` }}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-text-secondary/50">
+                    {voiceActionLoading === "preview"
+                      ? "Gerando prévia de áudio…"
+                      : "Sintetizando voz e sincronizando legendas…"}
+                  </p>
+                </div>
+              )}
 
               {/* Music — Biblioteca + Upload */}
               <div className="mt-auto pt-2 border-t border-dark-border/40">
@@ -918,6 +1331,18 @@ function VideoEditorPageInner() {
                   <Tooltip text="Escolha uma música royalty-free da biblioteca ou envie seu próprio MP3. Use o slider para ajustar o volume." wide />
                 </div>
 
+                {blockedByDailyLimit ? (
+                  <div className="rounded-xl border border-dark-border/80 bg-dark-bg/70 p-3 shadow-inner">
+                    <div className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-dark-border/80 bg-dark-bg/70 py-3 text-xs font-bold tracking-wide text-text-secondary/45 cursor-not-allowed">
+                      <LimitAlertTooltipIcon iconClassName="h-4 w-4 shrink-0 opacity-70" />
+                      LIMITE DIÁRIO EXCEDIDO
+                    </div>
+                    <p className="mt-2 text-[10px] text-text-secondary/40 text-center">
+                     Upload de música ficam bloqueados até liberar novamente.
+                    </p>
+                  </div>
+                ) : (
+                  <>
                 {/* Selected track display */}
                 {selectedTrack && (
                   <div className="flex items-center gap-2.5 rounded-xl border border-emerald-500/25 bg-emerald-500/8 px-3 py-2 mb-2">
@@ -1032,6 +1457,8 @@ function VideoEditorPageInner() {
                     <span className="text-[11px] text-text-secondary/60 w-8 text-right font-mono">{Math.round(musicVolume * 100)}%</span>
                   </div>
                 )}
+                  </>
+                )}
                 </div>
 
               {/* Nav */}
@@ -1039,8 +1466,26 @@ function VideoEditorPageInner() {
                 <button type="button" onClick={() => setStep(1)} className={btnSecondary}>
                   <ChevronLeft className="h-4 w-4" /> Voltar
                 </button>
-                <button type="button" onClick={() => setStep(3)} className={`flex-1 ${btnPrimary}`}>
-                  Continuar para Estilo <ChevronRight className="h-4 w-4" />
+                <button
+                  type="button"
+                  onClick={() => setStep(3)}
+                  disabled={blockedByDailyLimit}
+                  className={
+                    blockedByDailyLimit
+                      ? "flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-dark-border/80 bg-dark-bg/70 py-3 text-xs font-bold tracking-wide text-text-secondary/45 cursor-not-allowed shadow-inner"
+                      : `flex-1 ${btnPrimary}`
+                  }
+                >
+                  {blockedByDailyLimit ? (
+                    <>
+                      <LimitAlertTooltipIcon iconClassName="h-4 w-4 shrink-0 opacity-70" />
+                      LIMITE DIÁRIO EXCEDIDO
+                    </>
+                  ) : (
+                    <>
+                      Continuar para Estilo <ChevronRight className="h-4 w-4" />
+                    </>
+                  )}
                 </button>
                     </div>
                   </div>
@@ -1189,11 +1634,12 @@ function VideoEditorPageInner() {
                     <Check className="h-2.5 w-2.5" /> {captions.length} legendas
                   </span>
                 )}
-                {voiceAudioUrl && (
+                {(voiceAudioUrl || voicePreviewUrl) && (
                   <span className="flex items-center gap-1 text-[10px] font-bold text-blue-300 bg-blue-500/15 px-2 py-1 rounded-lg">
-                    <Volume2 className="h-2.5 w-2.5" /> {voiceAudioDuration.toFixed(0)}s voz
+                    <Volume2 className="h-2.5 w-2.5" /> {voiceAudioDuration.toFixed(0)}s
+                    {!voiceAudioUrl && voicePreviewUrl ? " prévia" : " voz"}
                   </span>
-                          )}
+                )}
               </div>
                   </div>
 
@@ -1244,7 +1690,15 @@ function VideoEditorPageInner() {
                   { label: "Mídias", value: `${selectedAssets.length} arquivo(s)`, icon: ImageIcon },
                   { label: "Formato", value: `${aspectRatio} · ${dimensions.width}×${dimensions.height}`, icon: Maximize2 },
                   { label: "Duração", value: `~${totalDurationSec}s`, icon: Timer },
-                  { label: "Voz IA", value: voiceAudioUrl ? `${voiceAudioDuration.toFixed(1)}s` : "—", icon: Mic },
+                  {
+                    label: "Voz IA",
+                    value: voiceAudioUrl
+                      ? `${voiceAudioDuration.toFixed(1)}s`
+                      : voicePreviewUrl
+                        ? `${voiceAudioDuration.toFixed(1)}s (prévia)`
+                        : "—",
+                    icon: Mic,
+                  },
                   { label: "Legendas", value: captions.length > 0 ? `${captions.length} palavras` : "—", icon: Sparkles },
                   { label: "Música", value: musicUrl ? `${Math.round(musicVolume * 100)}%` : "—", icon: Music },
                 ].map(({ label, value, icon: Icon }, i, arr) => (

@@ -33,7 +33,7 @@ import ResetMetricsModal from "./_components/ResetMetricsModal";
 
 const DOMAIN = "s.afiliadoanalytics.com.br";
 const LOGO_BUCKET = "capture-logos";
-const PRO_CAPTURE_CHECKOUT_URL = "https://pay.kiwify.com.br/0mRaPls";
+const PRO_CAPTURE_CHECKOUT_URL = "https://pay.kiwify.com.br/4fAAtkD";
 
 const DEFAULT_BUTTON_TEXT = "Acessar Grupo Vip";
 

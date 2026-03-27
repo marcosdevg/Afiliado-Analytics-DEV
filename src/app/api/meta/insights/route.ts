@@ -1,7 +1,7 @@
 /**
  * Meta Ads: campanhas, conjuntos e TODOS os anúncios (ativos ou não).
  *
- * - ATI: GET ?ati=1 — sem datas. Métricas de gasto/cliques = date_preset lifetime (fallback maximum).
+ * - ATI: GET ?ati=1 — com ?start=&end= (recomendado): métricas Meta no intervalo. Sem datas: lifetime (fallback maximum).
  * - Outros: GET ?start=&end= — métricas só naquele intervalo.
  */
 
@@ -396,9 +396,10 @@ export async function GET(req: Request) {
     const atiMode = url.searchParams.get("ati") === "1";
     const start = url.searchParams.get("start");
     const end = url.searchParams.get("end");
+    const atiWithDateRange = atiMode && start && end;
     if (!atiMode && (!start || !end)) {
       return NextResponse.json(
-        { error: "Parâmetros start e end são obrigatórios (YYYY-MM-DD), exceto no modo ATI (?ati=1)." },
+        { error: "Parâmetros start e end são obrigatórios (YYYY-MM-DD), exceto no modo ATI (?ati=1) sem intervalo." },
         { status: 400 }
       );
     }
@@ -442,10 +443,18 @@ export async function GET(req: Request) {
 
       let insights: MetaAdInsight[] = [];
       if (atiMode) {
-        try {
-          insights = await withMetaRetry(() => getInsightsByPreset(token, accountId, "lifetime"));
-        } catch {
-          insights = await getInsightsAtiMode(token, accountId);
+        if (atiWithDateRange) {
+          try {
+            insights = await withMetaRetry(() => getInsights(token, accountId, start!, end!));
+          } catch {
+            insights = [];
+          }
+        } else {
+          try {
+            insights = await withMetaRetry(() => getInsightsByPreset(token, accountId, "lifetime"));
+          } catch {
+            insights = await getInsightsAtiMode(token, accountId);
+          }
         }
       } else {
         try {
@@ -517,7 +526,11 @@ export async function GET(req: Request) {
       adSetList,
       adSetStatusMap,
       adStatusMap,
-      ...(atiMode ? { atiLifetimeMetrics: true as const } : {}),
+      ...(atiMode
+        ? {
+            metaMetricsMode: atiWithDateRange ? ("range" as const) : ("lifetime" as const),
+          }
+        : {}),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Erro ao buscar dados do Meta";

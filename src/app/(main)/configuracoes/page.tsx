@@ -6,7 +6,7 @@ import ChangePasswordClient from "../../components/account/ChangePasswordClient"
 import ConfiguracoesClient from "./ConfiguracoesClient";
 
 const kiwifyLoginUrl = "https://dashboard.kiwify.com/login?lang=pt";
-const whatsappUrl = "https://wa.me/5579999407366";
+const whatsappUrl = "https://wa.me/5579999144028";
 const supportEmail = "suporte@afiliadoeses.com";
 
 export default async function ConfiguracoesPage() {
