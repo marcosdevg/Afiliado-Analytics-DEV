@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Shield } from 'lucide-react'
+import Image from 'next/image'
 import { motion } from 'framer-motion'
 
 const plans = [
@@ -291,8 +291,14 @@ export default function Pricing() {
           transition={{ duration: 0.6, delay: 0.5, ease: "easeOut" }}
           className="mx-auto mt-[40px] md:mt-[52px] max-w-[580px] rounded-[18px] border border-[rgba(255,255,255,0.12)] bg-[linear-gradient(180deg,rgba(255,255,255,0.055)_0%,rgba(255,255,255,0.03)_100%)] p-[28px_24px] text-center shadow-[0_10px_40px_rgba(0,0,0,0.22)] backdrop-blur-[16px]"
         >
-          <div className="mx-auto mb-[12px] flex h-[54px] w-[54px] items-center justify-center rounded-[50%] border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.06)]">
-            <Shield size={26} color="#fb923c" />
+          <div className="mx-auto mb-[12px] flex h-[88px] w-[88px] items-center justify-center">
+            <Image
+              src="/7days.png"
+              alt="Selo de garantia de 7 dias — satisfação garantida, risco zero"
+              width={120}
+              height={120}
+              className="object-contain drop-shadow-[0_6px_20px_rgba(0,0,0,0.35)]"
+            />
           </div>
 
           <h4 className="mb-[8px] font-[var(--font-space-grotesk)] text-[17px] font-extrabold text-[#fff]">
