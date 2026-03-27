@@ -9,7 +9,7 @@
 
 import { assertVideoEditorPro } from "@/lib/gate-video-editor-request";
 import { requireElevenLabsApiKey } from "@/lib/elevenlabs-api-key";
-import { getEntitlementsForUser } from "@/lib/plan-server";
+import { getEntitlementsForUser, getUsageSnapshot } from "@/lib/plan-server";
 import { createClient } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
 
@@ -111,6 +111,16 @@ export async function POST(req: Request) {
     const supabase = await createClient();
     const ent = await getEntitlementsForUser(supabase, gate.userId);
     const voiceFullDailyLimit = ent.voicegenerate ?? 0;
+    const usage = await getUsageSnapshot(supabase, gate.userId);
+    if (ent.videoExportsPerDay !== null && usage.videoExportsToday >= ent.videoExportsPerDay) {
+      return NextResponse.json(
+        {
+          error: `Limite diário de ${ent.videoExportsPerDay} vídeo(s) exportado(s) atingido.`,
+          videoLimitReached: true,
+        },
+        { status: 403 }
+      );
+    }
 
     const body = await req.json().catch(() => ({}));
     const text = String(body?.text ?? "").trim();

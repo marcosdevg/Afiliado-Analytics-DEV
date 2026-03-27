@@ -283,10 +283,10 @@ function VideoEditorPageInner() {
   const voiceFingerprint = useMemo(() => `${voiceId}|${copyText}`, [voiceId, copyText]);
   const canRunFull =
     voicePreviewFingerprint === voiceFingerprint && voicePreviewUrl !== null;
-  const editorDailyHardBlocked = isVoiceDailyLimitReached;
+  const editorDailyHardBlocked = isVideoDailyLimitReached;
   const voiceFullLimitBlocked =
     canRunFull && voiceFullUsedToday >= voiceFullLimitPerDay;
-  const blockedByDailyLimit = voiceFullLimitBlocked || editorDailyHardBlocked;
+  const blockedByDailyLimit = voiceFullLimitBlocked || isVoiceDailyLimitReached || editorDailyHardBlocked;
 
   useEffect(() => {
     if (voicePreviewFingerprint !== null && voiceFingerprint !== voicePreviewFingerprint) {
@@ -594,7 +594,7 @@ function VideoEditorPageInner() {
 
   // ── Music library ──
   const fetchMusicTracks = useCallback(async (genre: string) => {
-    if (blockedByDailyLimit) {
+    if (editorDailyHardBlocked) {
       setMusicTracks([]);
       setMusicLibraryError(null);
       return;
@@ -624,7 +624,7 @@ function VideoEditorPageInner() {
         "Não foi possível carregar a biblioteca agora. Você pode enviar seu MP3."
       );
     } finally { setLoadingMusic(false); }
-  }, [blockedByDailyLimit]);
+  }, [editorDailyHardBlocked]);
 
   const handlePreviewTrack = useCallback((track: MusicTrack) => {
     if (previewingTrackId === track.id) {
@@ -650,10 +650,10 @@ function VideoEditorPageInner() {
   }, []);
 
   useEffect(() => {
-    if (step === 2 && !blockedByDailyLimit && musicTracks.length === 0 && !loadingMusic) {
+    if (step === 2 && !editorDailyHardBlocked && musicTracks.length === 0 && !loadingMusic) {
       fetchMusicTracks(musicGenre);
     }
-  }, [step, blockedByDailyLimit, musicTracks.length, loadingMusic, fetchMusicTracks, musicGenre]);
+  }, [step, editorDailyHardBlocked, musicTracks.length, loadingMusic, fetchMusicTracks, musicGenre]);
 
   const videoCount = mediaAssets.filter(a => a.type === "video").length;
   const imageCount = mediaAssets.filter(a => a.type === "image").length;
@@ -1331,7 +1331,7 @@ function VideoEditorPageInner() {
                   <Tooltip text="Escolha uma música royalty-free da biblioteca ou envie seu próprio MP3. Use o slider para ajustar o volume." wide />
                 </div>
 
-                {blockedByDailyLimit ? (
+                {editorDailyHardBlocked ? (
                   <div className="rounded-xl border border-dark-border/80 bg-dark-bg/70 p-3 shadow-inner">
                     <div className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-dark-border/80 bg-dark-bg/70 py-3 text-xs font-bold tracking-wide text-text-secondary/45 cursor-not-allowed">
                       <LimitAlertTooltipIcon iconClassName="h-4 w-4 shrink-0 opacity-70" />
@@ -1469,14 +1469,14 @@ function VideoEditorPageInner() {
                 <button
                   type="button"
                   onClick={() => setStep(3)}
-                  disabled={blockedByDailyLimit}
+                  disabled={editorDailyHardBlocked}
                   className={
-                    blockedByDailyLimit
+                    editorDailyHardBlocked
                       ? "flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-dark-border/80 bg-dark-bg/70 py-3 text-xs font-bold tracking-wide text-text-secondary/45 cursor-not-allowed shadow-inner"
                       : `flex-1 ${btnPrimary}`
                   }
                 >
-                  {blockedByDailyLimit ? (
+                  {editorDailyHardBlocked ? (
                     <>
                       <LimitAlertTooltipIcon iconClassName="h-4 w-4 shrink-0 opacity-70" />
                       LIMITE DIÁRIO EXCEDIDO
@@ -1720,6 +1720,7 @@ function VideoEditorPageInner() {
                     exportPrep
                     || remotionExport.state.status === "invoking"
                     || selectedAssets.length === 0
+                    || isVideoDailyLimitReached
                   }
                   onClick={() => {
                     void (async () => {
@@ -1739,6 +1740,7 @@ function VideoEditorPageInner() {
                     exportPrep
                     || remotionExport.state.status === "invoking"
                     || selectedAssets.length === 0
+                    || isVideoDailyLimitReached
                       ? "bg-gradient-to-r from-shopee-orange/40 to-shopee-orange/20 border-shopee-orange/30 text-shopee-orange/60 cursor-not-allowed"
                       : "bg-gradient-to-r from-shopee-orange to-shopee-orange/90 border-shopee-orange text-white hover:opacity-95 cursor-pointer"
                   }`}
@@ -1752,7 +1754,9 @@ function VideoEditorPageInner() {
                     ? "Preparando mídias..."
                     : remotionExport.state.status === "invoking"
                       ? "Gerando vídeo..."
-                      : "Exportar MP4"}
+                      : isVideoDailyLimitReached
+                        ? "LIMITE DIÁRIO EXCEDIDO"
+                        : "Exportar MP4"}
                 </button>
                 {remotionExport.state.status === "invoking" && (
                   <div className="space-y-1">

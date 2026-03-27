@@ -4,6 +4,8 @@
  */
 
 import { assertVideoEditorPro } from "@/lib/gate-video-editor-request";
+import { createClient } from "@/lib/supabase-server";
+import { getEntitlementsForUser, getUsageSnapshot } from "@/lib/plan-server";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +17,16 @@ export async function POST(req: Request) {
   try {
     const gate = await assertVideoEditorPro();
     if (!gate.ok) return gate.response;
+
+    const supabase = await createClient();
+    const ent = await getEntitlementsForUser(supabase, gate.userId);
+    const usage = await getUsageSnapshot(supabase, gate.userId);
+    if (ent.videoExportsPerDay !== null && usage.videoExportsToday >= ent.videoExportsPerDay) {
+      return NextResponse.json(
+        { error: `Limite diário de ${ent.videoExportsPerDay} vídeo(s) exportado(s) atingido.` },
+        { status: 403 }
+      );
+    }
 
     const apiKey = process.env.GROK_API_KEY || process.env.XAI_API_KEY;
     if (!apiKey?.trim()) {
