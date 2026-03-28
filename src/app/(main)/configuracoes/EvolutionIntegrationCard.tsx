@@ -24,11 +24,56 @@ export type EvolutionInstance = {
   updated_at: string;
 };
 
+/** n8n pode devolver objeto direto, ou array [{ json: { ... } }], ou chaves alternativas. */
+function normalizeN8nBody(raw: unknown): Record<string, unknown> | null {
+  if (raw == null) return null;
+  if (Array.isArray(raw) && raw.length > 0) {
+    const first = raw[0];
+    if (first && typeof first === "object" && "json" in first) {
+      const inner = (first as { json: unknown }).json;
+      if (inner && typeof inner === "object") return inner as Record<string, unknown>;
+    }
+    if (first && typeof first === "object") return first as Record<string, unknown>;
+    return null;
+  }
+  if (typeof raw === "object") return raw as Record<string, unknown>;
+  return null;
+}
+
+function extractQrFromN8nPayload(obj: Record<string, unknown> | null): string | null {
+  if (!obj) return null;
+  const data = obj.data;
+  const dataObj = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+  const candidates: unknown[] = [
+    obj.qrcode,
+    obj.qrCode,
+    obj.qr_code,
+    obj.base64,
+    dataObj?.qrcode,
+    dataObj?.qrCode,
+    dataObj?.qr_code,
+    dataObj?.base64,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.length > 10) return c;
+  }
+  return null;
+}
+
+function extractHashFromN8nPayload(obj: Record<string, unknown> | null): string | null {
+  if (!obj) return null;
+  const data = obj.data;
+  const dataObj = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+  const h = obj.hash ?? dataObj?.hash;
+  return typeof h === "string" && h.trim() ? h.trim() : null;
+}
+
 export default function EvolutionIntegrationCard() {
   const [instances, setInstances] = useState<EvolutionInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingInstance, setSavingInstance] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [reconnectingId, setReconnectingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
@@ -161,7 +206,7 @@ export default function EvolutionIntegrationCard() {
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error ?? "Erro ao criar");
         setInstances((prev) => [json, ...prev]);
-        setOk("Instância adicionada.");
+        setOk("Instância adicionada, clique em Conectar e leia o QR Code!");
       }
       setShowForm(false);
     } catch (e) {
@@ -171,23 +216,69 @@ export default function EvolutionIntegrationCard() {
     }
   };
 
-  const removeInstance = async (id: string) => {
-    setRemovingId(id);
+  const removeInstance = async (inst: EvolutionInstance) => {
+    setRemovingId(inst.id);
     setError(null);
+    setOk(null);
     try {
-      const res = await fetch(`/api/evolution/instances?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const n8nRes = await fetch("/api/evolution/n8n-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipoAcao: "excluir_instancia",
+          nomeInstancia: inst.nome_instancia,
+        }),
+      });
+      const n8nJson = await n8nRes.json().catch(() => ({}));
+      if (!n8nRes.ok) {
+        throw new Error(
+          typeof n8nJson?.error === "string" ? n8nJson.error : "Falha ao notificar exclusão no n8n (WhatsApp)."
+        );
+      }
+      const res = await fetch(`/api/evolution/instances?id=${encodeURIComponent(inst.id)}`, { method: "DELETE" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Erro ao remover");
-      setInstances((prev) => prev.filter((i) => i.id !== id));
+      if (!res.ok) throw new Error(json?.error ?? "Erro ao remover no banco");
+      setInstances((prev) => prev.filter((i) => i.id !== inst.id));
       setStatusResult((prev) => {
         const next = { ...prev };
-        delete next[id];
+        delete next[inst.id];
         return next;
       });
+      setOk("Instância removida.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
     } finally {
       setRemovingId(null);
+    }
+  };
+
+  const reconnectInstance = async (inst: EvolutionInstance) => {
+    if (!inst.hash) {
+      setError("Esta instância ainda não tem hash. Use Conectar para gerar o QR code primeiro.");
+      return;
+    }
+    setReconnectingId(inst.id);
+    setError(null);
+    setOk(null);
+    try {
+      const res = await fetch("/api/evolution/n8n-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipoAcao: "reconectar",
+          nomeInstancia: inst.nome_instancia,
+          hash: inst.hash,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(typeof json?.error === "string" ? json.error : "Falha ao solicitar reconexão no n8n.");
+      }
+      setOk("Reconexão realizada, leia novamente o QR Code!.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setReconnectingId(null);
     }
   };
 
@@ -201,29 +292,52 @@ export default function EvolutionIntegrationCard() {
     setQrError(null);
     setQrLoading(true);
     try {
+      // Instância nova (sem hash): criar no Evolution via n8n.
+      // Já com hash: o fluxo que devolve QR costuma ser reconectar — criar_instancia duplicaria ou não retorna QR.
+      const body = inst.hash
+        ? {
+            tipoAcao: "reconectar" as const,
+            nomeInstancia: inst.nome_instancia,
+            hash: inst.hash,
+            getParticipants: inst.get_participants,
+          }
+        : {
+            tipoAcao: "criar_instancia" as const,
+            nomeInstancia: inst.nome_instancia,
+            numeroWhatsApp: inst.numero_whatsapp,
+            getParticipants: inst.get_participants,
+          };
+
       const res = await fetch("/api/evolution/n8n-action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tipoAcao: "criar_instancia",
-          nomeInstancia: inst.nome_instancia,
-          numeroWhatsApp: inst.numero_whatsapp,
-        }),
+        body: JSON.stringify(body),
       });
-      const json = await res.json();
+      const rawJson = await res.json();
       if (!res.ok) {
-        setQrError(json?.error ?? "Falha ao gerar QR code");
+        const errObj = normalizeN8nBody(rawJson);
+        const msg =
+          typeof errObj?.error === "string"
+            ? errObj.error
+            : typeof (rawJson as { error?: string })?.error === "string"
+              ? (rawJson as { error: string }).error
+              : "Falha ao gerar QR code";
+        setQrError(msg);
         return;
       }
-      if (json.qrcode) {
-        setQrCodeBase64(json.qrcode);
-        if (json.hash && inst.id) {
+      const payload = normalizeN8nBody(rawJson);
+      const qr = extractQrFromN8nPayload(payload);
+      const newHash = extractHashFromN8nPayload(payload);
+
+      if (qr) {
+        setQrCodeBase64(qr);
+        if (newHash && inst.id) {
           await fetch("/api/evolution/instances", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: inst.id, hash: json.hash }),
+            body: JSON.stringify({ id: inst.id, hash: newHash }),
           });
-          setInstances((prev) => prev.map((i) => (i.id === inst.id ? { ...i, hash: json.hash } : i)));
+          setInstances((prev) => prev.map((i) => (i.id === inst.id ? { ...i, hash: newHash } : i)));
         }
         // Iniciar polling a cada 5s até a instância ficar "open"
         if (pollingIntervalRef.current) {
@@ -260,7 +374,9 @@ export default function EvolutionIntegrationCard() {
           }
         }, 5000);
       } else {
-        setQrError("Resposta do n8n sem QR code. Verifique o fluxo.");
+        setQrError(
+          "Resposta do n8n sem QR code. Verifique o fluxo (campos aceitos: qrcode, qrCode, data.qrcode ou array [{ json: { qrcode } }])."
+        );
       }
     } catch {
       setQrError("Erro ao chamar o webhook. Tente de novo.");
@@ -393,6 +509,22 @@ export default function EvolutionIntegrationCard() {
                         Conectar
                       </button>
                     )}
+                    {inst.hash ? (
+                      <button
+                        type="button"
+                        onClick={() => reconnectInstance(inst)}
+                        disabled={reconnectingId === inst.id}
+                        className="inline-flex items-center gap-1 rounded-md border border-amber-500/50 bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-400 hover:bg-amber-500/20 disabled:opacity-50"
+                        title="Reenvia reconexão para o n8n (nome + hash)"
+                      >
+                        {reconnectingId === inst.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        )}
+                        Reconectar
+                      </button>
+                    ) : null}
                     <button
                         type="button"
                         onClick={() => checkStatus(inst)}
@@ -415,7 +547,7 @@ export default function EvolutionIntegrationCard() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => removeInstance(inst.id)}
+                      onClick={() => removeInstance(inst)}
                       disabled={removingId === inst.id}
                       className="rounded-md border border-red-500/40 px-2 py-1 text-xs font-medium text-red-400 hover:bg-red-500/10 disabled:opacity-50"
                     >

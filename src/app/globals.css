@@ -97,6 +97,47 @@ body {
   animation: zoom-in-95 200ms ease-out;
 }
 
+/* Gerador de vídeo: CTA “Comprimir mídia” — faixa de luz direita → esquerda, loop */
+@keyframes compress-media-light-sweep {
+  0% {
+    left: 100%;
+    opacity: 0;
+  }
+  8% {
+    opacity: 1;
+  }
+  100% {
+    left: -48%;
+    opacity: 0.85;
+  }
+}
+
+.compress-media-sweep-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.compress-media-sweep-btn::before {
+  content: "";
+  position: absolute;
+  top: -25%;
+  bottom: -25%;
+  width: 44%;
+  left: 100%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0) 28%,
+    rgba(255, 255, 255, 0.42) 50%,
+    rgba(255, 255, 255, 0) 72%,
+    transparent 100%
+  );
+  transform: skewX(-16deg);
+  animation: compress-media-light-sweep 2.5s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
 /* Botão Compartilhar ativo: pulsante + light sweep estilo pêndulo */
 @keyframes share-pulse {
   0%, 100% {

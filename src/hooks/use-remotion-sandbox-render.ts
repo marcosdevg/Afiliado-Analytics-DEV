@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { VideoInputProps } from "../../remotion/types";
+import { humanizeLargeRequestError } from "../lib/humanize-fetch-error";
 
 type SSEMessage =
   | { type: "phase"; phase: string; progress: number; subtitle?: string }
@@ -42,7 +43,9 @@ export function useRemotionSandboxRender() {
           /* usar texto cru */
         }
         throw new Error(
-          msg || `Falha ao iniciar render (HTTP ${response.status})`,
+          humanizeLargeRequestError(
+            msg || `Falha ao iniciar render (HTTP ${response.status})`,
+          ),
         );
       }
 
@@ -80,7 +83,10 @@ export function useRemotionSandboxRender() {
               });
               break;
             case "error":
-              setState({ status: "error", error: message.message });
+              setState({
+                status: "error",
+                error: humanizeLargeRequestError(message.message),
+              });
               break;
             default:
               break;
@@ -88,9 +94,10 @@ export function useRemotionSandboxRender() {
         }
       }
     } catch (err) {
+      const raw = err instanceof Error ? err.message : "Erro desconhecido";
       setState({
         status: "error",
-        error: err instanceof Error ? err.message : "Erro desconhecido",
+        error: humanizeLargeRequestError(raw),
       });
     }
   }, []);

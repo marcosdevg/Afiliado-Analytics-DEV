@@ -15,6 +15,7 @@ import BuscarGruposModal, {
 import MetaSearchablePicker from "@/app/components/meta/MetaSearchablePicker";
 import { GeradorPaginationBar } from "@/app/components/shopee/GeradorPaginationBar";
 import { janelaDuracaoMinutos, mensagemErroJanela, MAX_JANELA_MINUTOS } from "@/lib/grupos-venda-janela";
+import { createClient as createBrowserSupabase } from "utils/supabase/client";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type ListaGrupos = { id: string; instanceId: string; nomeLista: string; createdAt: string };
@@ -242,7 +243,7 @@ export default function GruposVendaPage() {
   const [continuoTogglingId, setContinuoTogglingId] = useState<string | null>(null);
   const [deletingListaId, setDeletingListaId] = useState<string | null>(null);
   const [cronTestLoading, setCronTestLoading] = useState(false);
-  const [cronTestResult, setCronTestResult] = useState<string | null>(null);
+  const [cronTestFeedback, setCronTestFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   const [listasOfertas, setListasOfertas] = useState<ListaOfertasItem[]>([]);
   const [loadingListasOfertas, setLoadingListasOfertas] = useState(false);
   const [selectedListaOfertasId, setSelectedListaOfertasId] = useState("");
@@ -449,19 +450,65 @@ export default function GruposVendaPage() {
   }, [loadContinuo]);
 
   const handleTestCron = useCallback(async () => {
-    setCronTestLoading(true); setCronTestResult(null); setError(null);
+    setCronTestLoading(true);
+    setCronTestFeedback(null);
+    setError(null);
     try {
-      const res = await fetch("/api/grupos-venda/cron-disparo");
+      const supabase = createBrowserSupabase();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: HeadersInit = {};
+      if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+
+      const res = await fetch("/api/grupos-venda/cron-disparo", {
+        method: "POST",
+        credentials: "include",
+        headers,
+      });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setCronTestResult(`Erro ${res.status}: ${data?.error ?? res.statusText}`); return; }
-      const processed = data.processed ?? 0;
-      const results = data.results ?? [];
-      const okCount = results.filter((r: { ok?: boolean }) => r.ok).length;
-      const errCount = results.filter((r: { ok?: boolean }) => !r.ok).length;
-      setCronTestResult(`Processados: ${processed}. OK: ${okCount}${errCount > 0 ? `, erros: ${errCount}` : ""}. ${results.length ? results.map((r: { keyword?: string; ok?: boolean; error?: string }) => (r.ok ? `"${r.keyword}" enviado` : `"${r.keyword}": ${r.error}`)).join("; ") : "Nenhum disparo ativo."}`);
+
+      type CronRow = { keyword?: string; ok?: boolean; error?: string };
+      const results = (data.results ?? []) as CronRow[];
+      const processed = typeof data.processed === "number" ? data.processed : 0;
+      const enviados = results.filter((r) => r.ok && !r.error).length;
+      const ignorados = results.filter((r) => r.ok && !!r.error).length;
+      const falhas = results.filter((r) => !r.ok).length;
+      const linhas = results.map((r) => {
+        if (!r.ok) return `"${r.keyword ?? "—"}": ${r.error ?? "erro"}`;
+        if (r.error) return r.error;
+        const rotulo = r.keyword?.trim() || "Oferta";
+        return `"${rotulo}" enviado`;
+      });
+
+      if (!res.ok) {
+        console.error("[grupos-venda cron teste manual]", {
+          httpStatus: res.status,
+          body: data,
+          derived: { processed, enviados, ignorados, falhas },
+          detailLines: linhas,
+        });
+        setCronTestFeedback({ ok: false, message: "Erro. Entre em contato com o suporte." });
+        return;
+      }
+
+      console.log("[grupos-venda cron teste manual]", {
+        httpStatus: res.status,
+        body: data,
+        derived: { processed, enviados, ignorados, falhas },
+        detailLines: linhas.length ? linhas : [(data as { message?: string }).message ?? "—"],
+      });
+
+      if (falhas > 0) {
+        setCronTestFeedback({ ok: false, message: "Erro. Entre em contato com o suporte." });
+      } else {
+        setCronTestFeedback({ ok: true, message: "Enviado." });
+      }
       if (processed > 0) loadContinuo();
-    } catch (e) { setCronTestResult(`Falha: ${e instanceof Error ? e.message : "Erro ao chamar cron"}`); }
-    finally { setCronTestLoading(false); }
+    } catch (e) {
+      console.error("[grupos-venda cron teste manual]", e);
+      setCronTestFeedback({ ok: false, message: "Erro. Entre em contato com o suporte." });
+    } finally {
+      setCronTestLoading(false);
+    }
   }, [loadContinuo]);
 
   const activeCount = continuoList.filter((c) => c.ativo).length;
@@ -694,9 +741,16 @@ export default function GruposVendaPage() {
               </div>
             </div>
 
-            {cronTestResult && (
-              <div className="mx-4 mt-3 p-3 rounded-xl bg-dark-bg border border-dark-border text-xs text-text-primary leading-relaxed">
-                {cronTestResult}
+            {cronTestFeedback && (
+              <div
+                className={cn(
+                  "mx-4 mt-3 p-3 rounded-xl border text-xs font-semibold leading-relaxed",
+                  cronTestFeedback.ok
+                    ? "bg-emerald-500/8 border-emerald-500/35 text-emerald-300"
+                    : "bg-red-500/8 border-red-500/35 text-red-300",
+                )}
+              >
+                {cronTestFeedback.message}
               </div>
             )}
 

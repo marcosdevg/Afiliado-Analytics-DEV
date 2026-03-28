@@ -1,4 +1,5 @@
 import type { VideoInputProps } from "../../../remotion/types";
+import { humanizeLargeRequestError } from "../humanize-fetch-error";
 
 /**
  * O render no Vercel Sandbox não acessa URLs `blob:` do navegador.
@@ -29,15 +30,17 @@ async function uploadBlobUrlToPublic(blobUrl: string): Promise<string> {
   try {
     json = JSON.parse(text) as { url?: string; error?: string };
   } catch {
-    throw new Error(text.slice(0, 200) || `Upload falhou (${up.status})`);
+    throw new Error(
+      humanizeLargeRequestError(text.slice(0, 400) || `Upload falhou (${up.status})`),
+    );
   }
 
   if (!up.ok || !json.url) {
     const detail = json.error ?? (text ? text.slice(0, 500) : "");
     throw new Error(
-      detail
-        ? `[Publicar mídia (blob→HTTPS)] ${detail}`
-        : `Upload falhou (${up.status})`,
+      humanizeLargeRequestError(
+        detail ? `[Publicar mídia] ${detail}` : `Upload falhou (${up.status})`,
+      ),
     );
   }
   return json.url;

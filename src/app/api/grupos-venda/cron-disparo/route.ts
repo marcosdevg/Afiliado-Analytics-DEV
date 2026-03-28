@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "utils/supabase/server";
 import crypto from "crypto";
 import { mensagemErroJanela } from "@/lib/grupos-venda-janela";
 
@@ -40,15 +41,12 @@ function buildShopeeAuth(appId: string, secret: string, payload: string) {
   return `SHA256 Credential=${appId}, Timestamp=${timestamp}, Signature=${signature}`;
 }
 
-export async function GET(req: NextRequest) {
-  const isProd = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
-  if (isProd && process.env.CRON_SECRET) {
-    const auth = req.headers.get("authorization") || "";
-    if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-  }
+type CronResultBody =
+  | { ok: true; processed: 0; message: string }
+  | { ok: true; processed: number; results: { userId: string; keyword?: string; ok: boolean; error?: string }[] };
 
+/** Lógica compartilhada: Vercel Cron (GET + Bearer) ou teste no app (POST + sessão). */
+async function runCronDisparo(): Promise<CronResultBody> {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -60,7 +58,7 @@ export async function GET(req: NextRequest) {
     .eq("ativo", true);
 
   if (configError || !configs?.length) {
-    return NextResponse.json({ ok: true, processed: 0, message: "Nenhum disparo ativo" });
+    return { ok: true, processed: 0, message: "Nenhum disparo ativo" };
   }
 
   const results: { userId: string; keyword?: string; ok: boolean; error?: string }[] = [];
@@ -305,5 +303,53 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, processed: configs.length, results });
+  return { ok: true, processed: configs.length, results };
+}
+
+/**
+ * Produção na Vercel: só aceita chamadas com Authorization: Bearer CRON_SECRET
+ * (a Vercel injeta isso automaticamente quando CRON_SECRET está nas env vars do projeto).
+ *
+ * Sem CRON_SECRET, qualquer um pode fazer GET e disparar ofertas — por isso exigimos o segredo.
+ */
+export async function GET(req: NextRequest) {
+  const onVercel = process.env.VERCEL === "1";
+  const cronSecret = (process.env.CRON_SECRET ?? "").trim();
+
+  if (onVercel) {
+    if (!cronSecret) {
+      return NextResponse.json(
+        {
+          error:
+            "CRON_SECRET não configurado na Vercel. Adicione em Settings → Environment Variables e faça redeploy. Sem isso o endpoint fica público e pode ser chamado por bots a qualquer intervalo.",
+        },
+        { status: 503 }
+      );
+    }
+    const auth = req.headers.get("authorization") || "";
+    if (auth !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
+  const body = await runCronDisparo();
+  return NextResponse.json(body);
+}
+
+/** Teste manual no painel (Grupos de venda): exige usuário logado; não expõe CRON_SECRET no browser. */
+export async function POST(req: NextRequest) {
+  const supabaseAuth = await createServerClient();
+  const authHeader = req.headers.get("authorization") ?? "";
+  const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+
+  const { data: { user } } = bearer
+    ? await supabaseAuth.auth.getUser(bearer)
+    : await supabaseAuth.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  }
+
+  const body = await runCronDisparo();
+  return NextResponse.json(body);
 }

@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "utils/supabase/server";
 
-const TIPOS_ACAO = ["verificar_status", "criar_instancia", "excluir_instancia", "testar_conexao", "buscar_grupo"] as const;
+const TIPOS_ACAO = [
+  "verificar_status",
+  "criar_instancia",
+  "excluir_instancia",
+  "reconectar",
+  "testar_conexao",
+  "buscar_grupo",
+] as const;
 
 export async function POST(req: Request) {
   const supabase = await createClient();
@@ -28,6 +35,9 @@ export async function POST(req: Request) {
   }
   if (tipoAcao === "criar_instancia" && !numeroWhatsApp) {
     return NextResponse.json({ error: "numeroWhatsApp é obrigatório para criar_instancia." }, { status: 400 });
+  }
+  if (tipoAcao === "reconectar" && !hash) {
+    return NextResponse.json({ error: "hash é obrigatório para reconectar." }, { status: 400 });
   }
 
   const envWebhook = (process.env.EVOLUTION_N8N_WEBHOOK_URL ?? "").trim();

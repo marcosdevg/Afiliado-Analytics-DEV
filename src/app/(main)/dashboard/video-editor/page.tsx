@@ -16,6 +16,10 @@ import {
 } from "../../../../../remotion/types";
 import { useRemotionSandboxRender } from "../../../../hooks/use-remotion-sandbox-render";
 import { resolveInputPropsForRender } from "../../../../lib/remotion/resolve-input-props-for-render";
+import { humanizeLargeRequestError } from "../../../../lib/humanize-fetch-error";
+import { compressImageFileToMaxBytes } from "../../../../lib/compress-image-client";
+import { compressVideoFileToMaxBytes } from "../../../../lib/compress-video-client";
+import { RENDER_PUBLISH_BLOB_MAX_BYTES } from "../../../../lib/remotion/render-limits";
 import ProFeatureGate from "../ProFeatureGate";
 
 type Voice = { voice_id: string; name: string; preview_url: string | null; labels: Record<string, string> };
@@ -225,6 +229,12 @@ function VideoEditorPageInner() {
 
   // ── Step 4 ──
   const [error, setError] = useState<string | null>(null);
+  /** Primeiro arquivo (imagem ou vídeo) que estourou o limite no passo 1 — comprimir no navegador. */
+  const [oversizedMediaForCompress, setOversizedMediaForCompress] = useState<
+    { file: File; kind: "image" | "video" } | null
+  >(null);
+  const [compressMediaLoading, setCompressMediaLoading] = useState(false);
+  const [compressHint, setCompressHint] = useState<string | null>(null);
   const remotionExport = useRemotionSandboxRender();
   const [exportPrep, setExportPrep] = useState(false);
   const [dailyLimitUsageLoaded, setDailyLimitUsageLoaded] = useState(false);
@@ -350,47 +360,110 @@ function VideoEditorPageInner() {
     }
   }, [editorDailyHardBlocked, shopeeUrl]);
 
-  const MAX_VIDEO_SIZE = 50 * 1024 * 1024;
   const MAX_VIDEO_DURATION = 60;
   const MAX_AUDIO_SIZE = 10 * 1024 * 1024;
   const MAX_AUDIO_DURATION = 60;
 
   // ── File upload ──
-  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (editorDailyHardBlocked) return;
-    const files = e.target.files;
-    if (!files) return;
+  const handleFileUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (editorDailyHardBlocked) return;
+      const files = e.target.files;
+      if (!files?.length) return;
 
-    const processFile = async (f: File) => {
-      const isVideo = f.type.startsWith("video/");
+      setError(null);
+      setOversizedMediaForCompress(null);
+      setCompressHint(null);
 
-      if (isVideo) {
-        if (f.size > MAX_VIDEO_SIZE) {
-          setError(`"${f.name}" excede 50MB. Máximo permitido: 50MB.`);
-          return null;
+      let firstOversize: { file: File; kind: "image" | "video" } | null = null;
+      const newAssets: MediaAsset[] = [];
+
+      for (const f of Array.from(files)) {
+        if (f.size > RENDER_PUBLISH_BLOB_MAX_BYTES) {
+          setError(
+            `Esse arquivo: ${f.name} é grande demais para enviar assim (o limite do servidor é cerca de 4 a 5 MB por vez).`,
+          );
+          if (!firstOversize) {
+            if (f.type.startsWith("video/")) firstOversize = { file: f, kind: "video" };
+            else if (f.type.startsWith("image/")) firstOversize = { file: f, kind: "image" };
+          }
+          continue;
         }
-        const dur = await new Promise<number>((resolve) => {
-          const v = document.createElement("video");
-          v.preload = "metadata";
-          v.onloadedmetadata = () => { resolve(v.duration); URL.revokeObjectURL(v.src); };
-          v.onerror = () => resolve(0);
-          v.src = URL.createObjectURL(f);
-        });
-        if (dur > MAX_VIDEO_DURATION) {
-          setError(`"${f.name}" tem ${Math.ceil(dur)}s. Máximo permitido: 1 minuto.`);
-          return null;
+
+        const isVideo = f.type.startsWith("video/");
+        if (isVideo) {
+          const dur = await new Promise<number>((resolve) => {
+            const v = document.createElement("video");
+            v.preload = "metadata";
+            v.onloadedmetadata = () => {
+              resolve(v.duration);
+              URL.revokeObjectURL(v.src);
+            };
+            v.onerror = () => resolve(0);
+            v.src = URL.createObjectURL(f);
+          });
+          if (dur > MAX_VIDEO_DURATION) {
+            setError(`"${f.name}" tem ${Math.ceil(dur)}s. Máximo permitido: 1 minuto.`);
+            continue;
+          }
         }
+
+        const url = URL.createObjectURL(f);
+        newAssets.push({ type: isVideo ? "video" : "image", src: url });
       }
 
-      const url = URL.createObjectURL(f);
-      return { type: isVideo ? "video" as const : "image" as const, src: url };
-    };
+      if (firstOversize) setOversizedMediaForCompress(firstOversize);
+      if (newAssets.length > 0) setUploadedFiles((prev) => [...prev, ...newAssets]);
+      e.target.value = "";
+    },
+    [editorDailyHardBlocked],
+  );
 
-    Promise.all(Array.from(files).map(processFile)).then((results) => {
-      const valid = results.filter(Boolean) as MediaAsset[];
-      if (valid.length > 0) setUploadedFiles((prev) => [...prev, ...valid]);
-    });
-  }, [editorDailyHardBlocked]);
+  const handleCompressOversizedMedia = useCallback(async () => {
+    const item = oversizedMediaForCompress;
+    if (!item) return;
+    setCompressMediaLoading(true);
+    if (item.kind === "image") {
+      setCompressHint("Comprimindo imagem… pode levar alguns segundos.");
+    } else {
+      setCompressHint("Preparando… na primeira vez o conversor é baixado (pode demorar).");
+    }
+    try {
+      if (item.kind === "image") {
+        const blob = await compressImageFileToMaxBytes(item.file, RENDER_PUBLISH_BLOB_MAX_BYTES);
+        if (blob.size > RENDER_PUBLISH_BLOB_MAX_BYTES) {
+          setError("Mesmo após comprimir, o arquivo ainda passa do limite. Tente outra imagem.");
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        setUploadedFiles((prev) => [...prev, { type: "image", src: url }]);
+      } else {
+        const blob = await compressVideoFileToMaxBytes(
+          item.file,
+          RENDER_PUBLISH_BLOB_MAX_BYTES,
+          (p) => {
+            if (p.phase === "load") setCompressHint("Carregando conversor de vídeo…");
+            else setCompressHint(`Codificando vídeo… ${p.label}`);
+          },
+        );
+        if (blob.size > RENDER_PUBLISH_BLOB_MAX_BYTES) {
+          setError("Mesmo após comprimir, o vídeo ainda passa do limite. Tente um clipe mais curto.");
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        setUploadedFiles((prev) => [...prev, { type: "video", src: url }]);
+      }
+      setError(null);
+      setOversizedMediaForCompress(null);
+      setCompressHint(null);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Não foi possível comprimir o arquivo.",
+      );
+    } finally {
+      setCompressMediaLoading(false);
+    }
+  }, [oversizedMediaForCompress]);
 
   // ── Generate copy ──
   const handleGenerateCopy = useCallback(async () => {
@@ -763,11 +836,81 @@ function VideoEditorPageInner() {
       </p>
 
       {error && (
-        <div className="p-3.5 rounded-xl border border-red-500/40 bg-red-500/8 flex items-start gap-2.5">
-          <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
-          <p className="text-sm text-red-400 flex-1">{error}</p>
-          <button type="button" onClick={() => setError(null)} className="text-red-400/50 hover:text-red-400 text-xs px-1">✕</button>
+        <div
+          className={
+            compressMediaLoading
+              ? "p-3.5 rounded-xl border border-dark-border bg-dark-card flex items-start gap-2.5 shadow-sm"
+              : "p-3.5 rounded-xl border border-red-500/40 bg-red-500/8 flex items-start gap-2.5"
+          }
+        >
+          {compressMediaLoading ? (
+            <Loader2 className="h-4 w-4 text-shopee-orange shrink-0 mt-0.5 animate-spin" />
+          ) : (
+            <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+          )}
+          <div className="flex-1 min-w-0 space-y-2">
+            {!compressMediaLoading ? (
+              <p className="text-sm text-red-400">{error}</p>
+            ) : (
+              <div className="space-y-0.5">
+                <p className="text-sm font-semibold text-text-primary">Comprimindo…</p>
+                <p className="text-xs text-text-secondary/80">
+                  Aguarde enquanto reduzimos o arquivo para o limite do servidor.
+                </p>
+              </div>
+            )}
+            {oversizedMediaForCompress ? (
+              <div className="space-y-2">
+                {compressMediaLoading ? (
+                  <div className="rounded-xl border border-dark-border bg-dark-bg/80 px-3 py-2.5">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <p className="text-xs font-semibold text-text-primary">
+                        {oversizedMediaForCompress.kind === "image" ? "Imagem" : "Vídeo"}{" "}
+                        <span className="font-normal text-text-secondary break-all">
+                          · {oversizedMediaForCompress.file.name}
+                        </span>
+                      </p>
+                      <p className="text-[11px] text-text-secondary leading-snug">{compressHint ?? "Aguarde…"}</p>
+                      <div className="h-1 rounded-full bg-dark-border overflow-hidden mt-1.5">
+                        <div className="h-full w-1/3 rounded-full bg-shopee-orange/90 animate-pulse" />
                       </div>
+                      <p className="text-[10px] text-text-secondary/60">Não feche esta aba enquanto processa.</p>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleCompressOversizedMedia()}
+                    className={`compress-media-sweep-btn ${btnPrimary} w-full sm:w-auto text-xs py-2.5 px-4`}
+                  >
+                    <span className="relative z-[1] inline-flex items-center gap-2">
+                      <Zap className="h-3.5 w-3.5 opacity-95" />
+                      {oversizedMediaForCompress.kind === "image"
+                        ? "Comprimir imagem e adicionar"
+                        : "Comprimir vídeo e adicionar"}
+                    </span>
+                  </button>
+                )}
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            disabled={compressMediaLoading}
+            onClick={() => {
+              setError(null);
+              setOversizedMediaForCompress(null);
+              setCompressHint(null);
+            }}
+            className={
+              compressMediaLoading
+                ? "text-text-secondary/50 text-xs px-1 shrink-0 disabled:opacity-40 disabled:pointer-events-none"
+                : "text-red-400/50 hover:text-red-400 text-xs px-1 shrink-0 disabled:opacity-30 disabled:pointer-events-none"
+            }
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       {/* ════════════════════════════════════════
@@ -1732,7 +1875,8 @@ function VideoEditorPageInner() {
                         await remotionExport.startRender(resolved);
                       } catch (e) {
                         setExportPrep(false);
-                        setError(e instanceof Error ? e.message : "Erro ao preparar exportação");
+                        const raw = e instanceof Error ? e.message : "Erro ao preparar exportação";
+                        setError(humanizeLargeRequestError(raw));
                       }
                     })();
                   }}
