@@ -101,7 +101,7 @@ export async function POST(req: Request) {
     if (!ativo && id) {
       const { data: updated, error } = await supabase
         .from("grupos_venda_continuo")
-        .update({ ativo: false, updated_at: now })
+        .update({ ativo: false, keyword_pool_indices: {}, updated_at: now })
         .eq("id", id)
         .eq("user_id", user.id)
         .select("id, ativo, proximo_indice, ultimo_disparo_at")
@@ -171,6 +171,7 @@ export async function POST(req: Request) {
       horario_fim: horarioFim,
       ativo: true,
       proximo_indice: 0,
+      keyword_pool_indices: {},
       updated_at: now,
     };
 

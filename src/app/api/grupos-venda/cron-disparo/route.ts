@@ -54,7 +54,7 @@ async function runCronDisparo(): Promise<CronResultBody> {
 
   const { data: configs, error: configError } = await supabase
     .from("grupos_venda_continuo")
-    .select("id, user_id, instance_id, lista_id, lista_ofertas_id, keywords, sub_id_1, sub_id_2, sub_id_3, proximo_indice, horario_inicio, horario_fim")
+    .select("id, user_id, instance_id, lista_id, lista_ofertas_id, keywords, sub_id_1, sub_id_2, sub_id_3, proximo_indice, keyword_pool_indices, horario_inicio, horario_fim")
     .eq("ativo", true);
 
   if (configError || !configs?.length) {
@@ -190,7 +190,7 @@ async function runCronDisparo(): Promise<CronResultBody> {
         continue;
       }
 
-      // Busca até 30 produtos pela keyword (listType 1 = ofertas), filtra só em promoção e escolhe 1 aleatório
+      // Busca até 30 produtos pela keyword (listType 1 = ofertas), filtra promoção se houver; escolhe em ordem (índice persistido em keyword_pool_indices).
       const limit = 30;
       const queryProduct = `
         query {
@@ -218,8 +218,15 @@ async function runCronDisparo(): Promise<CronResultBody> {
       type ProductNode = { productLink?: string; offerLink?: string; productName?: string; imageUrl?: string; priceMin?: number; priceMax?: number; priceDiscountRate?: number };
       const emPromocao = (nodes as ProductNode[]).filter((n) => (n.priceDiscountRate ?? 0) > 0);
       const pool = emPromocao.length > 0 ? emPromocao : (nodes as ProductNode[]);
-      const randomIndex = pool.length > 0 ? Math.floor(Math.random() * pool.length) : 0;
-      const product = pool[randomIndex];
+      const rawIndices = (cfg as { keyword_pool_indices?: unknown }).keyword_pool_indices;
+      const keywordPoolIndices: Record<string, number> =
+        rawIndices && typeof rawIndices === "object" && !Array.isArray(rawIndices)
+          ? (rawIndices as Record<string, number>)
+          : {};
+      const n = Number.isFinite(keywordPoolIndices[keyword]) ? keywordPoolIndices[keyword]! : 0;
+      const poolLen = pool.length;
+      const pickIndex = poolLen > 0 ? n % poolLen : 0;
+      const product = pool[pickIndex];
       if (!product) {
         results.push({ userId, keyword, ok: false, error: "Nenhum produto encontrado" });
         await supabase.from("grupos_venda_continuo").update({ proximo_indice: nextIndex, ultimo_disparo_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", cfg.id);
@@ -290,10 +297,12 @@ async function runCronDisparo(): Promise<CronResultBody> {
         results.push({ userId, keyword, ok: true });
       }
 
+      const nextKeywordPoolIndices = { ...keywordPoolIndices, [keyword]: n + 1 };
       await supabase
         .from("grupos_venda_continuo")
         .update({
           proximo_indice: nextIndex,
+          ...(whRes.ok ? { keyword_pool_indices: nextKeywordPoolIndices } : {}),
           ultimo_disparo_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
