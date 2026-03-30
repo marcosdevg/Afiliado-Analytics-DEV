@@ -140,8 +140,8 @@ async function runCronDisparo(): Promise<CronResultBody> {
         const formatBRL = (n: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 }).format(n);
         const descricao =
           `✨ ${nomeProduto}\n\n` +
-          `💰 APROVEITE:${rate > 0 ? ` _${Math.round(rate)}% de DESCONTO!!!!_` : ""} \n\n  🔴 De: ~${formatBRL(precoRiscado)}~ \n\n  🔥 Por: *${formatBRL(precoPor)}* 😱\n\n` +
-          `🏷️ PROMOÇÃO - CLIQUE NO LINK 👇\n\n` +
+          `💰 APROVEITE:${rate > 0 ? ` _${Math.round(rate)}% de DESCONTO!!!!_` : ""} \n  🔴 De: ~${formatBRL(precoRiscado)}~ \n 🔥 Por: *${formatBRL(precoPor)}* 😱\n` +
+          `🏷️ PROMOÇÃO - CLIQUE NO LINK 👇\n` +
           linkAfiliado;
         const imagem = item.image_url ?? "";
 

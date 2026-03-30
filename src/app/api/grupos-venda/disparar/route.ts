@@ -125,8 +125,8 @@ export async function POST(req: Request) {
         const nomeProduto = product.productName ?? "";
         const descricao =
           `✨ ${nomeProduto}\n\n` +
-          `💰 APROVEITE:${rate > 0 ? ` _${Math.round(rate)}% de DESCONTO!!!!_` : ""} \n\n  🔴 De: ~${formatBRL(precoRiscado)}~ \n\n  🔥 Por: *${formatBRL(precoPor)}* 😱\n\n` +
-          `🏷️ PROMOÇÃO - CLIQUE NO LINK 👇\n\n` +
+          `💰 APROVEITE:${rate > 0 ? ` _${Math.round(rate)}% de DESCONTO!!!!_` : ""} \n  🔴 De: ~${formatBRL(precoRiscado)}~ \n  🔥 Por: *${formatBRL(precoPor)}* 😱\n` +
+          `🏷️ PROMOÇÃO - CLIQUE NO LINK 👇\n` +
           linkAfiliado;
         const imagem = product.imageUrl ?? "";
 
