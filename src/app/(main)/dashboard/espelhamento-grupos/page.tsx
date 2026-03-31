@@ -45,6 +45,7 @@ type ConfigRow = {
 
 type PayloadRow = {
   id: string;
+  config_id: string | null;
   status: string;
   grupo_origem_jid: string;
   texto_entrada: string;
@@ -169,6 +170,8 @@ function EspelhamentoCard({
 
 export default function EspelhamentoGruposPage() {
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [instanceStatusMap, setInstanceStatusMap] = useState<Record<string, "open" | "close" | null>>({});
+  const [statusLoading, setStatusLoading] = useState(false);
   const [configs, setConfigs] = useState<ConfigRow[]>([]);
   const [payloads, setPayloads] = useState<PayloadRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,6 +194,7 @@ export default function EspelhamentoGruposPage() {
   const [modalTarget, setModalTarget] = useState<"origem" | "destino">("origem");
 
   const activeCount = useMemo(() => configs.filter((c) => c.ativo).length, [configs]);
+  const configById = useMemo(() => new Map(configs.map((c) => [c.id, c])), [configs]);
 
   const load = useCallback(async (opts?: { soft?: boolean }) => {
     if (opts?.soft) setRefreshing(true);
@@ -218,9 +222,43 @@ export default function EspelhamentoGruposPage() {
     }
   }, []);
 
+  const loadInstanceStatus = useCallback(async (items: Instance[]) => {
+    if (items.length === 0) {
+      setInstanceStatusMap({});
+      return;
+    }
+    setStatusLoading(true);
+    const nextMap: Record<string, "open" | "close" | null> = {};
+    const checks = items.map(async (inst) => {
+      try {
+        const res = await fetch("/api/evolution/n8n-action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tipoAcao: "verificar_status",
+            nomeInstancia: inst.nome_instancia,
+            hash: inst.hash ?? undefined,
+          }),
+        });
+        const json = await res.json();
+        const connected = json?.status === "open" || json?.conectado === true;
+        nextMap[inst.id] = connected ? "open" : "close";
+      } catch {
+        nextMap[inst.id] = null;
+      }
+    });
+    await Promise.all(checks);
+    setInstanceStatusMap(nextMap);
+    setStatusLoading(false);
+  }, []);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadInstanceStatus(instances);
+  }, [instances, loadInstanceStatus]);
 
   const openModal = (t: "origem" | "destino") => {
     setModalTarget(t);
@@ -450,6 +488,15 @@ export default function EspelhamentoGruposPage() {
                     <div className="flex flex-col gap-2">
                       {instances.map((inst) => {
                         const isSelected = selectedInstanceId === inst.id;
+                        const instanceStatus = instanceStatusMap[inst.id] ?? null;
+                        const statusLabel =
+                          instanceStatus === "open" ? "Conectada" : instanceStatus === "close" ? "Desconectada" : "Não verificado";
+                        const statusClass =
+                          instanceStatus === "open"
+                            ? "text-emerald-400"
+                            : instanceStatus === "close"
+                              ? "text-rose-400"
+                              : "text-[#a0a0a0]";
                         return (
                           <button
                             key={inst.id}
@@ -474,7 +521,9 @@ export default function EspelhamentoGruposPage() {
                               <p className={cn("text-[12px] font-bold truncate", isSelected ? "text-white" : "text-[#d8d8d8]")}>
                                 {inst.nome_instancia}
                               </p>
-                              <span className="text-[9px] text-[#a0a0a0]">Nome deve bater com o enviado pelo n8n (instanceName).</span>
+                              <span className={cn("text-[9px]", statusClass)}>
+                                Status: {statusLoading && instanceStatus === null ? "Verificando..." : statusLabel}
+                              </span>
                             </div>
                             {isSelected && (
                               <div className="w-5 h-5 rounded-full bg-[#e24c30] flex items-center justify-center shrink-0">
@@ -630,6 +679,15 @@ export default function EspelhamentoGruposPage() {
           ) : (
             <ul className="space-y-2">
               {payloads.map((p) => (
+                (() => {
+                  const linkedConfig =
+                    (p.config_id ? configById.get(p.config_id) : undefined) ??
+                    configs.find((c) => c.grupoOrigemJid === p.grupo_origem_jid);
+                  const origemNome = linkedConfig?.grupoOrigemNome ?? "Grupo origem";
+                  const origemJid = linkedConfig?.grupoOrigemJid ?? p.grupo_origem_jid;
+                  const destinoNome = linkedConfig?.grupoDestinoNome ?? "Grupo destino";
+                  const destinoJid = linkedConfig?.grupoDestinoJid ?? "-";
+                  return (
                 <li
                   key={p.id}
                   className="rounded-lg border border-[#2c2c32] bg-[#1c1c1f] p-3 text-[10px] leading-relaxed"
@@ -647,9 +705,20 @@ export default function EspelhamentoGruposPage() {
                     </span>
                     <span className="text-[#a0a0a0]">{new Date(p.created_at).toLocaleString("pt-BR")}</span>
                   </div>
-                  <p className="text-[9px] text-[#868686] font-mono break-all line-clamp-1">{p.grupo_origem_jid}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                    <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-2">
+                      <p className="text-[9px] text-emerald-400 font-semibold truncate">{origemNome}</p>
+                      <p className="text-[9px] text-[#868686] font-mono break-all mt-1">{origemJid}</p>
+                    </div>
+                    <div className="rounded-lg border border-red-500/25 bg-red-500/5 p-2">
+                      <p className="text-[9px] text-red-400 font-semibold truncate">{destinoNome}</p>
+                      <p className="text-[9px] text-[#868686] font-mono break-all mt-1">{destinoJid}</p>
+                    </div>
+                  </div>
                   {p.erro_detalhe && <p className="text-red-300/90 mt-2 text-[9px] break-all">{p.erro_detalhe}</p>}
                 </li>
+                  );
+                })()
               ))}
             </ul>
           )}
