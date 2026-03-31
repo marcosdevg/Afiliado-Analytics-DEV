@@ -50,6 +50,28 @@ export async function POST(req: NextRequest) {
     const textoBruto = typeof body.textoBruto === "string" ? body.textoBruto : "";
     const idMensagem = typeof body.idMensagem === "string" ? body.idMensagem.trim() : null;
     const userIdFilter = typeof body.userId === "string" ? body.userId.trim() : "";
+    const imagemBase64Raw =
+      typeof body.imagemBase64 === "string"
+        ? body.imagemBase64
+        : typeof body.base64 === "string"
+          ? body.base64
+          : typeof body.imageBase64 === "string"
+            ? body.imageBase64
+            : "";
+    const imagemMimeTypeRaw =
+      typeof body.imagemMimeType === "string"
+        ? body.imagemMimeType
+        : typeof body.imageMimeType === "string"
+          ? body.imageMimeType
+          : "";
+    const imagemUrlRaw =
+      typeof body.imagem === "string"
+        ? body.imagem
+        : typeof body.imageUrl === "string"
+          ? body.imageUrl
+          : typeof body?.imageMessage?.url === "string"
+            ? body.imageMessage.url
+            : "";
 
     if (!instanceName || !grupoOrigemJidRaw || !textoBruto) {
       return NextResponse.json(
@@ -183,6 +205,12 @@ export async function POST(req: NextRequest) {
     const outUrls = extractShopeeUrlsFromText(textoSaida);
     const linkOut = outUrls[0] ?? "";
 
+    const base64Clean = imagemBase64Raw.trim();
+    const mimeClean = imagemMimeTypeRaw.trim();
+    const imageBase64Only = base64Clean.replace(/^data:[^;]+;base64,/, "").replace(/\s+/g, "");
+    const imageDataUri =
+      imageBase64Only && mimeClean ? `data:${mimeClean};base64,${imageBase64Only}` : "";
+
     const webhookUrl =
       (process.env.ESPELHAMENTO_N8N_WEBHOOK_URL ?? "").trim() || DEFAULT_ESPELHAMENTO_DISPARO_WEBHOOK;
     const hash = inst.hash ?? "";
@@ -191,7 +219,9 @@ export async function POST(req: NextRequest) {
       instanceName: inst.nome_instancia,
       hash,
       groupIds,
-      imagem: "",
+      imagem: imageDataUri || imageBase64Only || imagemUrlRaw.trim(),
+      imagemBase64: imageBase64Only || null,
+      imagemMimeType: mimeClean || null,
       descricao: textoSaida,
       valor: 0,
       linkAfiliado: linkOut,

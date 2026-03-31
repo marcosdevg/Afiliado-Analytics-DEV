@@ -57,7 +57,9 @@ O backend exige **três** strings (camelCase):
   "grupoOrigemJid": "...",
   "textoBruto": "...",
   "idMensagem": "id_opcional_da_mensagem",
-  "userId": "uuid_do_usuario_supabase_so_se_der_erro_ambiguo"
+  "userId": "uuid_do_usuario_supabase_so_se_der_erro_ambiguo",
+  "imagemBase64": "base64_opcional_sem_prefixo_data",
+  "imagemMimeType": "image/jpeg"
 }
 ```
 
@@ -128,6 +130,8 @@ const textoBruto =
   msg.imageMessage?.caption ||
   msg.videoMessage?.caption ||
   "";
+const imagemBase64 = root.base64 ?? "";
+const imagemMimeType = msg.imageMessage?.mimetype || msg.videoMessage?.mimetype || "image/jpeg";
 
 return [
   {
@@ -136,6 +140,8 @@ return [
       grupoOrigemJid: String(grupoOrigemJid).trim(),
       textoBruto: String(textoBruto).trim(),
       idMensagem: key.id != null ? String(key.id) : "",
+      imagemBase64: String(imagemBase64 || "").trim(),
+      imagemMimeType: String(imagemMimeType || "").trim(),
     },
   },
 ];
@@ -148,7 +154,9 @@ No **HTTP Request**, body JSON:
   "instanceName": "={{ $json.instanceName }}",
   "grupoOrigemJid": "={{ $json.grupoOrigemJid }}",
   "textoBruto": "={{ $json.textoBruto }}",
-  "idMensagem": "={{ $json.idMensagem }}"
+  "idMensagem": "={{ $json.idMensagem }}",
+  "imagemBase64": "={{ $json.imagemBase64 }}",
+  "imagemMimeType": "={{ $json.imagemMimeType }}"
 }
 ```
 
