@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { GeradorPaginationBar } from "@/app/components/shopee/GeradorPaginationBar";
+import { extractShopeeItemIdFromInput, isShopeeShortLinkInput } from "@/lib/shopee-extract-item-id";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type ProductOffer = {
@@ -38,11 +39,7 @@ const MOBILE_SECTION_STEPS: { id: MobileTab; label: string }[] = [
 function cn(...c: (string | false | undefined | null)[]) { return c.filter(Boolean).join(" "); }
 
 function extractItemIdFromUrl(url: string): number | null {
-  const trimmed = url.trim();
-  if (!trimmed) return null;
-  const match = trimmed.match(/[.-]i\.(\d+)\.(\d+)/);
-  if (match) return parseInt(match[2], 10);
-  return null;
+  return extractShopeeItemIdFromInput(url);
 }
 function extractSlugFromUrl(url: string): string {
   try {
@@ -57,6 +54,20 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 }).format(value);
 }
 function fmtDisc(r: number) { return `${(r * 100).toFixed(0)}% OFF`; }
+
+const MSG_SUPORTE_GERADOR_SHOPEE = "Entre em contato com o suporte!";
+
+/** Falhas da API (ex.: erro 10000 da Shopee) → texto fixo; mantém mensagens que o usuário pode resolver. */
+function mensagemErroGeradorShopeeParaUsuario(apiMessage: string): string {
+  const m = apiMessage.trim();
+  if (!m) return MSG_SUPORTE_GERADOR_SHOPEE;
+  if (m.includes("Chaves da Shopee não configuradas")) return m;
+  if (m.toLowerCase().includes("shopee") && m.toLowerCase().includes("não configuradas")) return m;
+  if (m === "Unauthorized" || m === "Não autorizado") return m;
+  if (m.includes("originUrl é obrigatório")) return m;
+  if (m.includes("Informe keyword, itemId ou categoryId")) return m;
+  return MSG_SUPORTE_GERADOR_SHOPEE;
+}
 
 // ─── InfoTooltip (portal) ───────────────────────────────────────────────────────
 function InfoTooltip({ text }: { text: string }) {
@@ -401,6 +412,7 @@ export default function GeradorLinksShopeePage() {
     if (!isLgDesktop) return;
     const trimmed = inputValue.trim();
     if (!trimmed || !hasApiKeys) return;
+    if (isShopeeShortLinkInput(trimmed)) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => { debounceRef.current = null; handleSearchRef.current(trimmed); }, 500);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
@@ -444,6 +456,7 @@ export default function GeradorLinksShopeePage() {
   const handleSearch = useCallback(async (term?: string) => {
     const trimmed = (term ?? inputValue).trim();
     if (!trimmed || !hasApiKeys) return;
+    if (isShopeeShortLinkInput(trimmed)) return;
     setError(null); setSearchLoading(true);
     setProducts([]); setSelectedProduct(null); setGoldenProducts([]); setBestSellers([]);
     try {
@@ -477,7 +490,10 @@ export default function GeradorLinksShopeePage() {
         setSearchResultsPage(1);
         setMobileTab("produto");
       }
-    } catch (e) { setError(e instanceof Error ? e.message : "Erro ao buscar"); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Erro ao buscar";
+      setError(mensagemErroGeradorShopeeParaUsuario(msg));
+    }
     finally { setSearchLoading(false); }
   }, [inputValue, hasApiKeys]);
   handleSearchRef.current = handleSearch;
@@ -532,7 +548,10 @@ export default function GeradorLinksShopeePage() {
       setLastGeneratedLink(shortLink);
       setMobileTab("produto");
       await loadHistory(1, historySearchDebounced);
-    } catch (e) { setError(e instanceof Error ? e.message : "Erro ao converter"); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Erro ao converter";
+      setError(mensagemErroGeradorShopeeParaUsuario(msg));
+    }
     finally { setConvertLoading(false); }
   }, [selectedProduct, inputValue, subId1, subId2, subId3, historySearchDebounced, loadHistory]);
 
@@ -555,7 +574,10 @@ export default function GeradorLinksShopeePage() {
       setLastBestSellerKeyword(keyword);
       setBestSellerPage(1);
       setMobileTab("produto");
-    } catch (e) { setError(e instanceof Error ? e.message : "Erro ao listar mais vendidos"); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Erro ao listar mais vendidos";
+      setError(mensagemErroGeradorShopeeParaUsuario(msg));
+    }
     finally { setLoadingBestSellers(false); }
   }, [hasApiKeys, bestSellerKeyword]);
 
@@ -762,6 +784,14 @@ export default function GeradorLinksShopeePage() {
                   ? <button onClick={() => setInputValue("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#a0a0a0] hover:text-[#f0f0f2] transition w-7 h-7 flex items-center justify-center"><X className="w-3 h-3" /></button>
                   : null}
             </div>
+            {isShopeeShortLinkInput(inputValue) && (
+              <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2.5">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" aria-hidden />
+                <p className="text-[11px] leading-snug text-amber-200">
+                  Por favor, abra o link convertido, copie o link do topo e cole aqui novamente!
+                </p>
+              </div>
+            )}
             </FieldGroup>
 
             <FieldGroup label="Sub IDs" icon={<Hash className="w-2.5 h-2.5" />} tooltip="Identificadores de rastreamento para saber de qual canal vieram seus cliques e vendas.">
@@ -777,7 +807,7 @@ export default function GeradorLinksShopeePage() {
             </FieldGroup>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-              <button onClick={runSearchNow} disabled={searchLoading || !inputValue.trim() || !hasApiKeys}
+              <button onClick={runSearchNow} disabled={searchLoading || !inputValue.trim() || !hasApiKeys || isShopeeShortLinkInput(inputValue)}
                 className="flex w-full items-center justify-center gap-1.5 bg-[#1c1c1f] border border-[#3e3e3e] text-[#d2d2d2] rounded-xl py-2.5 text-[11px] font-semibold hover:text-[#f0f0f2] hover:border-[#585858] disabled:opacity-40 transition min-h-[42px]">
                 {searchLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />} Buscar
               </button>

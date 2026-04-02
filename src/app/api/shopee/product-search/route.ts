@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createClient } from "../../../../../utils/supabase/server";
+import { extractShopeeItemIdFromInput } from "@/lib/shopee-extract-item-id";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,19 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     let keyword = url.searchParams.get("keyword")?.trim() || "";
     const itemIdParam = url.searchParams.get("itemId");
-    const itemId = itemIdParam ? parseInt(itemIdParam, 10) : undefined;
+    let itemId: number | undefined;
+    if (itemIdParam) {
+      const parsed = parseInt(itemIdParam, 10);
+      itemId = Number.isFinite(parsed) ? parsed : undefined;
+    }
+    // URL inteira de afiliado como "keyword" quebra a GraphQL; extrair itemId do path /product/...
+    if (keyword && itemId === undefined) {
+      const extracted = extractShopeeItemIdFromInput(keyword);
+      if (extracted != null) {
+        itemId = extracted;
+        keyword = "";
+      }
+    }
     const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
     const limit = Math.min(50, Math.max(1, parseInt(url.searchParams.get("limit") || "20", 10)));
     const sortTypeParam = url.searchParams.get("sortType");

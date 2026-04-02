@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { scrape } from "../../../../server/shopee-scraper-light";
+import { extractShopeeItemIdFromInput } from "@/lib/shopee-extract-item-id";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -17,23 +18,6 @@ function buildAuthorization(appId: string, secret: string, payload: string) {
   const signatureRaw = `${appId}${timestamp}${payload}${secret}`;
   const signature = crypto.createHash("sha256").update(signatureRaw).digest("hex");
   return `SHA256 Credential=${appId}, Timestamp=${timestamp}, Signature=${signature}`;
-}
-
-function extractItemIdFromShopeeUrl(rawUrl: string): number | null {
-  try {
-    const parsed = new URL(rawUrl);
-    const byQuery = parsed.searchParams.get("itemId") || parsed.searchParams.get("item_id");
-    if (byQuery && /^\d+$/.test(byQuery)) return Number(byQuery);
-
-    const byPattern = rawUrl.match(/-i\.\d+\.(\d+)/i);
-    if (byPattern?.[1]) return Number(byPattern[1]);
-
-    const bySlash = parsed.pathname.match(/\/product\/\d+\/(\d+)/i);
-    if (bySlash?.[1]) return Number(bySlash[1]);
-  } catch {
-    return null;
-  }
-  return null;
 }
 
 function isHttpUrl(value: unknown): value is string {
@@ -159,7 +143,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const itemId = extractItemIdFromShopeeUrl(shopeeUrl);
+    const itemId = extractShopeeItemIdFromInput(shopeeUrl);
 
     // 1) Tenta API oficial de afiliado (imagem principal) quando conseguimos itemId
     let result: { productName: string; media: MediaItem[]; error?: string } = {
