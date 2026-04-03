@@ -12,10 +12,20 @@ import type { PlanTier } from "./plan-entitlements";
 // ── Checkout links Kiwify ─────────────────────────────────────────────────────
 // Produto Principal
 const PADRAO_CHECKOUT_LINKS_PRINCIPAL = ["Q1eE7t8", "jGMeK6e"];
-const PRO_CHECKOUT_LINKS_PRINCIPAL = ["4fAAtkD", "TndnsLB"];
+const PRO_CHECKOUT_LINKS_PRINCIPAL = [
+  "4fAAtkD",
+  "TndnsLB",
+  "y7I4SuT",
+  "y7QHrMp",
+];
 // Produto Secundário
 const PADRAO_CHECKOUT_LINKS_SECUNDARIO = ["M2qUkd9", "HijcSN1"];
-const PRO_CHECKOUT_LINKS_SECUNDARIO = ["0mRaPls", "xaX0Ryx"];
+const PRO_CHECKOUT_LINKS_SECUNDARIO = [
+  "0mRaPls",
+  "xaX0Ryx",
+  "Kqrzgpp",
+  "tdDRvEF",
+];
 
 const ALL_PADRAO_CHECKOUT_LINKS = new Set([
   ...PADRAO_CHECKOUT_LINKS_PRINCIPAL,

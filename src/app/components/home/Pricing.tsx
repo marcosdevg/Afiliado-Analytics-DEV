@@ -16,6 +16,10 @@ type SubscriptionPlan = {
   popular: boolean
   tone: 'padrao' | 'pro'
   features: string[]
+  /** Substitui o % OFF calculado no badge trimestral (ex.: marketing 10% vs ~11,1% matemático). */
+  quarterlySavePctOverride?: number
+  /** Valor “/mês” no trimestral quando o copy de marketing difere do arredondamento de `quarterlyTotal/3`. */
+  quarterlyEquivalentMonthly?: number
 }
 
 type CustomPlan = {
@@ -52,13 +56,15 @@ const subscriptionPlans: SubscriptionPlan[] = [
   },
   {
     name: 'Pro',
-    monthly: 297.9,
-    monthlyAnchor: 397.9,
-    quarterlyTotal: 597.9,
+    monthly: 197.9,
+    monthlyAnchor: 297.9,
+    quarterlyTotal: 527.9,
     ctaMonthly: 'Começar no Pro',
-    ctaQuarterly: 'Garantir Pro com 33% OFF',
-    valorMensal: 'https://pay.kiwify.com.br/4fAAtkD',
-    valorTrimestral: 'https://pay.kiwify.com.br/TndnsLB',
+    ctaQuarterly: 'Garantir Pro trimestral',
+    valorMensal: 'https://pay.kiwify.com.br/y7I4SuT',
+    valorTrimestral: 'https://pay.kiwify.com.br/y7QHrMp',
+    quarterlySavePctOverride: 10,
+    quarterlyEquivalentMonthly: 175.96,
     popular: true,
     tone: 'pro',
     features: [
@@ -231,6 +237,8 @@ function PlanCard({
   index: number
 }) {
   const meta = getPlanMeta(plan)
+  const quarterlyOffPct =
+    plan.quarterlySavePctOverride ?? meta.quarterlySavePct
   const currentHref = quarterly ? plan.valorTrimestral : plan.valorMensal
   const currentCTA = quarterly ? plan.ctaQuarterly : plan.ctaMonthly
   const isPopular = plan.popular
@@ -292,11 +300,15 @@ function PlanCard({
                   </div>
 
                   <p className="mt-[8px] font-['Inter'] text-[14px] text-[rgba(255,255,255,0.82)]">
-                    Equivale a {formatBRL(meta.equivalentMonthly)}/mês
+                    Equivale a{' '}
+                    {formatBRL(
+                      plan.quarterlyEquivalentMonthly ?? meta.equivalentMonthly
+                    )}
+                    /mês
                   </p>
 
                   <div className="mt-[12px] inline-flex rounded-full bg-[rgba(255,255,255,0.08)] px-[12px] py-[7px] font-['Inter'] text-[12px] font-extrabold text-[#ffd7cb] w-fit">
-                    Economize {formatBRL(meta.quarterlySave)} no trimestre ({formatPercent(meta.quarterlySavePct)}% OFF)
+                    Economize {formatBRL(meta.quarterlySave)} no trimestre ({formatPercent(quarterlyOffPct)}% OFF)
                   </div>
                 </>
               ) : (
@@ -416,7 +428,7 @@ function PlanCard({
               </p>
 
               <div className={`mt-[12px] inline-flex rounded-full px-[10px] py-[6px] font-['Inter'] text-[12px] font-bold w-fit ${priceToneClass}`}>
-                Economize {formatBRL(meta.quarterlySave)} ({formatPercent(meta.quarterlySavePct)}% OFF)
+                Economize {formatBRL(meta.quarterlySave)} ({formatPercent(quarterlyOffPct)}% OFF)
               </div>
             </>
           ) : (
