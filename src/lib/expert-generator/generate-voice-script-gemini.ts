@@ -260,7 +260,7 @@ export async function generateVoiceScriptWithGemini(params: {
   const { min } = VOICE_SCRIPT_WORD_RANGE[params.durationSeconds];
 
   for (const model of ordered) {
-    let gen = await generateOnce(model, apiKey, prompt, maxWords);
+    const gen = await generateOnce(model, apiKey, prompt, maxWords);
     if (!gen.ok) {
       errors.push(`[${model}] ${gen.error}`);
       if (
