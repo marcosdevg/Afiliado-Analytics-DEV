@@ -152,12 +152,7 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    if (profile.plan_tier === "trial" && isTrialBlockedDashboardPath(pathname)) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/minha-conta/renovar";
-      url.searchParams.set("precisa_plano", "1");
-      return NextResponse.redirect(url);
-    }
+    // Trial em rotas bloqueadas: o layout do dashboard mostra upsell in-page (sidebar visível).
   }
 
   // Logado não vê Home

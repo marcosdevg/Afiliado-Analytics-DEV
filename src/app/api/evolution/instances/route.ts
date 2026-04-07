@@ -9,6 +9,11 @@ export async function GET() {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
+  const ent = await getEntitlementsForUser(supabase, user.id);
+  if (ent.evolutionInstances <= 0) {
+    return NextResponse.json({ instances: [] });
+  }
+
   const { data, error } = await supabase
     .from("evolution_instances")
     .select("id, nome_instancia, numero_whatsapp, hash, get_participants, created_at, updated_at")

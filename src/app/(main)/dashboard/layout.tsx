@@ -25,6 +25,10 @@ import {
   PlanEntitlementsProvider,
   usePlanEntitlements,
 } from "./PlanEntitlementsContext";
+import { isTrialBlockedDashboardPath } from "@/lib/trial-dashboard-blocked-paths";
+import { shouldShowPaidPlanUpsellInDashboard } from "@/lib/dashboard-paid-plan-upsell";
+import DashboardPaidPlanUpsell from "./DashboardPaidPlanUpsell";
+import type { PlanEntitlements } from "@/lib/plan-entitlements";
 
 /** Qual flag de `PlanEntitlements` libera o item na sidebar (não use só `tier === "pro"` — staff/custom também podem ter essas flags). */
 type ProSidebarFeature =
@@ -130,6 +134,23 @@ const sidebarNavItems: NavItem[] = [
   },
 ];
 
+function navItemLocked(
+  item: NavItem,
+  entitlements: PlanEntitlements | null
+): boolean {
+  const feature = item.proFeature;
+  const hasFeature =
+    feature && entitlements ? Boolean(entitlements[feature]) : false;
+  if (item.proOnly === true && !hasFeature) return true;
+  if (!entitlements) return false;
+  if (item.href === "/dashboard/gpl") return !entitlements.gpl.enabled;
+  if (item.href === "/dashboard/grupos-venda")
+    return entitlements.gruposVenda.maxGroupsTotal <= 0;
+  if (item.href === "/dashboard/minha-lista-ofertas")
+    return entitlements.gruposVenda.maxLists === 0;
+  return false;
+}
+
 export default function DashboardLayout({
   children,
 }: {
@@ -146,19 +167,23 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const sidebarRef = useRef<HTMLElement>(null);
-  const { entitlements } = usePlanEntitlements();
+  const { entitlements, tier, loading: entitlementsLoading } =
+    usePlanEntitlements();
 
   const visibleItems = useMemo(() => {
     return sidebarNavItems.filter((item) => !item.hidden).map((item) => {
-      const feature = item.proFeature;
-      const hasFeature =
-        feature && entitlements ? Boolean(entitlements[feature]) : false;
       return {
         ...item,
-        locked: item.proOnly === true && !hasFeature,
+        locked: navItemLocked(item, entitlements),
       };
     });
   }, [entitlements]);
+
+  const trialBlockedRoute = isTrialBlockedDashboardPath(pathname);
+  const showTrialPaidUpsell =
+    !entitlementsLoading &&
+    shouldShowPaidPlanUpsellInDashboard(pathname, tier, entitlements);
+  const showTrialBlockedLoading = entitlementsLoading && trialBlockedRoute;
 
   // Fechar com Escape e focar o primeiro link ao abrir
   useEffect(() => {
@@ -267,7 +292,17 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="flex-grow p-6 md:p-8 overflow-auto lg:ml-[-256px] scrollbar-app">
-        <div className="lg:ml-64">{children}</div>
+        <div className="lg:ml-64">
+          {showTrialBlockedLoading ? (
+            <div className="flex items-center justify-center py-20 text-text-secondary text-sm">
+              Carregando...
+            </div>
+          ) : showTrialPaidUpsell ? (
+            <DashboardPaidPlanUpsell />
+          ) : (
+            children
+          )}
+        </div>
       </main>
     </div>
   );

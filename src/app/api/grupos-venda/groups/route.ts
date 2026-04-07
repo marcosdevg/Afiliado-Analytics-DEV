@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../../utils/supabase/server";
 import { assertSharedGroupsPoolSlot } from "@/lib/espelhamento-limits";
+import { getEntitlementsForUser } from "@/lib/plan-server";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,14 @@ export async function GET(req: Request) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+
+    const ent = await getEntitlementsForUser(supabase, user.id);
+    if (ent.gruposVenda.maxGroupsTotal <= 0) {
+      return NextResponse.json(
+        { error: "Automação de grupos não está disponível no seu plano." },
+        { status: 403 }
+      );
+    }
 
     const url = new URL(req.url);
     const instanceId = url.searchParams.get("instanceId")?.trim() || null;
@@ -54,6 +63,14 @@ export async function POST(req: Request) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+
+    const ent = await getEntitlementsForUser(supabase, user.id);
+    if (ent.gruposVenda.maxGroupsTotal <= 0) {
+      return NextResponse.json(
+        { error: "Automação de grupos não está disponível no seu plano." },
+        { status: 403 }
+      );
+    }
 
     const body = await req.json().catch(() => ({}));
     const instanceId = typeof body.instanceId === "string" ? body.instanceId.trim() : "";
@@ -106,6 +123,14 @@ export async function DELETE(req: Request) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+
+    const ent = await getEntitlementsForUser(supabase, user.id);
+    if (ent.gruposVenda.maxGroupsTotal <= 0) {
+      return NextResponse.json(
+        { error: "Automação de grupos não está disponível no seu plano." },
+        { status: 403 }
+      );
+    }
 
     const url = new URL(req.url);
     const id = url.searchParams.get("id")?.trim();
