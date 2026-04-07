@@ -20,7 +20,14 @@ type ConfiguracoesClientProps = {
   metaLast4: string | null;
 };
 
-const CARDS: { key: SectionKey; title: string; description: string; icon: React.ElementType }[] = [
+const CARDS: {
+  key: SectionKey;
+  title: string;
+  description: string;
+  icon: React.ElementType;
+  /** Oculta o card na grelha (rota/API podem continuar a existir). */
+  hidden?: boolean;
+}[] = [
   {
     key: "shopee",
     title: "Integração Shopee",
@@ -32,6 +39,7 @@ const CARDS: { key: SectionKey; title: string; description: string; icon: React.
     title: "Mercado Livre API",
     description: "Client ID e Secret — dados de anúncios",
     icon: ShoppingBag,
+    hidden: true,
   },
   {
     key: "meta",
@@ -47,6 +55,15 @@ const CARDS: { key: SectionKey; title: string; description: string; icon: React.
   },
 ];
 
+/** Colunas alinhadas ao número de cards visíveis — evita “buraco” (ex.: 3 itens em grelha de 4 colunas). */
+function integrationCardsGridClass(visibleCount: number) {
+  const base = "grid gap-4";
+  if (visibleCount <= 1) return `${base} grid-cols-1`;
+  if (visibleCount === 2) return `${base} grid-cols-1 sm:grid-cols-2`;
+  if (visibleCount === 3) return `${base} grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`;
+  return `${base} grid-cols-1 sm:grid-cols-2 lg:grid-cols-4`;
+}
+
 export default function ConfiguracoesClient({
   initialAppId,
   initialHasKey,
@@ -58,17 +75,18 @@ export default function ConfiguracoesClient({
   metaLast4,
 }: ConfiguracoesClientProps) {
   const [openSection, setOpenSection] = useState<SectionKey>(null);
+  const visibleCards = CARDS.filter((c) => !c.hidden);
 
   return (
     <div className="space-y-6">
       {/* Grid de cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {CARDS.map(({ key, title, description, icon: Icon }) => (
+      <div className={integrationCardsGridClass(visibleCards.length)}>
+        {visibleCards.map(({ key, title, description, icon: Icon }) => (
           <button
             key={key ?? "null"}
             type="button"
             onClick={() => setOpenSection(openSection === key ? null : key)}
-            className={`flex items-start gap-4 rounded-xl border bg-dark-card p-4 text-left transition-all hover:border-shopee-orange/50 hover:bg-dark-card/90 ${
+            className={`flex w-full min-w-0 items-start gap-4 rounded-xl border bg-dark-card p-4 text-left transition-all hover:border-shopee-orange/50 hover:bg-dark-card/90 ${
               openSection === key ? "border-shopee-orange/60 ring-1 ring-shopee-orange/20" : "border-dark-border"
             }`}
           >

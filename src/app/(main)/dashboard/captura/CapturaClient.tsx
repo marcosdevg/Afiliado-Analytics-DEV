@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import {
   Eye,
@@ -28,6 +28,7 @@ import Toolist from "../../../components/ui/Toolist";
 import MetaSearchablePicker from "@/app/components/meta/MetaSearchablePicker";
 import { usePlanEntitlements } from "../PlanEntitlementsContext";
 
+import VipPreviewViewportShim from "./_components/VipPreviewViewportShim";
 import type { CaptureSiteRow, LayoutVariant, PageTemplate } from "./_lib/types";
 import { PAGE_TEMPLATE_OPTIONS, pageTemplateLabel } from "./_lib/captureTemplates";
 import { normalizeCapturePageTemplate } from "@/lib/capture-page-template";
@@ -61,6 +62,20 @@ import LayoutVariantField from "./_components/LayoutVariantField";
 import ResetMetricsModal from "./_components/ResetMetricsModal";
 import { persistOfertCarouselSlots } from "./_lib/ofertCarouselPersist";
 
+/** Igual ao breakpoint `md` do Tailwind (768px). */
+function useMatchMedia(query: string, ssrFallback = false): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      if (typeof window === "undefined") return () => {};
+      const mq = window.matchMedia(query);
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => (typeof window !== "undefined" ? window.matchMedia(query).matches : ssrFallback),
+    () => ssrFallback,
+  );
+}
+
 const DOMAIN = "s.afiliadoanalytics.com.br";
 const LOGO_BUCKET = "capture-logos";
 const PRO_CAPTURE_CHECKOUT_URL = "https://pay.kiwify.com.br/y7I4SuT";
@@ -71,10 +86,15 @@ const VIP_PREVIEW_MOCKUP = {
   w: 957,
   h: 1949,
   /**
-   * Insets calibrados para o recorte coincidir com o buraco transparente (menos faixa preta).
+   * Insets em viewport larga (≥768px, Tailwind `md`): painel do dashboard em desktop.
    * top/bottom menores = conteúdo ocupa mais em altura; lados menores = mais largura.
    */
-  screen: { top: "5.65%", left: "4.55%", right: "2.55%", bottom: "6.05%" },
+  screen: { top: "5.65%", left: "4.55%", right: "4.55%", bottom: "6.05%" },
+  /**
+   * Insets em viewport estreita (&lt;768px): dashboard no telemóvel / coluna estreita.
+   * Calibre manualmente (valores iniciais abaixo).
+   */
+  screenMaxMd: { top: "2%", left: "4.55%", right: "2.55%", bottom: "4.05%" },
 } as const;
 
 /**
@@ -87,6 +107,11 @@ const VIP_PREVIEW_PC_MOCKUP = {
   w: 2330,
   h: 1464,
   screen: { top: "4.4%", left: "13.7%", right: "11.7%", bottom: "30.5%" },
+  /**
+   * Viewport &lt;768px: encolhe a “janela” do conteúdo (aumentar top/left/right/bottom = menos W e H úteis).
+   * Calibre à mão. O `max-h` do &lt;img&gt; também baixa no mobile — ver bloco do preview PC.
+   */
+  screenMaxMd: { top: "6.2%", left: "16.5%", right: "14.5%", bottom: "32%" },
 } as const;
 
 const DEFAULT_BUTTON_TEXT = "Acessar Grupo Vip";
@@ -244,6 +269,14 @@ export default function CapturaClient() {
   const [vipPreviewToastRoot, setVipPreviewToastRoot] = useState<HTMLDivElement | null>(null);
   /** Preview VIP: moldura celular ou notebook (`pc.png`). */
   const [vipPreviewDevice, setVipPreviewDevice] = useState<"mobile" | "desktop">("mobile");
+  /** Recorte da “tela” no mockup celular: outro conjunto de % quando a janela é menor que 768px (Tailwind md). */
+  const vipMobilePreviewNarrow = useMatchMedia("(max-width: 767px)");
+  const vipMobileScreenInsets = vipMobilePreviewNarrow
+    ? VIP_PREVIEW_MOCKUP.screenMaxMd
+    : VIP_PREVIEW_MOCKUP.screen;
+  const vipPcScreenInsets = vipMobilePreviewNarrow
+    ? VIP_PREVIEW_PC_MOCKUP.screenMaxMd
+    : VIP_PREVIEW_PC_MOCKUP.screen;
 
   // layout variant (icons | scarcity) — só página classic
   const [layoutVariant, setLayoutVariant] = useState<LayoutVariant>("icons");
@@ -1193,13 +1226,15 @@ export default function CapturaClient() {
         <div className="bg-dark-card p-4 sm:p-8 rounded-lg border border-dark-border">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
             <div>
-              <h2 className="text-lg sm:text-xl font-semibold text-text-primary flex items-center gap-2">
+              <h2 className="text-lg sm:text-xl font-semibold text-text-primary flex flex-wrap items-center gap-2">
                 <LayoutTemplate className="h-5 w-5 text-shopee-orange shrink-0" />
                 Escolha o modelo do site
+                <Toolist
+                  wide
+                  variant="below"
+                  text="Cada opção muda o visual da página pública. Depois você preenche slug, textos e link como de costume."
+                />
               </h2>
-              <p className="text-sm text-text-secondary mt-1 max-w-xl">
-                Cada opção muda o visual da página pública. Depois você preenche slug, textos e link como de costume.
-              </p>
             </div>
             <button
               type="button"
@@ -1484,7 +1519,14 @@ export default function CapturaClient() {
                   {/* Slug */}
                   {mode === "create" ? (
                     <div>
-                      <label className={labelClass}>Slug (imutável)</label>
+                      <div className="mb-2 flex items-center gap-2">
+                        <label className="text-sm font-medium text-text-primary">Slug (imutável)</label>
+                        <Toolist
+                          wide
+                          variant="below"
+                          text={`Apenas letras minúsculas, números e hífen. O slug é único no link público (${DOMAIN}/…): não pode repetir em outra conta nem em outro seu site.`}
+                        />
+                      </div>
                       <div className="flex gap-2 items-center">
                         <span className="text-xs text-text-secondary whitespace-nowrap">{DOMAIN}/</span>
                         <input
@@ -1495,10 +1537,6 @@ export default function CapturaClient() {
                           required
                         />
                       </div>
-                      <p className="mt-1.5 text-xs text-text-secondary/80">
-                        Apenas letras minúsculas, números e hífen. O slug é único no link público ({DOMAIN}
-                        /…): não pode repetir em outra conta nem em outro seu site.
-                      </p>
                     </div>
                   ) : (
                     <div>
@@ -1509,31 +1547,46 @@ export default function CapturaClient() {
                   )}
 
                   <div className="rounded-lg border border-dark-border/60 bg-dark-bg/30 px-3 py-2.5">
-                    <p className="text-xs text-text-secondary">
-                      <span className="font-medium text-text-primary">Modelo visual:</span>{" "}
-                      {pageTemplateLabel(pageTemplate)}
-                      {mode === "edit" ? (
-                        <span className="block mt-1 text-text-secondary/80">
-                          O modelo não pode ser alterado após criar. Para trocar, crie outro site.
-                        </span>
+                    <div className="flex items-start gap-2">
+                      <p className="min-w-0 flex-1 text-xs text-text-secondary">
+                        <span className="font-medium text-text-primary">Modelo visual:</span>{" "}
+                        {pageTemplateLabel(pageTemplate)}
+                        {mode === "edit" ? (
+                          <span className="block mt-1 text-text-secondary/80">
+                            O modelo não pode ser alterado após criar. Para trocar, crie outro site.
+                          </span>
+                        ) : null}
+                      </p>
+                      {pageTemplate !== "classic" ? (
+                        <Toolist
+                          wide
+                          variant="below"
+                          text='Este modelo já inclui faixa de urgência, barra de vagas e lista de benefícios na página pública (não usa “layout com ícones / escassez” do card clássico).'
+                        />
                       ) : null}
-                    </p>
+                    </div>
                   </div>
 
                   {/* Layout do card — só no template padrão */}
                   {pageTemplate === "classic" ? (
                     <LayoutVariantField value={layoutVariant} onChange={setLayoutVariant} />
-                  ) : (
-                    <p className="text-xs text-text-secondary/90 leading-relaxed">
-                      Este modelo já inclui faixa de urgência, barra de vagas e lista de benefícios na página
-                      pública (não usa “layout com ícones / escassez” do card clássico).
-                    </p>
-                  )}
+                  ) : null}
 
                   {/* Logo */}
                   <div className="bg-dark-bg border border-dark-border rounded-lg p-4">
                     <div className="flex items-center justify-between gap-3 mb-2">
-                      <div className="text-sm font-medium text-text-primary">Logo (opcional)</div>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="text-sm font-medium text-text-primary">Logo (opcional)</span>
+                        <Toolist
+                          wide
+                          variant="below"
+                          text={
+                            mode === "create"
+                              ? "A logo será enviada automaticamente após criar o site."
+                              : "Alterações ou remoção da logo entram em vigor ao salvar o site."
+                          }
+                        />
+                      </div>
 
                       {mode === "edit" && (logoUrl || logoPendingAction === "remove") && (
                         <div className="flex items-center gap-2">
@@ -1651,10 +1704,6 @@ export default function CapturaClient() {
                         </div>
                       </div>
                     </label>
-
-                    {mode === "create" && (
-                      <div className="mt-2 text-xs text-text-secondary">A logo será enviada automaticamente após criar o site.</div>
-                    )}
                   </div>
 
                   {/* Cor do botão */}
@@ -2146,6 +2195,14 @@ export default function CapturaClient() {
                             : "max-w-[min(100%,min(920px,96vw))]";
                         const isMobileFrame = vipPreviewDevice === "mobile";
 
+                        const vipPreviewToastOverlay = (
+                          <div
+                            ref={setVipPreviewToastRoot}
+                            className="pointer-events-none absolute inset-0 z-[40]"
+                            aria-hidden
+                          />
+                        );
+
                         const vipLanding = (
                           <CaptureVipLanding
                             variant={
@@ -2186,18 +2243,15 @@ export default function CapturaClient() {
                             >
                               <div
                                 className={`absolute z-[1] overflow-hidden ${screenRoundClass}`}
-                                style={mock.screen}
+                                style={vipMobileScreenInsets}
                               >
-                                <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin">
+                                <VipPreviewViewportShim
+                                  enabled={vipMobilePreviewNarrow}
+                                  overlay={vipPreviewToastOverlay}
+                                >
                                   {vipLanding}
-                                </div>
+                                </VipPreviewViewportShim>
                               </div>
-                              <div
-                                ref={setVipPreviewToastRoot}
-                                className="pointer-events-none absolute z-[40]"
-                                style={mock.screen}
-                                aria-hidden
-                              />
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
                                 src={mock.src}
@@ -2217,25 +2271,26 @@ export default function CapturaClient() {
                           <div className="isolate relative mx-auto inline-block max-h-full max-w-[min(920px,96vw)] leading-none">
                             <div
                               className={`absolute z-[1] overflow-hidden ${screenRoundClass}`}
-                              style={VIP_PREVIEW_PC_MOCKUP.screen}
+                              style={vipPcScreenInsets}
                             >
-                              <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin">
+                              <VipPreviewViewportShim
+                                enabled={vipMobilePreviewNarrow}
+                                overlay={vipPreviewToastOverlay}
+                              >
                                 {vipLanding}
-                              </div>
+                              </VipPreviewViewportShim>
                             </div>
-                            <div
-                              ref={setVipPreviewToastRoot}
-                              className="pointer-events-none absolute z-[40]"
-                              style={VIP_PREVIEW_PC_MOCKUP.screen}
-                              aria-hidden
-                            />
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={VIP_PREVIEW_PC_MOCKUP.src}
                               alt=""
                               width={VIP_PREVIEW_PC_MOCKUP.w}
                               height={VIP_PREVIEW_PC_MOCKUP.h}
-                              className="relative z-50 block h-auto max-h-[min(calc(78vh-5rem),760px)] w-auto max-w-full select-none object-contain mix-blend-multiply pointer-events-none"
+                              className={`relative z-50 block h-auto w-auto max-w-full select-none object-contain mix-blend-multiply pointer-events-none ${
+                                vipMobilePreviewNarrow
+                                  ? "max-h-[min(40vh,340px)]"
+                                  : "max-h-[min(calc(78vh-5rem),760px)]"
+                              }`}
                               draggable={false}
                             />
                           </div>
