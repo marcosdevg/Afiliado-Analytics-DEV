@@ -271,7 +271,7 @@ function parseEmbeddedPermalinks(html: string, limit: number): MlSiteSearchProdu
   const seen = new Set<string>();
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null && out.length < limit) {
-    let link = m[1].replace(/\\u002f/gi, "/").replace(/\\\//g, "/");
+    const link = m[1].replace(/\\u002f/gi, "/").replace(/\\\//g, "/");
     if (!link.includes("mercadolivre") && !link.includes("mercadolibre")) continue;
     if (isMlSocialListsProfileUrl(link)) continue;
     const key = link.split("#")[0].split("?")[0].toLowerCase();
