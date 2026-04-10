@@ -31,8 +31,23 @@ function isPublicAssetPath(pathname: string) {
   return /\.[a-z0-9]+$/i.test(last);
 }
 
-// Rotas do dashboard que exigem assinatura ativa
-const PAID_DASHBOARD_PREFIXES = ["/dashboard/links", "/dashboard/captura", "/dashboard/gpl", "/dashboard/ati"];
+// Rotas do dashboard que exigem assinatura ativa (não expirada / cancelada).
+// Inclui módulos que trial já bloqueia em `trial-dashboard-blocked-paths.ts`, para o gate
+// aplicar também a `subscription_status !== "active"` ao aceder por URL ou favorito.
+const PAID_DASHBOARD_PREFIXES = [
+  "/dashboard/links",
+  "/dashboard/captura",
+  "/dashboard/gpl",
+  "/dashboard/ati",
+  "/dashboard/meta-ads",
+  "/dashboard/gerador-links-shopee",
+  "/dashboard/grupos-venda",
+  "/dashboard/espelhamento-grupos",
+  "/dashboard/minha-lista-ofertas",
+  "/dashboard/minha-lista-ofertas-ml",
+  "/dashboard/video-editor",
+  "/dashboard/gerador-especialista",
+];
 
 function isPaidDashboardPath(pathname: string) {
   return PAID_DASHBOARD_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
