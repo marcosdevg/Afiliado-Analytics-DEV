@@ -12,8 +12,66 @@ import type {
   BlankDecorative,
   BlankFontPreset,
 } from "@/lib/capture-blank-canvas";
+import { CAPTURE_FONT_PICKER_OPTIONS } from "@/lib/capture-google-font-presets";
 import EmBrancoCssColorField from "./EmBrancoCssColorField";
 import Toolist from "@/app/components/ui/Toolist";
+import MetaSearchablePicker, { type MetaPickerOption } from "@/app/components/meta/MetaSearchablePicker";
+import CaptureRangeField from "./CaptureRangeField";
+
+const EMBRANCO_DECORATIVE_OPTIONS: MetaPickerOption[] = [
+  { value: "none", label: "Nenhuma", description: "Sem padrão decorativo no fundo." },
+  { value: "dots", label: "Pontos subtis", description: "Textura leve de pontos." },
+  { value: "grid", label: "Grelha técnica", description: "Linhas discretas." },
+  { value: "gradient_orbs", label: "Orbes de luz", description: "Formas suaves com brilho." },
+];
+
+const EMBRANCO_BG_FIT_OPTIONS: MetaPickerOption[] = [
+  { value: "cover", label: "Cover (preenche)", description: "A imagem cobre toda a área." },
+  { value: "contain", label: "Contain (inteira)", description: "Imagem inteira visível, pode haver margens." },
+];
+
+const EMBRANCO_BG_REPEAT_OPTIONS: MetaPickerOption[] = [
+  { value: "no-repeat", label: "Sem repetir" },
+  { value: "repeat", label: "Repetir" },
+  { value: "repeat-x", label: "Só horizontal" },
+  { value: "repeat-y", label: "Só vertical" },
+];
+
+const EMBRANCO_BG_POSITION_OPTIONS: MetaPickerOption[] = [
+  { value: "center", label: "Centro" },
+  { value: "top", label: "Topo" },
+  { value: "bottom", label: "Base" },
+  { value: "left", label: "Esquerda" },
+  { value: "right", label: "Direita" },
+];
+
+const EMBRANCO_ALIGN_OPTIONS: MetaPickerOption[] = [
+  { value: "left", label: "Esquerda" },
+  { value: "center", label: "Centro" },
+  { value: "right", label: "Direita" },
+];
+
+const EMBRANCO_CTA_PLACEMENT_OPTIONS: MetaPickerOption[] = [
+  {
+    value: "below_description",
+    label: "Depois do texto (no cartão)",
+    description: "O botão fica dentro do cartão, abaixo da descrição.",
+  },
+  {
+    value: "bottom_sticky",
+    label: "Fixo em baixo (sticky)",
+    description: "Barra fixa no fundo do ecrã.",
+  },
+];
+
+const EMBRANCO_ANIMATION_OPTIONS: MetaPickerOption[] = [
+  { value: "none", label: "Nenhuma", description: "Sem animação de entrada." },
+  { value: "fade_rise", label: "Subir com fade", description: "Entrada suave de baixo para cima." },
+  { value: "bounce_in", label: "Bounce suave", description: "Pequeno salto ao aparecer." },
+  { value: "float_card", label: "Cartão a flutuar", description: "Movimento contínuo suave." },
+  { value: "pulse_cta", label: "Entrada rápida + foco CTA", description: "Destaque no botão após entrar." },
+  { value: "shimmer_bg", label: "Brilho no fundo", description: "Brilho animado no fundo (sem imagem de fundo)." },
+];
 
 const labelClass = "block text-xs font-medium text-text-secondary mb-1";
 const inputClass =
@@ -201,9 +259,6 @@ export default function EmBrancoBuilderPanel({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-text-primary">Página em branco</div>
-          <p className="text-xs text-text-secondary mt-1 leading-relaxed">
-            Ajuste visual do cartão. Textos e cor do CTA nos passos 1–2.
-          </p>
         </div>
         <Toolist
           variant="below"
@@ -245,17 +300,14 @@ export default function EmBrancoBuilderPanel({
             />
           ) : (
             <>
-              <div>
-                <label className={labelClass}>Ângulo do gradiente ({c.bgAngle}°)</label>
-                <input
-                  type="range"
-                  min={0}
-                  max={360}
-                  value={c.bgAngle}
-                  onChange={(e) => onChange(patch(c, { bgAngle: Number(e.target.value) }))}
-                  className="w-full accent-shopee-orange"
-                />
-              </div>
+              <CaptureRangeField
+                label="Ângulo do gradiente"
+                value={c.bgAngle}
+                min={0}
+                max={360}
+                format={(n) => `${n}°`}
+                onChange={(n) => onChange(patch(c, { bgAngle: n }))}
+              />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <EmBrancoCssColorField
                   label="Cor inicial"
@@ -276,16 +328,17 @@ export default function EmBrancoBuilderPanel({
           )}
           <div>
             <label className={labelClass}>Decoração de fundo</label>
-            <select
+            <MetaSearchablePicker
               value={c.decorative}
-              onChange={(e) => onChange(patch(c, { decorative: e.target.value as BlankDecorative }))}
-              className={inputClass}
-            >
-              <option value="none">Nenhuma</option>
-              <option value="dots">Pontos subtis</option>
-              <option value="grid">Grelha técnica</option>
-              <option value="gradient_orbs">Orbes de luz</option>
-            </select>
+              onChange={(v) => onChange(patch(c, { decorative: v as BlankDecorative }))}
+              options={EMBRANCO_DECORATIVE_OPTIONS}
+              modalTitle="Decoração de fundo"
+              modalDescription="Padrão visual por trás do gradiente ou da cor sólida."
+              searchPlaceholder="Filtrar opções…"
+              emptyButtonLabel="Escolher decoração"
+              className="w-full"
+              openButtonId="em-blank-decorative"
+            />
           </div>
 
           <div className="rounded-md border border-dark-border/60 bg-dark-bg/30 p-3 space-y-3">
@@ -310,44 +363,45 @@ export default function EmBrancoBuilderPanel({
                   accept="image/png,image/jpeg,image/jpg,image/webp"
                   uploadHint={blankImgUploadHint}
                 />
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   <div>
                     <label className={labelClass}>Ajuste</label>
-                    <select
+                    <MetaSearchablePicker
                       value={c.bgImageFit}
-                      onChange={(e) => onChange(patch(c, { bgImageFit: e.target.value as BlankBgImageFit }))}
-                      className={inputClass}
-                    >
-                      <option value="cover">Cover (preenche)</option>
-                      <option value="contain">Contain (inteira)</option>
-                    </select>
+                      onChange={(v) => onChange(patch(c, { bgImageFit: v as BlankBgImageFit }))}
+                      options={EMBRANCO_BG_FIT_OPTIONS}
+                      modalTitle="Ajuste da imagem de fundo"
+                      searchPlaceholder="Filtrar…"
+                      emptyButtonLabel="Escolher ajuste"
+                      className="w-full"
+                      openButtonId="em-blank-bg-fit"
+                    />
                   </div>
                   <div>
                     <label className={labelClass}>Repetição</label>
-                    <select
+                    <MetaSearchablePicker
                       value={c.bgImageRepeat}
-                      onChange={(e) => onChange(patch(c, { bgImageRepeat: e.target.value as BlankBgImageRepeat }))}
-                      className={inputClass}
-                    >
-                      <option value="no-repeat">Sem repetir</option>
-                      <option value="repeat">Repetir</option>
-                      <option value="repeat-x">Só horizontal</option>
-                      <option value="repeat-y">Só vertical</option>
-                    </select>
+                      onChange={(v) => onChange(patch(c, { bgImageRepeat: v as BlankBgImageRepeat }))}
+                      options={EMBRANCO_BG_REPEAT_OPTIONS}
+                      modalTitle="Repetição da imagem de fundo"
+                      searchPlaceholder="Filtrar…"
+                      emptyButtonLabel="Escolher repetição"
+                      className="w-full"
+                      openButtonId="em-blank-bg-repeat"
+                    />
                   </div>
                   <div>
                     <label className={labelClass}>Posição</label>
-                    <select
+                    <MetaSearchablePicker
                       value={c.bgImagePosition}
-                      onChange={(e) => onChange(patch(c, { bgImagePosition: e.target.value as BlankBgImagePosition }))}
-                      className={inputClass}
-                    >
-                      <option value="center">Centro</option>
-                      <option value="top">Topo</option>
-                      <option value="bottom">Base</option>
-                      <option value="left">Esquerda</option>
-                      <option value="right">Direita</option>
-                    </select>
+                      onChange={(v) => onChange(patch(c, { bgImagePosition: v as BlankBgImagePosition }))}
+                      options={EMBRANCO_BG_POSITION_OPTIONS}
+                      modalTitle="Posição da imagem de fundo"
+                      searchPlaceholder="Filtrar…"
+                      emptyButtonLabel="Escolher posição"
+                      className="w-full"
+                      openButtonId="em-blank-bg-position"
+                    />
                   </div>
                 </div>
               </>
@@ -358,42 +412,42 @@ export default function EmBrancoBuilderPanel({
 
       {tab === "card" ? (
         <div className="space-y-3">
-          <EmBrancoCssColorField
-            label="Cor do cartão"
-            value={c.cardBg}
-            onChange={(cardBg) => onChange(patch(c, { cardBg }))}
-            allowAlpha
-            fallbackHex="#ffffff"
-          />
-          <EmBrancoCssColorField
-            label="Borda do cartão"
-            value={c.cardBorder}
-            onChange={(cardBorder) => onChange(patch(c, { cardBorder }))}
-            allowAlpha
-            fallbackHex="#ffffff"
-          />
-          <div>
-            <label className={labelClass}>Raio dos cantos ({c.cardRadiusPx}px)</label>
-            <input
-              type="range"
-              min={0}
-              max={48}
-              value={c.cardRadiusPx}
-              onChange={(e) => onChange(patch(c, { cardRadiusPx: Number(e.target.value) }))}
-              className="w-full accent-shopee-orange"
-            />
+          <div className="rounded-xl border border-dark-border/60 bg-dark-bg/25 p-3 sm:p-4">
+            <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-text-primary/90">
+              Cores do cartão
+            </div>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 sm:gap-6">
+              <EmBrancoCssColorField
+                label="Fundo"
+                value={c.cardBg}
+                onChange={(cardBg) => onChange(patch(c, { cardBg }))}
+                allowAlpha
+                fallbackHex="#ffffff"
+              />
+              <EmBrancoCssColorField
+                label="Borda"
+                value={c.cardBorder}
+                onChange={(cardBorder) => onChange(patch(c, { cardBorder }))}
+                allowAlpha
+                fallbackHex="#ffffff"
+              />
+            </div>
           </div>
-          <div>
-            <label className={labelClass}>Sombra ({Math.round(c.cardShadowOpacity * 100)}%)</label>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round(c.cardShadowOpacity * 100)}
-              onChange={(e) => onChange(patch(c, { cardShadowOpacity: Number(e.target.value) / 100 }))}
-              className="w-full accent-shopee-orange"
-            />
-          </div>
+          <CaptureRangeField
+            label="Raio dos cantos"
+            value={c.cardRadiusPx}
+            min={0}
+            max={48}
+            onChange={(n) => onChange(patch(c, { cardRadiusPx: n }))}
+          />
+          <CaptureRangeField
+            label="Intensidade da sombra"
+            value={Math.round(c.cardShadowOpacity * 100)}
+            min={0}
+            max={100}
+            format={(n) => `${n}%`}
+            onChange={(n) => onChange(patch(c, { cardShadowOpacity: n / 100 }))}
+          />
           <EmBrancoToggleRow
             id="em-glass-card"
             label="Efeito vidro"
@@ -401,18 +455,14 @@ export default function EmBrancoBuilderPanel({
             checked={c.glassCard}
             onCheckedChange={(glassCard) => onChange(patch(c, { glassCard }))}
           />
-          <div>
-            <label className={labelClass}>Largura máx. do conteúdo ({c.maxContentWidthPx}px)</label>
-            <input
-              type="range"
-              min={320}
-              max={640}
-              step={10}
-              value={c.maxContentWidthPx}
-              onChange={(e) => onChange(patch(c, { maxContentWidthPx: Number(e.target.value) }))}
-              className="w-full accent-shopee-orange"
-            />
-          </div>
+          <CaptureRangeField
+            label="Largura máx. do conteúdo"
+            value={c.maxContentWidthPx}
+            min={320}
+            max={640}
+            step={10}
+            onChange={(n) => onChange(patch(c, { maxContentWidthPx: n }))}
+          />
         </div>
       ) : null}
 
@@ -420,87 +470,125 @@ export default function EmBrancoBuilderPanel({
         <div className="space-y-3">
           <div>
             <label className={labelClass}>Tipo de letra</label>
-            <select
+            <MetaSearchablePicker
               value={c.fontPreset}
-              onChange={(e) => onChange(patch(c, { fontPreset: e.target.value as BlankFontPreset }))}
-              className={inputClass}
-            >
-              <option value="system">Sistema</option>
-              <option value="inter">Inter</option>
-              <option value="dm_sans">DM Sans</option>
-              <option value="playfair">Playfair Display</option>
-              <option value="space_grotesk">Space Grotesk</option>
-            </select>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <EmBrancoCssColorField
-              label="Título — cor"
-              value={c.titleColor}
-              onChange={(titleColor) => onChange(patch(c, { titleColor }))}
-              fallbackHex="#fafafa"
+              onChange={(v) => onChange(patch(c, { fontPreset: v as BlankFontPreset }))}
+              options={CAPTURE_FONT_PICKER_OPTIONS}
+              modalTitle="Tipo de letra"
+              modalDescription="Fonte aplicada ao título e à descrição na página pública."
+              searchPlaceholder="Filtrar fontes…"
+              emptyButtonLabel="Escolher fonte"
+              className="w-full"
+              openButtonId="em-blank-font"
+              triggerVariant="field"
             />
-            <div>
-              <label className={labelClass}>Título — tamanho ({c.titleFontPx}px)</label>
-              <input
-                type="range"
+          </div>
+          <div className="rounded-xl border border-dark-border/60 bg-dark-bg/30 p-3 sm:p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-text-primary/90">
+                Título
+              </span>
+              <Toolist
+                variant="below"
+                wide
+                text="Cor e tamanho do destaque principal no cartão."
+              />
+            </div>
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:gap-6">
+              <EmBrancoCssColorField
+                label="Cor"
+                value={c.titleColor}
+                onChange={(titleColor) => onChange(patch(c, { titleColor }))}
+                fallbackHex="#fafafa"
+              />
+              <CaptureRangeField
+                label="Tamanho"
+                value={c.titleFontPx}
                 min={18}
                 max={48}
-                value={c.titleFontPx}
-                onChange={(e) => onChange(patch(c, { titleFontPx: Number(e.target.value) }))}
-                className="w-full accent-shopee-orange"
+                onChange={(n) => onChange(patch(c, { titleFontPx: n }))}
               />
             </div>
           </div>
           <div>
             <label className={labelClass}>Alinhamento do título</label>
-            <select
+            <MetaSearchablePicker
               value={c.titleAlign}
-              onChange={(e) => onChange(patch(c, { titleAlign: e.target.value as BlankCanvasConfig["titleAlign"] }))}
-              className={inputClass}
-            >
-              <option value="left">Esquerda</option>
-              <option value="center">Centro</option>
-              <option value="right">Direita</option>
-            </select>
+              onChange={(v) =>
+                onChange(patch(c, { titleAlign: v as BlankCanvasConfig["titleAlign"] }))
+              }
+              options={EMBRANCO_ALIGN_OPTIONS}
+              modalTitle="Alinhamento do título"
+              searchPlaceholder="Filtrar…"
+              emptyButtonLabel="Escolher alinhamento"
+              className="w-full"
+              openButtonId="em-blank-title-align"
+            />
           </div>
           {c.showSubtitle ? (
-            <EmBrancoCssColorField
-              label="Cor da linha curta sob o título"
-              value={c.subtitleColor}
-              onChange={(subtitleColor) => onChange(patch(c, { subtitleColor }))}
-              allowAlpha
-              fallbackHex="#fafafa"
-            />
+            <div className="rounded-xl border border-dark-border/50 bg-dark-bg/20 p-3 sm:p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-text-primary/90">
+                  Linha curta
+                </span>
+                <Toolist
+                  variant="below"
+                  wide
+                  text="Frase opcional entre o título e a descrição (ativada no passo 2 do assistente)."
+                />
+              </div>
+              <EmBrancoCssColorField
+                label="Cor"
+                value={c.subtitleColor}
+                onChange={(subtitleColor) => onChange(patch(c, { subtitleColor }))}
+                allowAlpha
+                fallbackHex="#fafafa"
+              />
+            </div>
           ) : null}
-          <EmBrancoCssColorField
-            label="Cor da descrição"
-            value={c.descColor}
-            onChange={(descColor) => onChange(patch(c, { descColor }))}
-            allowAlpha
-            fallbackHex="#fafafa"
-          />
-          <div>
-            <label className={labelClass}>Tamanho da descrição ({c.descFontPx}px)</label>
-            <input
-              type="range"
-              min={12}
-              max={22}
-              value={c.descFontPx}
-              onChange={(e) => onChange(patch(c, { descFontPx: Number(e.target.value) }))}
-              className="w-full accent-shopee-orange"
-            />
+          <div className="rounded-xl border border-dark-border/60 bg-dark-bg/30 p-3 sm:p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-text-primary/90">
+                Descrição
+              </span>
+              <Toolist
+                variant="below"
+                wide
+                text="Cor do parágrafo e tamanho da letra do texto de apoio."
+              />
+            </div>
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:gap-6">
+              <EmBrancoCssColorField
+                label="Cor"
+                value={c.descColor}
+                onChange={(descColor) => onChange(patch(c, { descColor }))}
+                allowAlpha
+                fallbackHex="#fafafa"
+              />
+              <CaptureRangeField
+                label="Tamanho da letra"
+                value={c.descFontPx}
+                min={12}
+                max={22}
+                onChange={(n) => onChange(patch(c, { descFontPx: n }))}
+              />
+            </div>
           </div>
           <div>
             <label className={labelClass}>Alinhamento do texto (título + descrição)</label>
-            <select
+            <MetaSearchablePicker
               value={c.textAlign}
-              onChange={(e) => onChange(patch(c, { textAlign: e.target.value as BlankCanvasConfig["textAlign"] }))}
-              className={inputClass}
-            >
-              <option value="left">Esquerda</option>
-              <option value="center">Centro</option>
-              <option value="right">Direita</option>
-            </select>
+              onChange={(v) =>
+                onChange(patch(c, { textAlign: v as BlankCanvasConfig["textAlign"] }))
+              }
+              options={EMBRANCO_ALIGN_OPTIONS}
+              modalTitle="Alinhamento do texto"
+              modalDescription="Título e descrição no cartão."
+              searchPlaceholder="Filtrar…"
+              emptyButtonLabel="Escolher alinhamento"
+              className="w-full"
+              openButtonId="em-blank-text-align"
+            />
           </div>
         </div>
       ) : null}
@@ -509,14 +597,16 @@ export default function EmBrancoBuilderPanel({
         <div className="space-y-3">
           <div>
             <label className={labelClass}>Posição do botão</label>
-            <select
+            <MetaSearchablePicker
               value={c.ctaPlacement}
-              onChange={(e) => onChange(patch(c, { ctaPlacement: e.target.value as BlankCtaPlacement }))}
-              className={inputClass}
-            >
-              <option value="below_description">Depois do texto (no cartão)</option>
-              <option value="bottom_sticky">Fixo em baixo (sticky)</option>
-            </select>
+              onChange={(v) => onChange(patch(c, { ctaPlacement: v as BlankCtaPlacement }))}
+              options={EMBRANCO_CTA_PLACEMENT_OPTIONS}
+              modalTitle="Posição do botão"
+              searchPlaceholder="Filtrar…"
+              emptyButtonLabel="Escolher posição"
+              className="w-full"
+              openButtonId="em-blank-cta-placement"
+            />
           </div>
           <div className="flex items-center gap-1.5 rounded-md border border-dark-border/60 bg-dark-bg/30 px-2.5 py-2">
             <span className="text-[11px] text-text-secondary/90">Cor do botão no passo 1</span>
@@ -526,17 +616,13 @@ export default function EmBrancoBuilderPanel({
               text="A cor de fundo do botão é a mesma do passo 1 (identidade da página). Neste separador defines só posição do CTA, raio, largura total e pulso."
             />
           </div>
-          <div>
-            <label className={labelClass}>Raio do botão (px; 999 = pílula)</label>
-            <input
-              type="range"
-              min={0}
-              max={999}
-              value={c.btnRadiusPx}
-              onChange={(e) => onChange(patch(c, { btnRadiusPx: Number(e.target.value) }))}
-              className="w-full accent-shopee-orange"
-            />
-          </div>
+          <CaptureRangeField
+            label="Raio do botão (999 = pílula)"
+            value={c.btnRadiusPx}
+            min={0}
+            max={999}
+            onChange={(n) => onChange(patch(c, { btnRadiusPx: n }))}
+          />
           <EmBrancoToggleRow
             id="em-btn-full-width"
             label="Botão largura total"
@@ -592,17 +678,13 @@ export default function EmBrancoBuilderPanel({
                   uploadHint={blankImgUploadHint}
                 />
               </div>
-              <div>
-                <label className={labelClass}>Raio da imagem ({c.heroRadiusPx}px)</label>
-                <input
-                  type="range"
-                  min={0}
-                  max={40}
-                  value={c.heroRadiusPx}
-                  onChange={(e) => onChange(patch(c, { heroRadiusPx: Number(e.target.value) }))}
-                  className="w-full accent-shopee-orange"
-                />
-              </div>
+              <CaptureRangeField
+                label="Raio da imagem"
+                value={c.heroRadiusPx}
+                min={0}
+                max={40}
+                onChange={(n) => onChange(patch(c, { heroRadiusPx: n }))}
+              />
             </>
           ) : null}
         </div>
@@ -619,18 +701,17 @@ export default function EmBrancoBuilderPanel({
                 text='Respeitamos “menos movimento” no sistema: com essa opção ativa no dispositivo, as animações são desligadas automaticamente.'
               />
             </div>
-            <select
+            <MetaSearchablePicker
               value={c.animation}
-              onChange={(e) => onChange(patch(c, { animation: e.target.value as BlankAnimationPreset }))}
-              className={inputClass}
-            >
-              <option value="none">Nenhuma</option>
-              <option value="fade_rise">Subir com fade</option>
-              <option value="bounce_in">Bounce suave</option>
-              <option value="float_card">Cartão a flutuar</option>
-              <option value="pulse_cta">Entrada rápida + foco CTA</option>
-              <option value="shimmer_bg">Brilho no fundo</option>
-            </select>
+              onChange={(v) => onChange(patch(c, { animation: v as BlankAnimationPreset }))}
+              options={EMBRANCO_ANIMATION_OPTIONS}
+              modalTitle="Animação de entrada"
+              modalDescription="Respeitamos “menos movimento” no sistema: com essa opção ativa no dispositivo, as animações são desligadas automaticamente."
+              searchPlaceholder="Filtrar animações…"
+              emptyButtonLabel="Escolher animação"
+              className="w-full"
+              openButtonId="em-blank-animation"
+            />
           </div>
           <div className="flex items-center gap-1.5 border-t border-dark-border/50 pt-2">
             <span className="text-[11px] font-medium text-text-primary">Brilho no fundo</span>

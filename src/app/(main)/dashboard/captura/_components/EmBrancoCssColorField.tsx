@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 type Rgba = { r: number; g: number; b: number; a: number };
 
@@ -56,22 +56,25 @@ export function parseCssColor(input: string): Rgba | null {
   return null;
 }
 
-function normalizeHex(v: string) {
-  const s = v.trim();
-  if (!s) return "";
-  return s.startsWith("#") ? s : `#${s}`;
-}
-
-function isValidHex6(v: string) {
-  return /^#[0-9a-fA-F]{6}$/.test(v);
-}
-
 function formatAsCss(c: Rgba, allowAlpha: boolean): string {
   const { r, g, b, a } = c;
   if (!allowAlpha || a >= 0.999) return rgbToHex(r, g, b);
   let aStr = a.toFixed(3);
   aStr = aStr.replace(/0+$/, "").replace(/\.$/, "");
   return `rgba(${Math.round(r)},${Math.round(g)},${Math.round(b)},${aStr})`;
+}
+
+function previewBackground(
+  value: string,
+  displayHex: string,
+  parsed: Rgba | null,
+  allowAlpha: boolean,
+): string {
+  if (parsed) {
+    if (allowAlpha && parsed.a < 0.999) return formatAsCss(parsed, true);
+    return rgbToHex(parsed.r, parsed.g, parsed.b);
+  }
+  return displayHex;
 }
 
 export type EmBrancoCssColorFieldProps = {
@@ -83,6 +86,42 @@ export type EmBrancoCssColorFieldProps = {
   fallbackHex?: string;
 };
 
+function ColorSwatchTrigger(props: {
+  displayHex: string;
+  previewBg: string;
+  showChecker: boolean;
+  onPick: (hex: string) => void;
+  ariaLabel: string;
+}) {
+  return (
+    <div className="inline-flex rounded-xl p-0.5 ring-1 ring-white/10 bg-dark-card/50 shadow-inner transition-shadow focus-within:ring-2 focus-within:ring-shopee-orange/50 focus-within:ring-offset-2 focus-within:ring-offset-dark-bg">
+      <div className="relative h-[3.75rem] w-[3.75rem] shrink-0 overflow-hidden rounded-lg sm:h-16 sm:w-16">
+        {props.showChecker ? (
+          <div
+            className="absolute inset-0"
+            aria-hidden
+            style={{
+              background:
+                "repeating-conic-gradient(#6b6b6b 0% 25%, #9a9a9a 0% 50%) 50% / 10px 10px",
+            }}
+          />
+        ) : null}
+        <div
+          className="absolute inset-0 rounded-lg ring-1 ring-inset ring-black/30"
+          style={{ backgroundColor: props.previewBg }}
+        />
+        <input
+          type="color"
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          value={props.displayHex}
+          onChange={(e) => props.onPick(e.target.value)}
+          aria-label={props.ariaLabel}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function EmBrancoCssColorField({
   label,
   value,
@@ -91,12 +130,7 @@ export default function EmBrancoCssColorField({
   fallbackHex = "#000000",
 }: EmBrancoCssColorFieldProps) {
   const parsed = useMemo(() => parseCssColor(value), [value]);
-  const hexFromValue = parsed ? rgbToHex(parsed.r, parsed.g, parsed.b) : fallbackHex;
-  const [hexDraft, setHexDraft] = useState(hexFromValue);
-
-  useEffect(() => {
-    setHexDraft(hexFromValue);
-  }, [hexFromValue, value]);
+  const hexFromParsed = parsed ? rgbToHex(parsed.r, parsed.g, parsed.b) : null;
 
   const applyRgb = (nextHex: string) => {
     const rgb = hexToRgb(nextHex);
@@ -106,71 +140,45 @@ export default function EmBrancoCssColorField({
   };
 
   const fallback = useMemo(() => parseCssColor(fallbackHex), [fallbackHex]);
-  const displayHex = parsed ? hexFromValue : fallback ? rgbToHex(fallback.r, fallback.g, fallback.b) : "#000000";
+  const displayHex =
+    hexFromParsed ?? (fallback ? rgbToHex(fallback.r, fallback.g, fallback.b) : "#000000");
 
-  const inputMono =
-    "h-11 px-4 bg-dark-bg border border-dark-border rounded-lg text-text-primary font-mono text-sm min-w-0 flex-1 focus:outline-none focus:ring-2 focus:ring-shopee-orange/60";
+  const previewBg = previewBackground(value, displayHex, parsed, allowAlpha);
+  const showChecker = !!(allowAlpha && parsed && parsed.a < 0.999);
+
+  const alphaPct = parsed ? Math.round(parsed.a * 100) : 100;
 
   if (!parsed) {
     return (
-      <div>
-        <label className="block text-xs font-medium text-text-secondary mb-1">{label}</label>
-        <div className="flex items-center gap-3 flex-wrap">
-          <input
-            type="color"
-            value={displayHex}
-            onChange={(e) => {
-              const rgb = hexToRgb(e.target.value);
-              if (!rgb) return;
-              onChange(formatAsCss({ ...rgb, a: 1 }, allowAlpha));
-            }}
-            className="h-11 w-14 cursor-pointer rounded-md border border-dark-border bg-transparent shrink-0"
-            aria-label="Selecionar cor"
-          />
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            className={inputMono}
-            spellCheck={false}
-          />
-        </div>
-        <p className="mt-1 text-[11px] text-text-secondary/80">
-          Valor em CSS livre. Usa #RRGGBB ou rgba() para voltar ao seletor completo.
-        </p>
+      <div className="space-y-1.5">
+        <label className="block text-xs font-medium text-text-secondary">{label}</label>
+        <ColorSwatchTrigger
+          displayHex={displayHex}
+          previewBg={previewBg}
+          showChecker={false}
+          onPick={applyRgb}
+          ariaLabel={`Escolher cor: ${label}`}
+        />
       </div>
     );
   }
 
-  const alphaPct = Math.round(parsed.a * 100);
-
   return (
-    <div>
-      <label className="block text-xs font-medium text-text-secondary mb-1">{label}</label>
-      <div className="flex items-center gap-3 flex-wrap">
-        <input
-          type="color"
-          value={hexFromValue}
-          onChange={(e) => applyRgb(e.target.value)}
-          className="h-11 w-14 cursor-pointer rounded-md border border-dark-border bg-transparent shrink-0"
-          aria-label="Selecionar cor"
-        />
-        <input
-          value={hexDraft}
-          onChange={(e) => setHexDraft(normalizeHex(e.target.value))}
-          onBlur={() => {
-            const n = normalizeHex(hexDraft);
-            if (isValidHex6(n)) applyRgb(n);
-            else setHexDraft(hexFromValue);
-          }}
-          className={inputMono}
-          placeholder="#000000"
-          spellCheck={false}
-        />
-      </div>
+    <div className="space-y-1.5">
+      <label className="block text-xs font-medium text-text-secondary">{label}</label>
+      <ColorSwatchTrigger
+        displayHex={displayHex}
+        previewBg={previewBg}
+        showChecker={showChecker}
+        onPick={applyRgb}
+        ariaLabel={`Escolher cor: ${label}`}
+      />
       {allowAlpha ? (
-        <div className="mt-2">
-          <label className="block text-[11px] font-medium text-text-secondary mb-1">Opacidade ({alphaPct}%)</label>
+        <div className="mt-2 border-t border-dark-border/50 pt-2">
+          <div className="mb-1 flex items-baseline justify-between gap-2">
+            <span className="text-[11px] font-medium text-text-secondary">Opacidade</span>
+            <span className="tabular-nums text-[11px] font-semibold text-shopee-orange/90">{alphaPct}%</span>
+          </div>
           <input
             type="range"
             min={0}
@@ -180,12 +188,9 @@ export default function EmBrancoCssColorField({
               const nextA = clamp(Number(e.target.value) / 100, 0, 1);
               onChange(formatAsCss({ ...parsed, a: nextA }, true));
             }}
-            className="w-full accent-shopee-orange"
+            className="h-2.5 w-full cursor-pointer accent-shopee-orange"
           />
         </div>
-      ) : null}
-      {!isValidHex6(normalizeHex(hexDraft)) && hexDraft.length > 0 ? (
-        <div className="mt-1 text-xs text-red-400">Hex inválido. Formato #RRGGBB.</div>
       ) : null}
     </div>
   );

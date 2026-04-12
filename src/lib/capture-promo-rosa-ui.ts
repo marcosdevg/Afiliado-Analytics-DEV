@@ -1,4 +1,10 @@
 import type { PageTemplate } from "@/app/(main)/dashboard/captura/_lib/types";
+import {
+  type CaptureGoogleFontPreset,
+  captureFontCssStack,
+  captureFontGoogleHref,
+  normalizeCaptureFontPreset,
+} from "@/lib/capture-google-font-presets";
 
 const MAX_HEX = 32;
 
@@ -23,7 +29,7 @@ function clampPx(n: unknown, fallback: number, min: number, max: number): number
   return Math.min(max, Math.max(min, Math.round(v)));
 }
 
-export type PromoRosaFontPreset = "system" | "inter" | "dm_sans";
+export type PromoRosaFontPreset = CaptureGoogleFontPreset;
 
 export type PromoRosaUiOverrides = {
   section_bg?: string;
@@ -57,16 +63,8 @@ export type PromoRosaUiResolved = {
   fontFamilyCss: string;
 };
 
-const PRESET_STACK: Record<PromoRosaFontPreset, string> = {
-  system: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
-  inter: '"Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
-  dm_sans: '"DM Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
-};
-
 export function promoRosaGoogleFontHref(preset: PromoRosaFontPreset): string | null {
-  if (preset === "inter") return "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap";
-  if (preset === "dm_sans") return "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap";
-  return null;
+  return captureFontGoogleHref(preset);
 }
 
 function isObj(v: unknown): v is Record<string, unknown> {
@@ -74,10 +72,7 @@ function isObj(v: unknown): v is Record<string, unknown> {
 }
 
 export function normalizePromoRosaFontPreset(v: unknown): PromoRosaFontPreset {
-  const s = String(v ?? "").toLowerCase();
-  if (s === "inter") return "inter";
-  if (s === "dm_sans" || s === "dmsans") return "dm_sans";
-  return "system";
+  return normalizeCaptureFontPreset(v);
 }
 
 /** Lê overrides a partir da BD / formulário. */
@@ -165,7 +160,7 @@ export function resolvePromoRosaUi(
       titleFontPx: clampPx(ov.title_font_px, 13, 10, 20),
       bodyFontPx: clampPx(ov.body_font_px, 13, 10, 20),
       fontPreset: fp,
-      fontFamilyCss: PRESET_STACK[fp],
+      fontFamilyCss: captureFontCssStack(fp),
     };
   }
 
@@ -183,6 +178,6 @@ export function resolvePromoRosaUi(
     titleFontPx: clampPx(ov.title_font_px, 13, 10, 20),
     bodyFontPx: clampPx(ov.body_font_px, 13, 10, 20),
     fontPreset: fp,
-    fontFamilyCss: PRESET_STACK[fp],
+    fontFamilyCss: captureFontCssStack(fp),
   };
 }

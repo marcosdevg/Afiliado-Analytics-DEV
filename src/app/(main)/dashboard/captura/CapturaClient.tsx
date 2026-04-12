@@ -16,6 +16,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   RotateCcw,
   LayoutTemplate,
   Smartphone,
@@ -25,7 +26,7 @@ import {
 import { useSupabase } from "../../../components/auth/AuthProvider";
 import LoadingOverlay from "../../../components/ui/LoadingOverlay";
 import Toolist from "../../../components/ui/Toolist";
-import MetaSearchablePicker from "@/app/components/meta/MetaSearchablePicker";
+import MetaSearchablePicker, { type MetaPickerOption } from "@/app/components/meta/MetaSearchablePicker";
 import { usePlanEntitlements } from "../PlanEntitlementsContext";
 
 import VipPreviewViewportShim from "./_components/VipPreviewViewportShim";
@@ -88,6 +89,7 @@ import {
   type PromoRosaUiOverrides,
 } from "@/lib/capture-promo-rosa-ui";
 import { normalizeRosaIconKey, vipRosaIconPickerOptions } from "@/lib/capture-promo-icons";
+import { CAPTURE_FONT_PICKER_OPTIONS } from "@/lib/capture-google-font-presets";
 import {
   blankCanvasToDbValue,
   createDefaultBlankCanvas,
@@ -103,6 +105,8 @@ import { CaptureEmBrancoToastsOnly } from "@/app/capture/[slug]/CaptureEmBrancoE
 import { CapturePreviewPortalContext } from "@/app/capture/[slug]/CapturePreviewPortalContext";
 import DeleteSiteModal from "./_components/DeleteSiteModal";
 import VipRosaIconPicker from "./_components/VipRosaIconPicker";
+import EmBrancoCssColorField from "./_components/EmBrancoCssColorField";
+import CaptureRangeField from "./_components/CaptureRangeField";
 import EmBrancoBuilderPanel from "./_components/EmBrancoBuilderPanel";
 import LayoutVariantField from "./_components/LayoutVariantField";
 import ResetMetricsModal from "./_components/ResetMetricsModal";
@@ -164,6 +168,12 @@ const DEFAULT_BUTTON_TEXT = "Acessar Grupo Vip";
 
 const MAX_LOGO_BYTES = 1 * 1024 * 1024; // 1MB
 
+const ROSA_LEAD_MODE_OPTIONS: MetaPickerOption[] = [
+  { value: "icon", label: "Ícone Lucide", description: "Ícone da biblioteca Lucide." },
+  { value: "emoji", label: "Emoji" },
+  { value: "image", label: "Imagem (upload)", description: "Miniatura à esquerda do card." },
+];
+
 const labelClass = "block text-sm font-medium text-text-primary mb-2";
 
 const inputClass =
@@ -178,6 +188,15 @@ const textareaClass =
   "w-full px-4 py-3 bg-dark-bg border border-dark-border rounded-lg text-text-primary " +
   "placeholder:text-text-secondary/70 transition-colors " +
   "focus:outline-none focus:ring-2 focus:ring-shopee-orange/60 focus:border-shopee-orange/60";
+
+/** Passo 5 (Em branco): sub-separadores no mesmo estilo do passo 4. */
+type ExtrasEmBrancoTabId = "youtube" | "carousel" | "notifications" | "promo";
+
+const extrasEmBrancoTabBase =
+  "shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors border border-transparent";
+const extrasEmBrancoTabActive = "bg-shopee-orange/15 text-shopee-orange border-shopee-orange/30";
+const extrasEmBrancoTabIdle =
+  "text-text-secondary hover:text-text-primary hover:bg-dark-bg/60";
 
 function normalizeHex(v: string) {
   const s = v.trim();
@@ -317,6 +336,11 @@ export default function CapturaClient() {
   const [promoRosaUiDraft, setPromoRosaUiDraft] = useState<PromoRosaUiOverrides>({});
   const [rosaPromoImageFiles, setRosaPromoImageFiles] = useState<(File | null)[]>([]);
   const [rosaPromoBlobUrls, setRosaPromoBlobUrls] = useState<(string | null)[]>([]);
+  /** Qual card promocional Rosa está expandido (acordeão). */
+  const [expandedPromoRosaCardIdx, setExpandedPromoRosaCardIdx] = useState<number | null>(0);
+
+  /** Passo 5 Em branco: qual sub-separador de extras está ativo. */
+  const [extrasEmBrancoTab, setExtrasEmBrancoTab] = useState<ExtrasEmBrancoTabId>("youtube");
 
   const [blankCanvasDraft, setBlankCanvasDraft] = useState(createDefaultBlankCanvas);
   const [blankHeroFile, setBlankHeroFile] = useState<File | null>(null);
@@ -367,6 +391,12 @@ export default function CapturaClient() {
       while (next.length < n) next.push(null);
       return next;
     });
+    setExpandedPromoRosaCardIdx((idx) => {
+      if (idx === null) return idx;
+      if (n === 0) return null;
+      if (idx >= n) return n - 1;
+      return idx;
+    });
   }, [promoCardsDraft.rosa.length]);
 
   useEffect(() => {
@@ -396,6 +426,12 @@ export default function CapturaClient() {
   useEffect(() => {
     pageTemplateRef.current = pageTemplate;
   }, [pageTemplate]);
+
+  useEffect(() => {
+    if (step === 5 && pageTemplate === "em_branco") {
+      setExtrasEmBrancoTab("youtube");
+    }
+  }, [step, pageTemplate]);
 
   // UI states
   const [error, setError] = useState<string | null>(null);
@@ -814,6 +850,7 @@ export default function CapturaClient() {
     setAuroraAvatarFiles(Array.from({ length: fresh.aurora.length }, () => null));
     setPromoRosaUiDraft({});
     setRosaPromoImageFiles([]);
+    setExpandedPromoRosaCardIdx(0);
     setBlankCanvasDraft(createDefaultBlankCanvas());
     setBlankHeroFile(null);
     setBlankBgFile(null);
@@ -870,6 +907,7 @@ export default function CapturaClient() {
     setAuroraAvatarFiles(Array.from({ length: mergedCards.aurora.length }, () => null));
     setPromoRosaUiDraft(promoRosaUiOverridesFromUnknown((row as CaptureSiteRow).promo_rosa_ui));
     setRosaPromoImageFiles(Array.from({ length: mergedCards.rosa.length }, () => null));
+    setExpandedPromoRosaCardIdx(0);
     setBlankCanvasDraft(mergeBlankCanvasFromDb((row as CaptureSiteRow).blank_canvas_json));
     setBlankHeroFile(null);
     setBlankBgFile(null);
@@ -935,6 +973,7 @@ export default function CapturaClient() {
       setAuroraAvatarFiles(Array.from({ length: mergedCancel.aurora.length }, () => null));
       setPromoRosaUiDraft(promoRosaUiOverridesFromUnknown((site as CaptureSiteRow).promo_rosa_ui));
       setRosaPromoImageFiles(Array.from({ length: mergedCancel.rosa.length }, () => null));
+      setExpandedPromoRosaCardIdx(0);
       setBlankCanvasDraft(mergeBlankCanvasFromDb((site as CaptureSiteRow).blank_canvas_json));
 
       originalButtonUrlRef.current = (site.whatsapp_url ?? "").trim();
@@ -969,6 +1008,7 @@ export default function CapturaClient() {
       setAuroraAvatarFiles(Array.from({ length: fresh2.aurora.length }, () => null));
       setPromoRosaUiDraft({});
       setRosaPromoImageFiles([]);
+      setExpandedPromoRosaCardIdx(0);
       setBlankCanvasDraft(createDefaultBlankCanvas());
     } else {
       originalButtonUrlRef.current = "";
@@ -995,6 +1035,7 @@ export default function CapturaClient() {
       setAuroraAvatarFiles(Array.from({ length: fresh3.aurora.length }, () => null));
       setPromoRosaUiDraft({});
       setRosaPromoImageFiles([]);
+      setExpandedPromoRosaCardIdx(0);
       setBlankCanvasDraft(createDefaultBlankCanvas());
     }
   }
@@ -1724,6 +1765,7 @@ export default function CapturaClient() {
       setAuroraAvatarFiles(Array.from({ length: freshDel.aurora.length }, () => null));
       setPromoRosaUiDraft({});
       setRosaPromoImageFiles([]);
+      setExpandedPromoRosaCardIdx(0);
       setBlankCanvasDraft(createDefaultBlankCanvas());
       setBlankHeroFile(null);
       setBlankBgFile(null);
@@ -1753,6 +1795,7 @@ export default function CapturaClient() {
   const showTemplatePreview = isVipPreview || isBlankPreview;
   /** Em branco: passo 4 = só visual do cartão; passo 5 = YouTube, carrossel, notificações e promo. */
   const captureWizardMaxStep = pageTemplate === "em_branco" ? 5 : 4;
+  const isExtrasEmBrancoStep = step === 5 && pageTemplate === "em_branco";
 
   const canCreateAnotherSite = sites.length < captureLimit;
 
@@ -2495,18 +2538,62 @@ export default function CapturaClient() {
               {/* STEP 4 (modelos que não são Em branco) ou STEP 5 (Em branco): YouTube, carrossel, notificações, promo */}
               {((step === 4 && pageTemplate !== "em_branco") || (step === 5 && pageTemplate === "em_branco")) && (
                 <div className="space-y-5">
-                  {step === 5 && pageTemplate === "em_branco" ? (
-                    <div className="flex items-center gap-2 rounded-lg border border-dark-border/70 bg-dark-bg/30 px-3 py-2.5">
-                      <span className="text-xs font-medium text-text-primary">Extras na página</span>
-                      <Toolist
-                        variant="below"
-                        wide
-                        text="Vídeo do YouTube, carrossel de imagens, notificações em bolha e textos/cards da secção promocional. Na página pública estes blocos ficam na mesma coluna, dentro do cartão (zonas como nos VIP)."
-                      />
-                    </div>
-                  ) : null}
-                  <>
-                  <div className="rounded-lg border border-dark-border bg-dark-bg/25 p-4 space-y-3">
+                  <div
+                    className={
+                      isExtrasEmBrancoStep
+                        ? "rounded-lg border border-dark-border bg-dark-bg/25 p-4 space-y-4"
+                        : "contents"
+                    }
+                  >
+                    {isExtrasEmBrancoStep ? (
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-text-primary">Extras na página</div>
+                            <p className="text-xs text-text-secondary mt-1 leading-relaxed">
+                              Vídeo do YouTube, carrossel, notificações e secção promocional. Escolha um separador
+                              para editar cada bloco.
+                            </p>
+                          </div>
+                          <Toolist
+                            variant="below"
+                            wide
+                            className="shrink-0"
+                            text="Na página pública estes blocos ficam na mesma coluna, dentro do cartão (zonas como nos VIP)."
+                          />
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 border-b border-dark-border/70 pb-2">
+                          {(
+                            [
+                              { id: "youtube" as const, label: "YouTube" },
+                              { id: "carousel" as const, label: "Carrossel" },
+                              { id: "notifications" as const, label: "Notificações" },
+                              { id: "promo" as const, label: "Secção promo" },
+                            ] as const
+                          ).map((t) => (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => setExtrasEmBrancoTab(t.id)}
+                              className={`${extrasEmBrancoTabBase} ${
+                                extrasEmBrancoTab === t.id ? extrasEmBrancoTabActive : extrasEmBrancoTabIdle
+                              }`}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : null}
+                  <div
+                    className={
+                      isExtrasEmBrancoStep
+                        ? extrasEmBrancoTab === "youtube"
+                          ? "space-y-3"
+                          : "hidden"
+                        : "rounded-lg border border-dark-border bg-dark-bg/25 p-4 space-y-3"
+                    }
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-sm font-medium text-text-primary">YouTube</span>
@@ -2542,10 +2629,19 @@ export default function CapturaClient() {
                       searchPlaceholder="Filtrar posições…"
                       emptyButtonLabel="Escolher posição"
                       className="w-full"
+                      triggerVariant="field"
                     />
                   </div>
 
-                  <div className="rounded-lg border border-dark-border bg-dark-bg/25 p-4 space-y-3">
+                  <div
+                    className={
+                      isExtrasEmBrancoStep
+                        ? extrasEmBrancoTab === "carousel"
+                          ? "space-y-3"
+                          : "hidden"
+                        : "rounded-lg border border-dark-border bg-dark-bg/25 p-4 space-y-3"
+                    }
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-sm font-medium text-text-primary">Carrossel</span>
@@ -2588,6 +2684,7 @@ export default function CapturaClient() {
                           searchPlaceholder="Filtrar posições…"
                           emptyButtonLabel="Escolher posição"
                           className="w-full"
+                          triggerVariant="field"
                         />
                         <div className="grid grid-cols-2 gap-2">
                           {([0, 1, 2, 3] as const).map((slot) => {
@@ -2687,7 +2784,15 @@ export default function CapturaClient() {
                   </div>
 
                   {isVipPreview || pageTemplate === "em_branco" ? (
-                    <div className="rounded-lg border border-dark-border bg-dark-bg/25 p-4 space-y-3">
+                    <div
+                      className={
+                        isExtrasEmBrancoStep
+                          ? extrasEmBrancoTab === "notifications"
+                            ? "space-y-3"
+                            : "hidden"
+                          : "rounded-lg border border-dark-border bg-dark-bg/25 p-4 space-y-3"
+                      }
+                    >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-sm font-medium text-text-primary">Notificações</span>
@@ -2730,12 +2835,19 @@ export default function CapturaClient() {
                             searchPlaceholder="Filtrar posições…"
                             emptyButtonLabel="Escolher posição"
                             className="w-full"
+                            triggerVariant="field"
                           />
                         </>
                       ) : null}
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 rounded-lg border border-dark-border/70 bg-dark-bg/15 px-3 py-2.5">
+                    <div
+                      className={
+                        isExtrasEmBrancoStep
+                          ? "hidden"
+                          : "flex items-center gap-2 rounded-lg border border-dark-border/70 bg-dark-bg/15 px-3 py-2.5"
+                      }
+                    >
                       <span className="text-xs text-text-secondary">Notificações</span>
                       <Toolist
                         variant="below"
@@ -2745,7 +2857,15 @@ export default function CapturaClient() {
                   )}
 
                   {(isVipPreview && pageTemplate !== "jardim_floral") || pageTemplate === "em_branco" ? (
-                    <div className="rounded-lg border border-dark-border bg-dark-bg/25 p-4 space-y-3">
+                    <div
+                      className={
+                        isExtrasEmBrancoStep
+                          ? extrasEmBrancoTab === "promo"
+                            ? "space-y-3"
+                            : "hidden"
+                          : "rounded-lg border border-dark-border bg-dark-bg/25 p-4 space-y-3"
+                      }
+                    >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="text-sm font-medium text-text-primary">
@@ -2787,376 +2907,375 @@ export default function CapturaClient() {
                                   maxLength={120}
                                 />
                               </div>
-                              <div className="rounded-lg border border-dark-border/60 bg-dark-bg/20 p-3 space-y-3">
-                                <div className="text-xs font-semibold text-text-primary">
-                                  Cores e tipografia (cards estilo Rosa)
+                              <div className="rounded-xl border border-dark-border/60 bg-dark-bg/25 p-3 sm:p-4 space-y-4">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-semibold uppercase tracking-wide text-text-primary/90">
+                                    Aparência da secção
+                                  </span>
+                                  <Toolist
+                                    variant="below"
+                                    wide
+                                    text="Opcional: cores e tipografia dos cards estilo Rosa. O quadrado abre o seletor do sistema; os tamanhos seguem o mesmo controlo deslizante do resto do assistente."
+                                  />
                                 </div>
-                                <p className="text-[11px] leading-snug text-text-secondary">
-                                  Campos vazios usam o padrão do modelo. Pode usar{" "}
-                                  <code className="text-[10px]">#hex</code> ou{" "}
-                                  <code className="text-[10px]">rgba(...)</code> curto.
-                                </p>
-                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                  <div>
-                                    <label className={labelClass}>Fundo da secção</label>
-                                    <input
-                                      type="text"
-                                      value={promoRosaUiDraft.section_bg ?? ""}
-                                      onChange={(e) =>
-                                        setPromoRosaUiDraft((d) => ({
-                                          ...d,
-                                          section_bg: e.target.value.trim() || undefined,
-                                        }))
-                                      }
-                                      className={inputClass}
-                                      placeholder="Ex.: #f5f5f5"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={labelClass}>Borda da secção</label>
-                                    <input
-                                      type="text"
-                                      value={promoRosaUiDraft.section_border ?? ""}
-                                      onChange={(e) =>
-                                        setPromoRosaUiDraft((d) => ({
-                                          ...d,
-                                          section_border: e.target.value.trim() || undefined,
-                                        }))
-                                      }
-                                      className={inputClass}
-                                      placeholder="Ex.: rgba(0,0,0,0.08)"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={labelClass}>Cor do título da secção</label>
-                                    <input
-                                      type="text"
-                                      value={promoRosaUiDraft.heading_color ?? ""}
-                                      onChange={(e) =>
-                                        setPromoRosaUiDraft((d) => ({
-                                          ...d,
-                                          heading_color: e.target.value.trim() || undefined,
-                                        }))
-                                      }
-                                      className={inputClass}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={labelClass}>Tamanho do título (px)</label>
-                                    <input
-                                      type="number"
-                                      min={10}
-                                      max={22}
-                                      value={promoRosaUiDraft.heading_font_px ?? ""}
-                                      onChange={(e) => {
-                                        const v = e.target.value;
-                                        setPromoRosaUiDraft((d) => ({
-                                          ...d,
-                                          heading_font_px:
-                                            v === ""
-                                              ? undefined
-                                              : Math.min(22, Math.max(10, parseInt(v, 10) || 13)),
-                                        }));
-                                      }}
-                                      className={inputClass}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={labelClass}>Fundo do card</label>
-                                    <input
-                                      type="text"
-                                      value={promoRosaUiDraft.card_bg ?? ""}
-                                      onChange={(e) =>
-                                        setPromoRosaUiDraft((d) => ({
-                                          ...d,
-                                          card_bg: e.target.value.trim() || undefined,
-                                        }))
-                                      }
-                                      className={inputClass}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={labelClass}>Borda do card</label>
-                                    <input
-                                      type="text"
-                                      value={promoRosaUiDraft.card_border ?? ""}
-                                      onChange={(e) =>
-                                        setPromoRosaUiDraft((d) => ({
-                                          ...d,
-                                          card_border: e.target.value.trim() || undefined,
-                                        }))
-                                      }
-                                      className={inputClass}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={labelClass}>Barra lateral (acento)</label>
-                                    <input
-                                      type="text"
-                                      value={promoRosaUiDraft.left_accent ?? ""}
-                                      onChange={(e) =>
-                                        setPromoRosaUiDraft((d) => ({
-                                          ...d,
-                                          left_accent: e.target.value.trim() || undefined,
-                                        }))
-                                      }
-                                      className={inputClass}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={labelClass}>Cor do título do card</label>
-                                    <input
-                                      type="text"
-                                      value={promoRosaUiDraft.title_color ?? ""}
-                                      onChange={(e) =>
-                                        setPromoRosaUiDraft((d) => ({
-                                          ...d,
-                                          title_color: e.target.value.trim() || undefined,
-                                        }))
-                                      }
-                                      className={inputClass}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={labelClass}>Cor do texto do card</label>
-                                    <input
-                                      type="text"
-                                      value={promoRosaUiDraft.body_color ?? ""}
-                                      onChange={(e) =>
-                                        setPromoRosaUiDraft((d) => ({
-                                          ...d,
-                                          body_color: e.target.value.trim() || undefined,
-                                        }))
-                                      }
-                                      className={inputClass}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={labelClass}>Tamanho título do card (px)</label>
-                                    <input
-                                      type="number"
-                                      min={10}
-                                      max={20}
-                                      value={promoRosaUiDraft.title_font_px ?? ""}
-                                      onChange={(e) => {
-                                        const v = e.target.value;
-                                        setPromoRosaUiDraft((d) => ({
-                                          ...d,
-                                          title_font_px:
-                                            v === ""
-                                              ? undefined
-                                              : Math.min(20, Math.max(10, parseInt(v, 10) || 13)),
-                                        }));
-                                      }}
-                                      className={inputClass}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={labelClass}>Tamanho corpo do card (px)</label>
-                                    <input
-                                      type="number"
-                                      min={10}
-                                      max={20}
-                                      value={promoRosaUiDraft.body_font_px ?? ""}
-                                      onChange={(e) => {
-                                        const v = e.target.value;
-                                        setPromoRosaUiDraft((d) => ({
-                                          ...d,
-                                          body_font_px:
-                                            v === ""
-                                              ? undefined
-                                              : Math.min(20, Math.max(10, parseInt(v, 10) || 13)),
-                                        }));
-                                      }}
-                                      className={inputClass}
-                                    />
-                                  </div>
-                                  <div className="sm:col-span-2">
-                                    <label className={labelClass}>Fonte (Google Fonts)</label>
-                                    <select
-                                      value={promoRosaUiDraft.font_preset ?? "system"}
-                                      onChange={(e) => {
-                                        const v = e.target.value;
-                                        setPromoRosaUiDraft((d) => ({
-                                          ...d,
-                                          font_preset:
-                                            v === "system" ? undefined : (v as PromoRosaFontPreset),
-                                        }));
-                                      }}
-                                      className={inputClass}
-                                    >
-                                      <option value="system">Sistema (padrão)</option>
-                                      <option value="inter">Inter</option>
-                                      <option value="dm_sans">DM Sans</option>
-                                    </select>
-                                  </div>
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                  <EmBrancoCssColorField
+                                    label="Fundo da secção"
+                                    value={promoRosaUiDraft.section_bg ?? ""}
+                                    allowAlpha
+                                    onChange={(v) =>
+                                      setPromoRosaUiDraft((d) => ({
+                                        ...d,
+                                        section_bg: v.trim() || undefined,
+                                      }))
+                                    }
+                                    fallbackHex="#ffffff"
+                                  />
+                                  <EmBrancoCssColorField
+                                    label="Borda da secção"
+                                    value={promoRosaUiDraft.section_border ?? ""}
+                                    allowAlpha
+                                    onChange={(v) =>
+                                      setPromoRosaUiDraft((d) => ({
+                                        ...d,
+                                        section_border: v.trim() || undefined,
+                                      }))
+                                    }
+                                    fallbackHex="#e8e8e8"
+                                  />
+                                  <EmBrancoCssColorField
+                                    label="Cor do título da secção"
+                                    value={promoRosaUiDraft.heading_color ?? ""}
+                                    onChange={(v) =>
+                                      setPromoRosaUiDraft((d) => ({
+                                        ...d,
+                                        heading_color: v.trim() || undefined,
+                                      }))
+                                    }
+                                    fallbackHex="#262626"
+                                  />
+                                  <CaptureRangeField
+                                    label="Tamanho do título da secção"
+                                    value={promoRosaUiDraft.heading_font_px ?? 13}
+                                    min={10}
+                                    max={22}
+                                    onChange={(n) =>
+                                      setPromoRosaUiDraft((d) => ({
+                                        ...d,
+                                        heading_font_px: n === 13 ? undefined : n,
+                                      }))
+                                    }
+                                  />
+                                  <EmBrancoCssColorField
+                                    label="Fundo do card"
+                                    value={promoRosaUiDraft.card_bg ?? ""}
+                                    allowAlpha
+                                    onChange={(v) =>
+                                      setPromoRosaUiDraft((d) => ({
+                                        ...d,
+                                        card_bg: v.trim() || undefined,
+                                      }))
+                                    }
+                                    fallbackHex="#ffffff"
+                                  />
+                                  <EmBrancoCssColorField
+                                    label="Borda do card"
+                                    value={promoRosaUiDraft.card_border ?? ""}
+                                    allowAlpha
+                                    onChange={(v) =>
+                                      setPromoRosaUiDraft((d) => ({
+                                        ...d,
+                                        card_border: v.trim() || undefined,
+                                      }))
+                                    }
+                                    fallbackHex="#eeeeee"
+                                  />
+                                  <EmBrancoCssColorField
+                                    label="Barra lateral (acento)"
+                                    value={promoRosaUiDraft.left_accent ?? ""}
+                                    onChange={(v) =>
+                                      setPromoRosaUiDraft((d) => ({
+                                        ...d,
+                                        left_accent: v.trim() || undefined,
+                                      }))
+                                    }
+                                    fallbackHex={
+                                      isValidHexColor(buttonColor) ? buttonColor : "#25D366"
+                                    }
+                                  />
+                                  <EmBrancoCssColorField
+                                    label="Cor do título do card"
+                                    value={promoRosaUiDraft.title_color ?? ""}
+                                    onChange={(v) =>
+                                      setPromoRosaUiDraft((d) => ({
+                                        ...d,
+                                        title_color: v.trim() || undefined,
+                                      }))
+                                    }
+                                    fallbackHex="#171717"
+                                  />
+                                  <EmBrancoCssColorField
+                                    label="Cor do texto do card"
+                                    value={promoRosaUiDraft.body_color ?? ""}
+                                    allowAlpha
+                                    onChange={(v) =>
+                                      setPromoRosaUiDraft((d) => ({
+                                        ...d,
+                                        body_color: v.trim() || undefined,
+                                      }))
+                                    }
+                                    fallbackHex="#525252"
+                                  />
+                                  <CaptureRangeField
+                                    label="Tamanho do título do card"
+                                    value={promoRosaUiDraft.title_font_px ?? 13}
+                                    min={10}
+                                    max={20}
+                                    onChange={(n) =>
+                                      setPromoRosaUiDraft((d) => ({
+                                        ...d,
+                                        title_font_px: n === 13 ? undefined : n,
+                                      }))
+                                    }
+                                  />
+                                  <CaptureRangeField
+                                    label="Tamanho do texto do card"
+                                    value={promoRosaUiDraft.body_font_px ?? 13}
+                                    min={10}
+                                    max={20}
+                                    onChange={(n) =>
+                                      setPromoRosaUiDraft((d) => ({
+                                        ...d,
+                                        body_font_px: n === 13 ? undefined : n,
+                                      }))
+                                    }
+                                  />
                                 </div>
+                                <div>
+                                  <label className={labelClass}>Fonte (Google Fonts)</label>
+                                  <MetaSearchablePicker
+                                    value={promoRosaUiDraft.font_preset ?? "system"}
+                                    onChange={(v) =>
+                                      setPromoRosaUiDraft((d) => ({
+                                        ...d,
+                                        font_preset:
+                                          v === "system" ? undefined : (v as PromoRosaFontPreset),
+                                      }))
+                                    }
+                                    options={CAPTURE_FONT_PICKER_OPTIONS}
+                                    modalTitle="Fonte da secção promocional"
+                                    modalDescription="Aplicada aos textos dos cards estilo Rosa."
+                                    searchPlaceholder="Filtrar…"
+                                    emptyButtonLabel="Escolher fonte"
+                                    className="w-full"
+                                    openButtonId="promo-rosa-font-preset"
+                                    triggerVariant="field"
+                                  />
+                                </div>
+                              </div>
+                              <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary/90 px-0.5">
+                                Cards
                               </div>
                               {promoCardsDraft.rosa.map((row, i) => (
                                 <div
                                   key={`rosa-card-${i}`}
-                                  className="rounded-lg border border-dark-border/80 bg-dark-bg/30 p-3 space-y-2"
+                                  className="overflow-hidden rounded-lg border border-dark-border/80 bg-dark-bg/30"
                                 >
-                                  <div className="flex items-center justify-between gap-2">
-                                    <div className="text-xs font-semibold text-shopee-orange/90">
-                                      Card {i + 1} de {promoCardsDraft.rosa.length}
-                                    </div>
+                                  <div className="flex items-stretch">
+                                    <button
+                                      type="button"
+                                      aria-expanded={expandedPromoRosaCardIdx === i}
+                                      onClick={() =>
+                                        setExpandedPromoRosaCardIdx((cur) => (cur === i ? null : i))
+                                      }
+                                      className="flex min-w-0 flex-1 items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors hover:bg-dark-bg/45"
+                                    >
+                                      <span className="text-xs font-semibold text-shopee-orange/90 truncate">
+                                        Card {i + 1}
+                                        {row.title?.trim()
+                                          ? ` — ${row.title.trim().slice(0, 36)}${
+                                              row.title.trim().length > 36 ? "…" : ""
+                                            }`
+                                          : ""}
+                                      </span>
+                                      <ChevronDown
+                                        className={`h-4 w-4 shrink-0 text-text-secondary transition-transform ${
+                                          expandedPromoRosaCardIdx === i ? "rotate-180" : ""
+                                        }`}
+                                        aria-hidden
+                                      />
+                                    </button>
                                     <button
                                       type="button"
                                       disabled={promoCardsDraft.rosa.length <= PROMO_ROSA_MIN}
-                                      onClick={() => {
+                                      title="Remover card"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
                                         setPromoCardsDraft((d) => removeRosaCardAt(d, i));
                                         setRosaPromoImageFiles((prev) => {
                                           const next = [...prev];
                                           next.splice(i, 1);
                                           return next;
                                         });
+                                        setExpandedPromoRosaCardIdx((prev) => {
+                                          if (prev === null) return prev;
+                                          if (prev === i) return null;
+                                          if (prev > i) return prev - 1;
+                                          return prev;
+                                        });
                                       }}
-                                      className="h-7 px-2 rounded-md text-xs font-medium border border-dark-border text-text-secondary hover:text-red-400 hover:border-red-400/50 disabled:opacity-40 disabled:pointer-events-none"
+                                      className="shrink-0 border-l border-dark-border/60 px-2.5 text-xs font-medium text-text-secondary hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40 disabled:pointer-events-none"
                                     >
                                       Remover
                                     </button>
                                   </div>
-                                  <div>
-                                    <label className={labelClass}>Destaque à esquerda</label>
-                                    <select
-                                      value={row.lead_mode}
-                                      onChange={(e) => {
-                                        const v = e.target.value as RosaLeadMode;
-                                        setPromoCardsDraft((d) => {
-                                          const rosa = [...d.rosa];
-                                          const cur = rosa[i]!;
-                                          rosa[i] = {
-                                            ...cur,
-                                            lead_mode: v,
-                                            ...(v !== "image" ? { image_path: null } : {}),
-                                          };
-                                          return { ...d, rosa };
-                                        });
-                                        if (v !== "image") {
-                                          setRosaPromoImageFiles((prev) => {
-                                            const next = [...prev];
-                                            next[i] = null;
-                                            return next;
-                                          });
-                                        }
-                                      }}
-                                      className={inputClass}
-                                    >
-                                      <option value="icon">Ícone Lucide</option>
-                                      <option value="emoji">Emoji</option>
-                                      <option value="image">Imagem (upload)</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className={labelClass}>Título do card</label>
-                                    <input
-                                      type="text"
-                                      value={row.title}
-                                      maxLength={90}
-                                      onChange={(e) =>
-                                        setPromoCardsDraft((d) => {
-                                          const rosa = [...d.rosa];
-                                          rosa[i] = { ...rosa[i]!, title: e.target.value };
-                                          return { ...d, rosa };
-                                        })
-                                      }
-                                      className={inputClass}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className={labelClass}>Texto do card</label>
-                                    <textarea
-                                      value={row.body}
-                                      maxLength={260}
-                                      onChange={(e) =>
-                                        setPromoCardsDraft((d) => {
-                                          const rosa = [...d.rosa];
-                                          rosa[i] = { ...rosa[i]!, body: e.target.value };
-                                          return { ...d, rosa };
-                                        })
-                                      }
-                                      className={textareaClass}
-                                      rows={3}
-                                    />
-                                  </div>
-                                  {row.lead_mode === "icon" ? (
-                                    <div>
-                                      <label className={labelClass}>Ícone (Lucide)</label>
-                                      <VipRosaIconPicker
-                                        value={row.iconKey}
-                                        onChange={(v) =>
-                                          setPromoCardsDraft((d) => {
-                                            const rosa = [...d.rosa];
-                                            rosa[i] = {
-                                              ...rosa[i]!,
-                                              iconKey: normalizeRosaIconKey(v),
-                                            };
-                                            return { ...d, rosa };
-                                          })
-                                        }
-                                        options={vipRosaIconPickerOptions}
-                                        className="w-full"
-                                        openButtonId={`vip-rosa-icon-card-${i}`}
-                                      />
-                                    </div>
-                                  ) : null}
-                                  {row.lead_mode === "emoji" ? (
-                                    <div>
-                                      <label className={labelClass}>Emoji</label>
-                                      <input
-                                        type="text"
-                                        value={row.emoji}
-                                        maxLength={8}
-                                        placeholder="Ex.: ✨"
-                                        onChange={(e) =>
-                                          setPromoCardsDraft((d) => {
-                                            const rosa = [...d.rosa];
-                                            rosa[i] = { ...rosa[i]!, emoji: e.target.value };
-                                            return { ...d, rosa };
-                                          })
-                                        }
-                                        className={inputClass}
-                                      />
-                                    </div>
-                                  ) : null}
-                                  {row.lead_mode === "image" ? (
-                                    <div className="space-y-2">
-                                      <label className={labelClass}>
-                                        Imagem (PNG, JPG ou WebP — máx. 2MB)
-                                      </label>
-                                      <input
-                                        type="file"
-                                        accept="image/png,image/jpeg,image/webp"
-                                        className={`${inputClass} py-1.5 text-xs file:mr-2 file:rounded file:border-0 file:bg-dark-card file:px-2 file:py-1 file:text-xs`}
-                                        onChange={(e) => {
-                                          const file = e.target.files?.[0];
-                                          e.target.value = "";
-                                          if (!file) return;
-                                          if (file.size > 2 * 1024 * 1024) {
-                                            setError("Imagem do card muito grande (máx. 2MB).");
-                                            return;
+                                  {expandedPromoRosaCardIdx === i ? (
+                                    <div className="space-y-2 border-t border-dark-border/50 p-3">
+                                      <div>
+                                        <label className={labelClass}>Destaque à esquerda</label>
+                                        <MetaSearchablePicker
+                                          value={row.lead_mode}
+                                          onChange={(v) => {
+                                            const mode = v as RosaLeadMode;
+                                            setPromoCardsDraft((d) => {
+                                              const rosa = [...d.rosa];
+                                              const cur = rosa[i]!;
+                                              rosa[i] = {
+                                                ...cur,
+                                                lead_mode: mode,
+                                                ...(mode !== "image" ? { image_path: null } : {}),
+                                              };
+                                              return { ...d, rosa };
+                                            });
+                                            if (mode !== "image") {
+                                              setRosaPromoImageFiles((prev) => {
+                                                const next = [...prev];
+                                                next[i] = null;
+                                                return next;
+                                              });
+                                            }
+                                          }}
+                                          options={ROSA_LEAD_MODE_OPTIONS}
+                                          modalTitle="Destaque à esquerda"
+                                          modalDescription="Ícone Lucide, emoji ou imagem à esquerda do título do card."
+                                          searchPlaceholder="Filtrar…"
+                                          emptyButtonLabel="Escolher modo"
+                                          className="w-full"
+                                          openButtonId={`rosa-lead-mode-${i}`}
+                                          triggerVariant="field"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className={labelClass}>Título do card</label>
+                                        <input
+                                          type="text"
+                                          value={row.title}
+                                          maxLength={90}
+                                          onChange={(e) =>
+                                            setPromoCardsDraft((d) => {
+                                              const rosa = [...d.rosa];
+                                              rosa[i] = { ...rosa[i]!, title: e.target.value };
+                                              return { ...d, rosa };
+                                            })
                                           }
-                                          setRosaPromoImageFiles((prev) => {
-                                            const next = [...prev];
-                                            next[i] = file;
-                                            return next;
-                                          });
-                                          setPromoCardsDraft((d) => {
-                                            const rosa = [...d.rosa];
-                                            rosa[i] = { ...rosa[i]!, lead_mode: "image" };
-                                            return { ...d, rosa };
-                                          });
-                                        }}
-                                      />
-                                      {rosaPromoBlobUrls[i] || row.image_path ? (
-                                        <button
-                                          type="button"
-                                          onClick={() => void clearRosaPromoCardImage(i)}
-                                          className="h-8 rounded-md border border-dark-border px-2 text-xs font-medium text-text-secondary hover:border-red-400/50 hover:text-red-400"
-                                        >
-                                          Remover imagem
-                                        </button>
+                                          className={inputClass}
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className={labelClass}>Texto do card</label>
+                                        <textarea
+                                          value={row.body}
+                                          maxLength={260}
+                                          onChange={(e) =>
+                                            setPromoCardsDraft((d) => {
+                                              const rosa = [...d.rosa];
+                                              rosa[i] = { ...rosa[i]!, body: e.target.value };
+                                              return { ...d, rosa };
+                                            })
+                                          }
+                                          className={textareaClass}
+                                          rows={3}
+                                        />
+                                      </div>
+                                      {row.lead_mode === "icon" ? (
+                                        <div>
+                                          <label className={labelClass}>Ícone (Lucide)</label>
+                                          <VipRosaIconPicker
+                                            value={row.iconKey}
+                                            onChange={(v) =>
+                                              setPromoCardsDraft((d) => {
+                                                const rosa = [...d.rosa];
+                                                rosa[i] = {
+                                                  ...rosa[i]!,
+                                                  iconKey: normalizeRosaIconKey(v),
+                                                };
+                                                return { ...d, rosa };
+                                              })
+                                            }
+                                            options={vipRosaIconPickerOptions}
+                                            className="w-full"
+                                            openButtonId={`vip-rosa-icon-card-${i}`}
+                                          />
+                                        </div>
+                                      ) : null}
+                                      {row.lead_mode === "emoji" ? (
+                                        <div>
+                                          <label className={labelClass}>Emoji</label>
+                                          <input
+                                            type="text"
+                                            value={row.emoji}
+                                            maxLength={8}
+                                            placeholder="Ex.: ✨"
+                                            onChange={(e) =>
+                                              setPromoCardsDraft((d) => {
+                                                const rosa = [...d.rosa];
+                                                rosa[i] = { ...rosa[i]!, emoji: e.target.value };
+                                                return { ...d, rosa };
+                                              })
+                                            }
+                                            className={inputClass}
+                                          />
+                                        </div>
+                                      ) : null}
+                                      {row.lead_mode === "image" ? (
+                                        <div className="space-y-2">
+                                          <label className={labelClass}>
+                                            Imagem (PNG, JPG ou WebP — máx. 2MB)
+                                          </label>
+                                          <input
+                                            type="file"
+                                            accept="image/png,image/jpeg,image/webp"
+                                            className={`${inputClass} py-1.5 text-xs file:mr-2 file:rounded file:border-0 file:bg-dark-card file:px-2 file:py-1 file:text-xs`}
+                                            onChange={(e) => {
+                                              const file = e.target.files?.[0];
+                                              e.target.value = "";
+                                              if (!file) return;
+                                              if (file.size > 2 * 1024 * 1024) {
+                                                setError("Imagem do card muito grande (máx. 2MB).");
+                                                return;
+                                              }
+                                              setRosaPromoImageFiles((prev) => {
+                                                const next = [...prev];
+                                                next[i] = file;
+                                                return next;
+                                              });
+                                              setPromoCardsDraft((d) => {
+                                                const rosa = [...d.rosa];
+                                                rosa[i] = { ...rosa[i]!, lead_mode: "image" };
+                                                return { ...d, rosa };
+                                              });
+                                            }}
+                                          />
+                                          {rosaPromoBlobUrls[i] || row.image_path ? (
+                                            <button
+                                              type="button"
+                                              onClick={() => void clearRosaPromoCardImage(i)}
+                                              className="h-8 rounded-md border border-dark-border px-2 text-xs font-medium text-text-secondary hover:border-red-400/50 hover:text-red-400"
+                                            >
+                                              Remover imagem
+                                            </button>
+                                          ) : null}
+                                        </div>
                                       ) : null}
                                     </div>
                                   ) : null}
@@ -3165,7 +3284,16 @@ export default function CapturaClient() {
                               <button
                                 type="button"
                                 disabled={promoCardsDraft.rosa.length >= PROMO_ROSA_MAX}
-                                onClick={() => setPromoCardsDraft((d) => appendEmptyRosaCard(d))}
+                                onClick={() => {
+                                  setPromoCardsDraft((d) => {
+                                    const next = appendEmptyRosaCard(d);
+                                    if (next.rosa.length > d.rosa.length) {
+                                      const idx = next.rosa.length - 1;
+                                      queueMicrotask(() => setExpandedPromoRosaCardIdx(idx));
+                                    }
+                                    return next;
+                                  });
+                                }}
                                 className="h-9 px-3 rounded-md text-sm font-medium border border-shopee-orange/60 text-shopee-orange hover:bg-shopee-orange/10 disabled:opacity-40 disabled:pointer-events-none inline-flex items-center gap-2"
                               >
                                 <Plus className="h-4 w-4" aria-hidden />
@@ -3474,7 +3602,7 @@ export default function CapturaClient() {
                       ) : null}
                     </div>
                   ) : null}
-                  </>
+                  </div>
                 </div>
               )}
 

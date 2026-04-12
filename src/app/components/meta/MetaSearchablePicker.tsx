@@ -2,7 +2,7 @@
 
 import React, { useId, useMemo, useState, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Search, X } from "lucide-react";
+import { ChevronDown, Search, X } from "lucide-react";
 
 function normalizeSearch(s: string) {
   return s
@@ -34,10 +34,15 @@ export type MetaSearchablePickerProps = {
   className?: string;
   /** Mensagem se options.length === 0 */
   emptyOptionsMessage?: string;
+  /**
+   * `tag` — etiqueta laranja + lupa (padrão em filtros Meta).
+   * `field` — uma linha como input do assistente (texto + seta); abre o mesmo modal.
+   */
+  triggerVariant?: "tag" | "field";
 };
 
 /**
- * Select estilo Meta: modal com busca + lista; fora, tag laranja + ícone de lupa (ou botão grande se vazio).
+ * Select estilo Meta: modal com busca + lista; fora, tag + lupa ou linha tipo campo (`triggerVariant`).
  */
 export default function MetaSearchablePicker({
   value,
@@ -55,6 +60,7 @@ export default function MetaSearchablePicker({
   openButtonId,
   className = "",
   emptyOptionsMessage = "Nenhuma opção disponível.",
+  triggerVariant = "tag",
 }: MetaSearchablePickerProps) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
@@ -214,6 +220,11 @@ export default function MetaSearchablePicker({
         )
       : null;
 
+  const fieldTriggerClass =
+    "flex h-11 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-dark-border bg-dark-bg px-4 text-left text-sm transition-colors " +
+    "text-text-primary hover:border-shopee-orange/40 focus:outline-none focus:ring-2 focus:ring-shopee-orange/60 focus:border-shopee-orange/60 " +
+    "disabled:cursor-not-allowed disabled:opacity-40";
+
   const lupaBtn = (
     <button
       type="button"
@@ -252,43 +263,86 @@ export default function MetaSearchablePicker({
 
   return (
     <div className={className}>
-      {showBigButton && (
-        <button
-          type="button"
-          id={openButtonId}
-          onClick={openModal}
-          disabled={disabled || options.length === 0}
-          className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg border border-shopee-orange/45 bg-shopee-orange/10 px-4 py-2.5 text-sm font-semibold text-shopee-orange hover:bg-shopee-orange/18 disabled:opacity-40 transition-colors"
-        >
-          <Search className="h-4 w-4 shrink-0" />
-          {emptyButtonLabel}
-        </button>
-      )}
-
-      {showTagRow && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs sm:text-sm font-medium ${
-              value === "" && emptyAsTag
-                ? "border-dark-border/60 bg-dark-bg/40 text-text-secondary"
-                : "border-shopee-orange/50 bg-shopee-orange/8 text-text-primary"
-            }`}
+      {showBigButton &&
+        (triggerVariant === "field" ? (
+          <button
+            type="button"
+            id={openButtonId}
+            onClick={openModal}
+            disabled={disabled || options.length === 0}
+            className={`${fieldTriggerClass} text-text-secondary/80 font-normal`}
           >
-            <span className="truncate max-w-[min(100%,280px)]">{labelFor(value)}</span>
+            <span className="truncate">{emptyButtonLabel}</span>
+            <ChevronDown className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden />
+          </button>
+        ) : (
+          <button
+            type="button"
+            id={openButtonId}
+            onClick={openModal}
+            disabled={disabled || options.length === 0}
+            className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg border border-shopee-orange/45 bg-shopee-orange/10 px-4 py-2.5 text-sm font-semibold text-shopee-orange hover:bg-shopee-orange/18 disabled:opacity-40 transition-colors"
+          >
+            <Search className="h-4 w-4 shrink-0" />
+            {emptyButtonLabel}
+          </button>
+        ))}
+
+      {showTagRow &&
+        (triggerVariant === "field" ? (
+          <div className="flex w-full min-w-0 items-stretch gap-2">
+            <button
+              type="button"
+              id={openButtonId}
+              onClick={openModal}
+              disabled={disabled || options.length === 0}
+              className={fieldTriggerClass}
+              aria-haspopup="dialog"
+            >
+              <span
+                className={`min-w-0 flex-1 truncate font-medium ${
+                  value === "" && emptyAsTag ? "text-text-secondary" : ""
+                }`}
+              >
+                {labelFor(value)}
+              </span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden />
+            </button>
             {value !== "" && allowClear ? (
               <button
                 type="button"
                 onClick={() => onChange("")}
-                className="shrink-0 rounded-md p-0.5 text-text-secondary hover:text-red-400 hover:bg-red-500/10"
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-dark-border bg-dark-bg text-text-secondary hover:border-red-400/50 hover:text-red-400"
                 aria-label="Limpar"
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="h-4 w-4" />
               </button>
             ) : null}
-          </span>
-          {lupaBtn}
-        </div>
-      )}
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs sm:text-sm font-medium ${
+                value === "" && emptyAsTag
+                  ? "border-dark-border/60 bg-dark-bg/40 text-text-secondary"
+                  : "border-shopee-orange/50 bg-shopee-orange/8 text-text-primary"
+              }`}
+            >
+              <span className="truncate max-w-[min(100%,280px)]">{labelFor(value)}</span>
+              {value !== "" && allowClear ? (
+                <button
+                  type="button"
+                  onClick={() => onChange("")}
+                  className="shrink-0 rounded-md p-0.5 text-text-secondary hover:text-red-400 hover:bg-red-500/10"
+                  aria-label="Limpar"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </span>
+            {lupaBtn}
+          </div>
+        ))}
 
       {modal}
     </div>

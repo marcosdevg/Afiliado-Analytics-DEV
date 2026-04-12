@@ -2,7 +2,14 @@
  * Tema da página de captura **Em Branco** — tudo o que é UX visual num único JSON.
  */
 
-export type BlankFontPreset = "system" | "inter" | "dm_sans" | "playfair" | "space_grotesk";
+import {
+  type CaptureGoogleFontPreset,
+  captureFontCssStack,
+  captureFontGoogleHref,
+  normalizeCaptureFontPreset,
+} from "@/lib/capture-google-font-presets";
+
+export type BlankFontPreset = CaptureGoogleFontPreset;
 
 export type BlankAnimationPreset =
   | "none"
@@ -212,9 +219,7 @@ export function mergeBlankCanvasFromDb(raw: unknown): BlankCanvasConfig {
     "bounce_in",
   ]);
   if (animAllow.has(an)) d.animation = an as BlankAnimationPreset;
-  const fp = String(raw.fontPreset ?? "").toLowerCase();
-  const fonts: BlankFontPreset[] = ["system", "inter", "dm_sans", "playfair", "space_grotesk"];
-  if (fonts.includes(fp as BlankFontPreset)) d.fontPreset = fp as BlankFontPreset;
+  d.fontPreset = normalizeCaptureFontPreset(raw.fontPreset);
 
   /** Gravações antigas sem esta chave seguem o comportamento anterior (logo oculta). */
   if (!("showLogo" in raw)) {
@@ -270,31 +275,9 @@ export function blankCanvasToDbValue(c: BlankCanvasConfig): Record<string, unkno
 }
 
 export function fontCssStack(preset: BlankFontPreset): string {
-  switch (preset) {
-    case "inter":
-      return '"Inter", system-ui, sans-serif';
-    case "dm_sans":
-      return '"DM Sans", system-ui, sans-serif';
-    case "playfair":
-      return '"Playfair Display", Georgia, serif';
-    case "space_grotesk":
-      return '"Space Grotesk", system-ui, sans-serif';
-    default:
-      return 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-  }
+  return captureFontCssStack(preset);
 }
 
 export function googleFontHref(preset: BlankFontPreset): string | null {
-  switch (preset) {
-    case "inter":
-      return "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap";
-    case "dm_sans":
-      return "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap";
-    case "playfair":
-      return "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&display=swap";
-    case "space_grotesk":
-      return "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap";
-    default:
-      return null;
-  }
+  return captureFontGoogleHref(preset);
 }
