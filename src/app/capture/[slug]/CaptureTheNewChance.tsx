@@ -17,6 +17,7 @@ import {
 } from "./capture-responsive-classes";
 import { CaptureOfertCarouselIf } from "./CaptureOfertCarouselIf";
 import { normalizeSimpleFourLinesFromDb } from "@/lib/capture-promo-cards";
+import { CaptureFooterAfiliadoAnalyticsLink } from "./CaptureFooterAfiliadoAnalyticsLink";
 
 const CARD = "#ffffff";
 const TEXT = "#1c1917";
@@ -635,7 +636,8 @@ export default function CaptureTheNewChance(props: CaptureVipLandingProps) {
           />
 
           <p className="text-center text-[11px]" style={{ color: "#9ca3af" }}>
-            © {new Date().getFullYear()} Afiliado Analytics
+            © {new Date().getFullYear()}{" "}
+            <CaptureFooterAfiliadoAnalyticsLink className="text-inherit underline-offset-2 hover:underline" />
           </p>
         </div>
       </div>

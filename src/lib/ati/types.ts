@@ -63,6 +63,8 @@ export interface ATICreativeRow {
   clicksShopee: number;
   cpcShopee: number;
   orders: number;
+  /** Pedidos com Tipo de atribuição = "Direta" (mesmo lojista do link clicado) */
+  directOrders: number;
   revenue: number;
   commission: number;
   /** Derivadas */

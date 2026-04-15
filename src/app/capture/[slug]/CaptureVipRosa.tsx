@@ -19,6 +19,7 @@ import { CaptureOfertCarouselIf } from "./CaptureOfertCarouselIf";
 import { normalizeVipRosaCardsFromDb } from "@/lib/capture-promo-cards";
 import { promoRosaGoogleFontHref, resolvePromoRosaUi } from "@/lib/capture-promo-rosa-ui";
 import { CaptureRosaPromoLead } from "./CaptureRosaPromoLead";
+import { CaptureFooterAfiliadoAnalyticsLink } from "./CaptureFooterAfiliadoAnalyticsLink";
 
 function hexToRgbTriplet(hex: string): string {
   const h = hex.replace("#", "");
@@ -48,23 +49,24 @@ type VipTheme = {
   footerMuted: string;
 };
 
+/** Pastéis derivados de #fc00ab · #d2017a · #a3018f · #6e1279 (misturados com branco). */
 const VIP_ROSA_THEME: VipTheme = {
-  primary: "#B65D78",
-  deep: "#3B1E2A",
-  bg: "#F6EFEA",
-  textMain: "#2f2527",
-  textSoft: "#6f6064",
-  cardBorder: "rgba(182, 93, 120, 0.22)",
-  progressTrackBorder: "rgba(59, 30, 42, 0.10)",
-  cardBg: "#ffffff",
+  primary: "#e87ab8",
+  deep: "#8b5f96",
+  bg: "#fdf7fc",
+  textMain: "#2d2030",
+  textSoft: "#6f5f72",
+  cardBorder: "rgba(232, 122, 184, 0.32)",
+  progressTrackBorder: "rgba(139, 95, 150, 0.2)",
+  cardBg: "#fffcfe",
   benefitCardBg: "#ffffff",
-  topBarBg: "linear-gradient(135deg, #3B1E2A 0%, #1a0f14 100%)",
+  topBarBg: "linear-gradient(92deg, #fceaf6 0%, #f4dff2 42%, #ecd6ee 100%)",
   headingFont: "'Playfair Display', serif",
   showDotPattern: true,
-  containerRadius: "24px",
+  containerRadius: "26px",
   ctaRadius: "9999px",
-  cardShadow: "0 10px 30px rgba(59, 30, 42, 0.12)",
-  footerMuted: "#9e8a8a",
+  cardShadow: "0 14px 42px rgba(110, 18, 121, 0.07), 0 2px 10px rgba(163, 1, 143, 0.05)",
+  footerMuted: "#a08fa3",
 };
 
 const TOTAL_SPOTS = 60;
@@ -203,9 +205,11 @@ export default function CaptureVipRosa(props: CaptureVipLandingProps) {
         }}
       >
         <div
-          className="fixed top-0 left-0 z-[1001] flex w-full items-center justify-center gap-2 py-2.5 text-xs font-black uppercase tracking-wide text-white shadow-md"
+          className="fixed top-0 left-0 z-[1001] flex w-full items-center justify-center gap-2 border-b py-2.5 text-xs font-black uppercase tracking-wide shadow-sm backdrop-blur-[2px]"
           style={{
             background: theme.topBarBg,
+            borderColor: "rgba(163, 1, 143, 0.12)",
+            color: theme.textMain,
           }}
         >
           <Flame className="h-3.5 w-3.5 shrink-0" style={{ color: theme.primary }} aria-hidden />
@@ -322,28 +326,41 @@ export default function CaptureVipRosa(props: CaptureVipLandingProps) {
           <div
             className="mb-4 mt-4 rounded-xl border px-4 py-3.5 text-left shadow-sm"
             style={{
-              background: `${theme.bg}b3`,
-              borderColor: `${theme.primary}47`,
+              background: "linear-gradient(180deg, rgba(252, 0, 171, 0.06) 0%, rgba(110, 18, 121, 0.04) 100%)",
+              borderColor: `${theme.primary}55`,
             }}
           >
-            <div className="mb-2 flex justify-between text-sm font-black" style={{ color: theme.textMain }}>
-              <span>Vagas preenchidas</span>
-              <span style={{ color: theme.deep }}>{rosaPct}%</span>
+            <div className="mb-2 flex items-start justify-between gap-2 text-sm font-black" style={{ color: theme.textMain }}>
+              <span className="inline-flex items-center gap-2">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.2)]"
+                  aria-hidden
+                />
+                Vagas preenchidas
+              </span>
+              <span className="shrink-0 tabular-nums" style={{ color: theme.deep }}>
+                {rosaPct}%
+              </span>
             </div>
             <div
-              className="mb-2.5 h-2.5 w-full overflow-hidden rounded-full border bg-white"
+              className="mb-2.5 h-2.5 w-full overflow-hidden rounded-full border bg-white/90"
               style={{ borderColor: theme.progressTrackBorder }}
             >
               <div
                 className="h-full rounded-full transition-[width] duration-700 ease-out"
                 style={{
                   width: `${rosaPct}%`,
-                  background: `linear-gradient(90deg, ${theme.deep} 0%, ${theme.primary} 100%)`,
+                  background: "linear-gradient(90deg, #c9a3d4 0%, #e87ab8 45%, #f5b8e0 100%)",
                 }}
               />
             </div>
-            <div className="text-right text-[13px] font-bold" style={{ color: theme.textSoft }}>
-              Restam apenas <span style={{ color: theme.textMain }}>{rosaSpotsRemaining}</span> vagas
+            <div className="flex flex-wrap items-center justify-between gap-1 text-[13px] font-semibold">
+              <span style={{ color: theme.textSoft }}>
+                Restam <span style={{ color: theme.textMain }}>{rosaSpotsRemaining}</span> vagas
+              </span>
+              <span className="text-[11px] font-medium opacity-80" style={{ color: theme.textSoft }}>
+                ao vivo
+              </span>
             </div>
           </div>
 
@@ -405,12 +422,24 @@ export default function CaptureVipRosa(props: CaptureVipLandingProps) {
             style={{ borderColor: `${theme.primary}40`, color: theme.footerMuted }}
           >
             <div>
-              <a href="https://afiliadoanalytics.com.br" className="font-extrabold no-underline" style={{ color: theme.textMain }}>
+              <a
+                href="https://afiliadoanalytics.com.br"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-extrabold no-underline hover:underline"
+                style={{ color: theme.textMain }}
+              >
                 Política e termos
               </a>
             </div>
-            <span className="rounded-full px-3.5 py-1.5 text-[11px] font-black text-white shadow-md" style={{ background: theme.deep }}>
-              Feito com ❤️ por Afiliado Analytics
+            <span
+              className="rounded-full px-3.5 py-1.5 text-[11px] font-black text-white shadow-md"
+              style={{
+                background: "linear-gradient(135deg, #b89bc4 0%, #8b5f96 55%, #7a5490 100%)",
+              }}
+            >
+              Feito com ❤️ por{" "}
+              <CaptureFooterAfiliadoAnalyticsLink className="font-black text-white underline-offset-2 hover:underline" />
             </span>
           </footer>
         </div>

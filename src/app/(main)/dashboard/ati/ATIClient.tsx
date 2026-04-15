@@ -314,11 +314,11 @@ function AdAccordionItem({
   const isProfitPositive = profit >= 0;
 
   return (
-    <div className="rounded-lg border border-dark-border bg-dark-card overflow-hidden">
+    <div className="rounded-lg border border-dark-border bg-[#39393E] overflow-hidden">
       <button
         type="button"
         onClick={() => onToggle(row.adId)}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-dark-bg/40 transition-colors cursor-pointer"
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left cursor-pointer"
       >
         <span className="font-medium text-text-primary truncate">{row.adName}</span>
         <span className="flex items-center gap-2 flex-shrink-0">
@@ -476,7 +476,7 @@ function AdAccordionItem({
             </button>
           </div>
           {/* Cards de resumo (estilo print) */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-9 gap-3">
             <div className="rounded-lg bg-dark-card border border-dark-border p-3">
               <MetricHint icon={DollarSign} label="Custo Meta" hint={ATI_HINT.custo} />
               <p className="text-red-400 font-bold text-sm">{formatBRL(row.cost)}</p>
@@ -507,6 +507,11 @@ function AdAccordionItem({
             <div className="rounded-lg bg-dark-card border border-dark-border p-3">
               <MetricHint icon={ShoppingBag} label="Pedidos" hint={ATI_HINT.pedidos} />
               <p className="text-text-primary font-bold text-sm">{row.orders}</p>
+            </div>
+            <div className="rounded-lg bg-dark-card border border-indigo-500/25 p-3">
+              <MetricHint icon={ShoppingBag} label="P. diretos" hint="Compras realizadas do produto divulgado." />
+              <p className="text-indigo-400 font-bold text-sm">{row.directOrders ?? 0}</p>
+            
             </div>
             <div className="rounded-lg bg-dark-card border border-dark-border p-3">
               <MetricHint icon={Target} label="CPA médio" hint={ATI_HINT.cpa} />
@@ -1588,7 +1593,7 @@ export default function ATIClient() {
               return (
                 <div key={camp.campaignId} className={`rounded-xl border overflow-hidden transition-all ${campIsActive ? "border-dark-border" : "border-dark-border/50 opacity-80"}`}>
                   {/* ── Cabeçalho campanha ── */}
-                  <div className={`px-4 py-3 flex items-center justify-between gap-2 ${campIsActive ? "bg-dark-card" : "bg-dark-bg/60"}`}>
+                  <div className={`px-5 pt-3 pb-5 flex items-center justify-between gap-2 ${campIsActive ? "bg-[#27272A]" : "bg-[#1F1F23]"}`}>
                     <button
                       type="button"
                       onClick={() => toggleCampaign(camp.campaignId)}
@@ -1694,13 +1699,13 @@ export default function ATIClient() {
                     </div>
                   </div>
                   {campaignOpen && (
-                    <div className="border-t border-dark-border">
+                    <div className="border-t pb-4 bg-[#242428] border-dark-border">
                       {camp.adAccountId && (
-                        <div className="px-4 py-2 pl-5 border-b border-dark-border/40 flex items-center gap-2 bg-dark-bg/20">
+                        <div className={`px-4 py-2 pl-5 border-b border-dark-border/40 flex items-center gap-2  ${campIsActive ? "bg-[#242428]" : "bg-[#222226]"}`}>
                           <button
                             type="button"
                             onClick={() => { setAdSetNewModal({ campaignId: camp.campaignId, adAccountId: camp.adAccountId!, campaignName: camp.campaignName }); setAdSetNewError(null); }}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-dark-bg border border-dark-border px-2.5 py-1 text-xs font-medium text-text-secondary hover:text-text-primary hover:border-shopee-orange/40 transition-all"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#06a548] border border-dark-border px-2.5 py-1 text-xs font-medium text-white hover:text-text-primary hover:border-shopee-orange/40 transition-all cursor-pointer"
                           >
                             <Plus className="h-3 w-3" />
                             Novo conjunto
@@ -1711,8 +1716,8 @@ export default function ATIClient() {
                         const adSetOpen = expandedAdSets[set.adSetId];
                         const adSetIsActive = adSetStatusMap[set.adSetId] === "ACTIVE";
                         return (
-                          <div key={set.adSetId} className="border-b border-dark-border/40 last:border-b-0">
-                            <div className="flex items-center w-full bg-dark-bg/30 hover:bg-dark-bg/50 transition-colors">
+                          <div key={set.adSetId} className="mx-3 mb-3 border border-dark-border/60 bg-[#242428] rounded-xl overflow-hidden">
+                            <div className="flex items-center w-full bg-[#323235]">
                               <button
                                 type="button"
                                 onClick={() => toggleAdSet(set.adSetId)}
@@ -1770,11 +1775,11 @@ export default function ATIClient() {
                               </div>
                             </div>
                             {adSetOpen && set.adAccountId && (
-                              <div className="px-4 py-2 pl-7 border-b border-dark-border/40 flex items-center gap-2 bg-dark-bg/20">
+                              <div className="px-4 py-2 pl-7 border-b border-dark-border/40 flex items-center gap-2 bg-[#323235]">
                                 <button
                                   type="button"
                                   onClick={() => { setAdNewModal({ adAccountId: set.adAccountId!, adsetId: set.adSetId, adSetName: set.adSetName }); setAdNewError(null); }}
-                                  className="inline-flex items-center gap-1.5 rounded-lg bg-dark-bg border border-dark-border px-2.5 py-1 text-xs font-medium text-text-secondary hover:text-text-primary hover:border-shopee-orange/40 transition-all"
+                                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#1C77FF] border border-dark-border px-2.5 py-1 text-xs font-medium text-white hover:text-text-primary hover:border-shopee-orange/40 transition-all cursor-pointer"
                                 >
                                   <Plus className="h-3 w-3" />
                                   Novo anúncio
@@ -1782,7 +1787,7 @@ export default function ATIClient() {
                               </div>
                             )}
                             {adSetOpen && (
-                              <div className="bg-dark-bg/10 pl-7 pr-3 py-2.5 space-y-1.5">
+                              <div className="bg-[#212124] pl-7 pr-3 py-2.5 space-y-1.5">
                                 {set.ads.map((row) => (
                                   <AdAccordionItem
                                     key={row.adId}

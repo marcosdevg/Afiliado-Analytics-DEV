@@ -17,6 +17,7 @@ import {
 } from "./capture-responsive-classes";
 import { CaptureOfertCarouselIf } from "./CaptureOfertCarouselIf";
 import { AURORA_CARD_DEFAULTS, normalizeAuroraCardsFromDb } from "@/lib/capture-promo-cards";
+import { CaptureFooterAfiliadoAnalyticsLink } from "./CaptureFooterAfiliadoAnalyticsLink";
 
 const ACCENT = "#5eead4";
 const AMBER = "#fbbf24";
@@ -411,8 +412,9 @@ export default function CaptureAuroraLedger(props: CaptureVipLandingProps) {
           </div>
 
           <footer className="mt-10 text-center text-[11px] leading-relaxed text-zinc-600">
-            © {new Date().getFullYear()} Afiliado Analytics. Página segura • dados usados só para contagem de
-            visitas.
+            © {new Date().getFullYear()}{" "}
+            <CaptureFooterAfiliadoAnalyticsLink className="text-zinc-600 underline-offset-2 hover:underline" />. Página
+            segura • dados usados só para contagem de visitas.
           </footer>
         </div>
 

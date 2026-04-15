@@ -16,6 +16,7 @@ import {
   CAPTURE_TITLE_HERO,
 } from "./capture-responsive-classes";
 import { CaptureOfertCarouselIf } from "./CaptureOfertCarouselIf";
+import { CaptureFooterAfiliadoAnalyticsLink } from "./CaptureFooterAfiliadoAnalyticsLink";
 import { normalizeSimpleFourLinesFromDb } from "@/lib/capture-promo-cards";
 
 const BG = "#FFF5F7";
@@ -291,7 +292,8 @@ export default function CaptureVipVinhoRose(props: CaptureVipLandingProps) {
           />
 
           <p className="text-center text-[11px]" style={{ color: "#9ca3af" }}>
-            © {new Date().getFullYear()} Afiliado Analytics
+            © {new Date().getFullYear()}{" "}
+            <CaptureFooterAfiliadoAnalyticsLink className="text-inherit underline-offset-2 hover:underline" />
           </p>
         </div>
       </div>

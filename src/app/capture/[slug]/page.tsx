@@ -33,6 +33,7 @@ import {
 import { normalizeVipRosaCardsFromDb, resolvePromoCardsForPublicPage } from "@/lib/capture-promo-cards";
 import { mergeBlankCanvasFromDb } from "@/lib/capture-blank-canvas";
 import { OfertCarouselAtSlot } from "./CaptureOfertCarouselIf";
+import { CaptureFooterAfiliadoAnalyticsLink } from "./CaptureFooterAfiliadoAnalyticsLink";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -642,7 +643,9 @@ export default async function CapturePage(props: { params: Promise<{ slug: strin
         </div>
 
         <footer className="pt-16 sm:pt-24 text-center" style={{ color: "rgb(153, 153, 153)", fontSize: "12px" }}>
-          © 2026 Afiliado Analytics. Todos os direitos reservados.
+          © 2026{" "}
+          <CaptureFooterAfiliadoAnalyticsLink className="text-inherit underline-offset-2 hover:underline" />. Todos os
+          direitos reservados.
         </footer>
       </main>
       ) : null}

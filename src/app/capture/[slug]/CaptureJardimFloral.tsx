@@ -15,6 +15,7 @@ import {
   CAPTURE_TITLE_HERO,
 } from "./capture-responsive-classes";
 import { CaptureOfertCarouselIf } from "./CaptureOfertCarouselIf";
+import { CaptureFooterAfiliadoAnalyticsLink } from "./CaptureFooterAfiliadoAnalyticsLink";
 
 const ROSE_DARK = "#9f1239";
 const ROSE_DEEP = "#831843";
@@ -370,7 +371,9 @@ export default function CaptureJardimFloral(props: CaptureVipLandingProps) {
             className="mt-8 text-center text-[11px] leading-relaxed"
             style={{ color: ROSE_DEEP, opacity: 0.45 }}
           >
-            © {new Date().getFullYear()} Afiliado Analytics · feito com flores (de verdade são pixels)
+            © {new Date().getFullYear()}{" "}
+            <CaptureFooterAfiliadoAnalyticsLink className="text-inherit underline-offset-2 hover:underline" /> · feito
+            com flores (de verdade são pixels)
           </p>
         </div>
       </div>

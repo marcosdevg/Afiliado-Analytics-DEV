@@ -18,37 +18,81 @@ import type { ATICreativeRow } from "@/lib/ati/types";
 import { gateAti } from "@/lib/require-entitlements";
 
 type ShopeeRow = {
+  "ID do pedido": string;
   "Comissão líquida do afiliado(R$)": string;
   "Valor de Compra(R$)": string;
+  "Status do Pedido": string;
   Sub_id1: string;
+  "Tipo de atribuição": string;
 };
+
+const VALID_ORDER_STATUSES = new Set(["completed", "pending", "pending_payment"]);
 
 function parseMoney(s: string): number {
   const n = parseFloat(String(s).replace(",", "."));
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Agrega por sub_id: comissão, receita, pedidos. Sub_id1 pode ser "a / b". */
-function aggregateShopeeBySubId(rows: ShopeeRow[]): Map<string, { commission: number; revenue: number; orders: number }> {
-  const map = new Map<string, { commission: number; revenue: number; orders: number }>();
+function isValidStatus(status: string): boolean {
+  const s = status.trim().toLowerCase();
+  return s.length > 0 && VALID_ORDER_STATUSES.has(s);
+}
+
+/** Agrega por sub_id: comissão, receita, pedidos únicos válidos, pedidos diretos únicos válidos. Sub_id1 pode ser "a / b". */
+function aggregateShopeeBySubId(rows: ShopeeRow[]): Map<string, { commission: number; revenue: number; orders: number; directOrders: number }> {
+  // Pré-processa: por subId, acumula comissão/receita e sets de IDs de pedido para unicidade
+  const intermediate = new Map<string, {
+    commission: number;
+    revenue: number;
+    orderIds: Set<string>;
+    directOrderIds: Set<string>;
+  }>();
+
   for (const row of rows) {
+    const status = String(row["Status do Pedido"] ?? "").trim().toLowerCase();
+    if (!isValidStatus(status)) continue; // ignora cancelados e status inválidos
+
+    const orderId = String(row["ID do pedido"] ?? "").trim();
     const commission = parseMoney(row["Comissão líquida do afiliado(R$)"]);
     const revenue = parseMoney(row["Valor de Compra(R$)"]);
+    const isDirect = String(row["Tipo de atribuição"] ?? "").trim().toLowerCase() === "direta";
+
     const parts = row.Sub_id1
       .split(/\/|\\/)
       .map((s) => s.trim())
       .filter(Boolean);
     const subIds = parts.length > 0 ? parts : ["Sem Sub ID"];
+
     for (const subId of subIds) {
-      const cur = map.get(subId) ?? { commission: 0, revenue: 0, orders: 0 };
+      const cur = intermediate.get(subId) ?? {
+        commission: 0,
+        revenue: 0,
+        orderIds: new Set<string>(),
+        directOrderIds: new Set<string>(),
+      };
+      // Acumula comissão e receita por linha (cada item do pedido contribui)
       cur.commission += commission;
       cur.revenue += revenue;
-      cur.orders += 1;
-      map.set(subId, cur);
+      // Conta pedido único via Set (mesmo orderId de múltiplos itens não duplica)
+      if (orderId) cur.orderIds.add(orderId);
+      if (isDirect && orderId) cur.directOrderIds.add(orderId);
+      intermediate.set(subId, cur);
     }
+  }
+
+  // Converte para contagens finais
+  const map = new Map<string, { commission: number; revenue: number; orders: number; directOrders: number }>();
+  for (const [subId, acc] of intermediate) {
+    map.set(subId, {
+      commission: acc.commission,
+      revenue: acc.revenue,
+      orders: acc.orderIds.size,
+      directOrders: acc.directOrderIds.size,
+    });
   }
   return map;
 }
+
 
 export async function GET(req: Request) {
   try {
@@ -147,13 +191,14 @@ export async function GET(req: Request) {
       }
     }
 
-    const zeroShopee = { commission: 0, revenue: 0, orders: 0 };
+    const zeroShopee = { commission: 0, revenue: 0, orders: 0, directOrders: 0 };
     const creatives: ATICreativeRow[] = insights.map((m) => {
       const shopeeSubId = adToShopeeSub.get(m.ad_id) ?? "";
       const shopee = shopeeSubId ? (shopeeBySubId.get(shopeeSubId) ?? zeroShopee) : zeroShopee;
       const cost = m.spend;
       const clicksMeta = m.clicks;
       const orders = shopee.orders;
+      const directOrders = shopee.directOrders;
       const commission = shopee.commission;
       const revenue = shopee.revenue;
       const cpa = orders > 0 ? cost / orders : 0;
@@ -205,6 +250,7 @@ export async function GET(req: Request) {
         clicksShopee,
         cpcShopee,
         orders,
+        directOrders,
         revenue,
         commission,
         cpa,
