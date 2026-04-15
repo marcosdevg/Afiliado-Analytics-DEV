@@ -4,6 +4,7 @@ import "./globals.css";
 import SupabaseProvider from "./components/auth/AuthProvider";
 import SessionLogic from "./components/cleanDate/SessionLogic";
 import { PwaServiceWorker } from "./components/PwaServiceWorker";
+import MainFloatingActions from "./components/layout/MainFloatingActions";
 import { Providers } from "./providers";
 
 const inter = Inter({
@@ -76,6 +77,7 @@ export default function RootLayout({
             <SessionLogic />
             <PwaServiceWorker />
             {children}
+            <MainFloatingActions />
           </SupabaseProvider>
         </Providers>
       </body>
