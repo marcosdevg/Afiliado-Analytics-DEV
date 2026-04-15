@@ -224,9 +224,9 @@ export async function POST(req: Request) {
         const formatBRL = (n: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 }).format(n);
         const nomeProduto = product.productName ?? "";
         const descricao =
-          `✨ ${nomeProduto}\n\n` +
+          `✨ ${nomeProduto}\n` +
           `💰 APROVEITE:${rate > 0 ? ` _${Math.round(rate)}% de DESCONTO!!!!_` : ""} \n🔴 De: ~${formatBRL(precoRiscado)}~ \n🔥 Por: *${formatBRL(precoPor)}* 😱\n` +
-          `🏷️ PROMOÇÃO - CLIQUE NO LINK 👇` +
+          `🏷️ PROMOÇÃO - CLIQUE NO LINK 👇\n` +
           linkAfiliado;
         const imagem = product.imageUrl ?? "";
         const valor = precoPor;

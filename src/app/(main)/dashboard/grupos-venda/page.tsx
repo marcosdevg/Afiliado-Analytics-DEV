@@ -332,6 +332,10 @@ export default function GruposVendaPage() {
   const [mobileSubIdsOpen, setMobileSubIdsOpen] = useState(false);
   /** Step 4 mobile: resumo da automação recolhido por padrão */
   const [mobileResumoOpen, setMobileResumoOpen] = useState(false);
+  /** Passo 2: avançar sem lista selecionada — modal de aviso */
+  const [wizardListaAlvoAlertOpen, setWizardListaAlvoAlertOpen] = useState(false);
+  /** Passo 3: modo keywords sem nenhuma keyword — modal de aviso */
+  const [wizardKeywordsAlertOpen, setWizardKeywordsAlertOpen] = useState(false);
   /** Painel: 2 cards/página abaixo de lg; 6 no desktop (lg+, 1024px) */
   const [panelPerPage, setPanelPerPage] = useState(2);
   /** Painel: filtrar cards por status (evita confusão “Ativos” vs cards Parado) */
@@ -689,7 +693,11 @@ export default function GruposVendaPage() {
   );
 
   const activeCount = continuoList.filter((c) => c.ativo).length;
-  const keywordCount = keywords.split("\n").filter((k) => k.trim()).length;
+  /** Mesma regra de parsing que o envio/API: linhas ou separadores vírgula/ponto-e-vírgula */
+  const keywordCount = keywords
+    .split(/[\n,;]+/)
+    .map((k) => k.trim())
+    .filter(Boolean).length;
   const janelaPreviewText = useMemo(() => {
     if (!horaInicio?.trim() || !horaFim?.trim()) return null;
     const msg = mensagemErroJanela(horaInicio, horaFim);
@@ -749,6 +757,24 @@ export default function GruposVendaPage() {
     if (wizardStep !== 4) setMobileResumoOpen(false);
   }, [wizardStep]);
 
+  useEffect(() => {
+    if (!wizardListaAlvoAlertOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setWizardListaAlvoAlertOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [wizardListaAlvoAlertOpen]);
+
+  useEffect(() => {
+    if (!wizardKeywordsAlertOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setWizardKeywordsAlertOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [wizardKeywordsAlertOpen]);
+
   const subIdsFilledCount = [subId1, subId2, subId3].filter((s) => s.trim()).length;
   const subIdsMobileSummary =
     subIdsFilledCount === 0
@@ -789,24 +815,51 @@ export default function GruposVendaPage() {
     [listasOfertasMl],
   );
 
-  function openWizard() { setWizardStep(1); setShowStepInfo(false); setView("wizard"); }
-  function closeWizard() { setShowStepInfo(false); setView("panel"); }
+  function openWizard() {
+    setWizardStep(1);
+    setShowStepInfo(false);
+    setWizardListaAlvoAlertOpen(false);
+    setWizardKeywordsAlertOpen(false);
+    setView("wizard");
+  }
+  function closeWizard() {
+    setShowStepInfo(false);
+    setWizardListaAlvoAlertOpen(false);
+    setWizardKeywordsAlertOpen(false);
+    setView("panel");
+  }
   function handleNext() {
     setShowStepInfo(false);
-    if (wizardStep === 3 && contentMode === "list") {
-      if (offerListSource === "shopee" && !selectedListaOfertasId) {
-        setError("Selecione uma lista de ofertas Shopee.");
-        return;
+    if (wizardStep === 2 && !selectedListaId.trim()) {
+      setWizardListaAlvoAlertOpen(true);
+      return;
+    }
+    if (wizardStep === 3) {
+      if (contentMode === "keywords") {
+        const kwLines = keywords
+          .split(/[\n,;]+/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        if (kwLines.length === 0) {
+          setWizardKeywordsAlertOpen(true);
+          return;
+        }
+        setError(null);
+      } else if (contentMode === "list") {
+        if (offerListSource === "shopee" && !selectedListaOfertasId) {
+          setError("Selecione uma lista de ofertas Shopee.");
+          return;
+        }
+        if (offerListSource === "ml" && !selectedListaOfertasMlId) {
+          setError("Selecione uma lista de ofertas Mercado Livre.");
+          return;
+        }
+        if (offerListSource === "crossover" && (!selectedListaOfertasId || !selectedListaOfertasMlId)) {
+          setError("No crossover, selecione uma lista Shopee e uma lista Mercado Livre.");
+          return;
+        }
+        setError(null);
       }
-      if (offerListSource === "ml" && !selectedListaOfertasMlId) {
-        setError("Selecione uma lista de ofertas Mercado Livre.");
-        return;
-      }
-      if (offerListSource === "crossover" && (!selectedListaOfertasId || !selectedListaOfertasMlId)) {
-        setError("No crossover, selecione uma lista Shopee e uma lista Mercado Livre.");
-        return;
-      }
-      setError(null);
     }
     if (wizardStep < 4) setWizardStep((s) => s + 1);
   }
@@ -1513,6 +1566,87 @@ export default function GruposVendaPage() {
         criarListaMode
         initialInstanceId={selectedInstanceId || undefined}
       />
+
+      {wizardListaAlvoAlertOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[240] flex items-center justify-center p-4 sm:p-6" role="presentation">
+            <button
+              type="button"
+              aria-label="Fechar"
+              className="absolute inset-0 z-0 bg-black/65 backdrop-blur-[2px] transition-opacity"
+              onClick={() => setWizardListaAlvoAlertOpen(false)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="wizard-lista-alvo-alert-title"
+              className="relative z-10 w-full max-w-[380px] rounded-2xl border border-[#2c2c32] bg-[#1c1c1f] p-5 shadow-2xl shadow-black/50"
+            >
+              <div className="flex gap-3.5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#e24c30]/25 bg-[#e24c30]/12">
+                  <ListIcon className="h-5 w-5 text-[#e24c30]" aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <h2 id="wizard-lista-alvo-alert-title" className="text-sm font-bold text-white leading-snug">
+                    Lista de grupos alvo
+                  </h2>
+                  <p className="mt-2 text-[12px] leading-relaxed text-[#b8b8bc]">
+                    Por favor, para continuar, selecione uma das suas listas!
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWizardListaAlvoAlertOpen(false)}
+                className="mt-5 w-full rounded-xl bg-[#e24c30] px-4 py-2.5 text-[12px] font-bold text-white shadow-lg shadow-[#e24c30]/25 transition hover:bg-[#c94028] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e24c30]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1c1c1f]"
+              >
+                Entendi
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {wizardKeywordsAlertOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[240] flex items-center justify-center p-4 sm:p-6" role="presentation">
+            <button
+              type="button"
+              aria-label="Fechar"
+              className="absolute inset-0 z-0 bg-black/65 backdrop-blur-[2px] transition-opacity"
+              onClick={() => setWizardKeywordsAlertOpen(false)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="wizard-keywords-alert-title"
+              className="relative z-10 w-full max-w-[380px] rounded-2xl border border-[#2c2c32] bg-[#1c1c1f] p-5 shadow-2xl shadow-black/50"
+            >
+              <div className="flex gap-3.5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#e24c30]/25 bg-[#e24c30]/12">
+                  <Hash className="h-5 w-5 text-[#e24c30]" aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <h2 id="wizard-keywords-alert-title" className="text-sm font-bold text-white leading-snug">
+                    Keywords obrigatórias
+                  </h2>
+                  <p className="mt-2 text-[12px] leading-relaxed text-[#b8b8bc]">
+                    Com <span className="text-white/90 font-semibold"># Keywords</span> selecionado, digite ao menos uma
+                    keyword no campo (uma por linha). Depois você pode avançar.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWizardKeywordsAlertOpen(false)}
+                className="mt-5 w-full rounded-xl bg-[#e24c30] px-4 py-2.5 text-[12px] font-bold text-white shadow-lg shadow-[#e24c30]/25 transition hover:bg-[#c94028] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e24c30]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1c1c1f]"
+              >
+                Entendi
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
