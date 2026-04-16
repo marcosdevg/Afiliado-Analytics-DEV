@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Download, ExternalLink } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
 import PwaInstallHintModal from "@/app/components/PwaInstallHintModal";
 import { runPwaInstallFlow } from "@/lib/pwa-install-flow";
+import { CAPTURE_PUBLIC_DOMAIN } from "@/lib/capture-load-site";
 
 /** Mesmo link do suporte via WhatsApp. */
 export const SUPPORT_WHATSAPP_HREF = "https://wa.me/5579999144028";
@@ -22,6 +23,25 @@ export default function MainFloatingActions() {
   const isCapture = pathname.startsWith("/capture");
   const isHome = pathname === "/";
   const menuId = useId();
+
+  /** URL limpa no subdomínio público (rewrite → /capture/...): não mostrar tutorial. */
+  const [slugOnCapturePublicHost, setSlugOnCapturePublicHost] = useState(false);
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+    const host = window.location.hostname.toLowerCase();
+    const path = window.location.pathname || "/";
+    if (host !== CAPTURE_PUBLIC_DOMAIN.toLowerCase()) {
+      setSlugOnCapturePublicHost(false);
+      return;
+    }
+    if (path === "/" || path === "") {
+      setSlugOnCapturePublicHost(false);
+      return;
+    }
+    setSlugOnCapturePublicHost(/^\/[^/]+(\/go)?\/?$/.test(path));
+  }, [pathname]);
+
+  const showTutorialMenuItem = !isHome && !slugOnCapturePublicHost;
 
   const [pastHero, setPastHero] = useState(false);
   const [open, setOpen] = useState(false);
@@ -133,27 +153,29 @@ export default function MainFloatingActions() {
           role="menu"
           aria-label="Ajuda e contato"
         >
-          <a
-            href={TUTORIAL_PLAYLIST_HREF}
-            target="_blank"
-            rel="noopener noreferrer"
-            role="menuitem"
-            className={[
-              itemClass(),
-              "border border-white/12 bg-zinc-900/95 text-white shadow-[0_16px_48px_rgba(0,0,0,0.5)] backdrop-blur-md hover:border-white/22 hover:bg-zinc-800/98 hover:shadow-xl active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
-            ].join(" ")}
-            style={itemStyle(2)}
-            tabIndex={open ? 0 : -1}
-            onClick={close}
-          >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 transition-colors group-hover:bg-white/15">
-              <ExternalLink className="h-4 w-4" strokeWidth={2.25} aria-hidden />
-            </span>
-            <span className="flex min-w-0 flex-1 flex-col leading-tight">
-              <span className="text-[13px] font-bold tracking-tight">Acessar Tutorial</span>
-              <span className="text-[11px] font-normal text-white/55">Playlist no YouTube</span>
-            </span>
-          </a>
+          {showTutorialMenuItem ? (
+            <a
+              href={TUTORIAL_PLAYLIST_HREF}
+              target="_blank"
+              rel="noopener noreferrer"
+              role="menuitem"
+              className={[
+                itemClass(),
+                "border border-white/12 bg-zinc-900/95 text-white shadow-[0_16px_48px_rgba(0,0,0,0.5)] backdrop-blur-md hover:border-white/22 hover:bg-zinc-800/98 hover:shadow-xl active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent",
+              ].join(" ")}
+              style={itemStyle(2)}
+              tabIndex={open ? 0 : -1}
+              onClick={close}
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/10 transition-colors group-hover:bg-white/15">
+                <ExternalLink className="h-4 w-4" strokeWidth={2.25} aria-hidden />
+              </span>
+              <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                <span className="text-[13px] font-bold tracking-tight">Acessar Tutorial</span>
+                <span className="text-[11px] font-normal text-white/55">Playlist no YouTube</span>
+              </span>
+            </a>
+          ) : null}
 
           <button
             type="button"
@@ -209,7 +231,13 @@ export default function MainFloatingActions() {
           aria-expanded={open}
           aria-haspopup="true"
           aria-controls={menuId}
-          aria-label={open ? "Fechar menu de ajuda" : "Abrir menu de ajuda — tutorial, app e WhatsApp"}
+          aria-label={
+            open
+              ? "Fechar menu de ajuda"
+              : showTutorialMenuItem
+                ? "Abrir menu de ajuda — tutorial, app e WhatsApp"
+                : "Abrir menu de ajuda — app e WhatsApp"
+          }
           className={[
             "relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-white/18 bg-zinc-900/92 text-white shadow-[0_10px_40px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-md transition-all duration-300 ease-out",
             "hover:border-[#e24c30]/40 hover:shadow-[0_14px_44px_rgba(226,76,48,0.28)]",
