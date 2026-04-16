@@ -20,11 +20,18 @@ export async function GET(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  const now = new Date().toISOString()
+  // 1. Pegamos o horário real de AGORA
+  const nowObj = new Date()
+  const now = nowObj.toISOString()
+
+  // 2. Criamos o horário de CARÊNCIA (Agora menos 24 horas)
+  const graceCutoff = new Date(nowObj.getTime() - (24 * 60 * 60 * 1000)).toISOString()
 
   // Seleciona e-mails que NÃO possuem nenhuma assinatura válida futura
+  // NOTA: Usamos o 'graceCutoff' para dar o 1 dia de lambuja
   const { data: toCancelRows, error: rpcErr } = await supabase
-    .rpc('get_profiles_to_cancel', { now_ts: now })
+    .rpc('get_profiles_to_cancel', { now_ts: graceCutoff })
+
   if (rpcErr) return new Response(`RPC error: ${rpcErr.message}`, { status: 500 })
 
   // Mapeia o retorno do RPC para array de e‑mails sem usar any
@@ -41,7 +48,8 @@ export async function GET(req: NextRequest) {
     if (upErr) return new Response(`Update error: ${upErr.message}`, { status: 500 })
   }
 
-  // Trial por cupom: `trial_access_until` já foi calculado no cadastro (dias do cupom); aqui só compara com agora.
+  // Trial por cupom: `trial_access_until` já foi calculado no cadastro (dias do cupom).
+  // NOTA: Para Trial, mantemos o 'now' para cortar na hora exata, sem lambuja.
   const { error: trialErr } = await supabase
     .from('profiles')
     .update({ subscription_status: 'canceled' })
@@ -49,6 +57,7 @@ export async function GET(req: NextRequest) {
     .eq('subscription_status', 'active')
     .not('trial_access_until', 'is', null)
     .lt('trial_access_until', now)
+
   if (trialErr) return new Response(`Trial expire error: ${trialErr.message}`, { status: 500 })
 
   return new Response(
