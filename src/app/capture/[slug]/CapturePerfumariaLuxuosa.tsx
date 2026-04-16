@@ -407,7 +407,7 @@ export default function CapturePerfumariaLuxuosa(props: CaptureVipLandingProps) 
                   </h2>
                 </div>
 
-                <div className="overflow-hidden  bg-white py-4" style={{ borderColor: GOLD_SOFT }}>
+                <div className="overflow-hidden" style={{ borderColor: GOLD_SOFT }}>
                   <div className="lux-marquee-track lux-marquee-slow">
                     {stripTrack.map((file, i) => (
                       <div key={`${file}-${i}`} className="flex h-[100px] shrink-0 items-center sm:h-[120px]">
@@ -416,7 +416,7 @@ export default function CapturePerfumariaLuxuosa(props: CaptureVipLandingProps) 
                           alt=""
                           width={200}
                           height={200}
-                          className="h-[88px] w-auto max-w-[200px] object-contain opacity-90 sm:h-[112px] sm:max-w-[240px]"
+                          className="h-[88px] rounded-full border border-white/10 shadow-lg w-auto max-w-[200px] object-contain opacity-90 sm:h-[112px] sm:max-w-[240px]"
                         />
                       </div>
                     ))}
@@ -424,7 +424,7 @@ export default function CapturePerfumariaLuxuosa(props: CaptureVipLandingProps) 
                 </div>
 
                 <div className="catalogo-lux mx-auto mt-12 max-w-[1100px]">
-                  <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-3">
+                  <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-2">
                     {CATALOG_FILES.map((file) => (
                       <div
                         key={file}

@@ -17,6 +17,7 @@ import MetaSearchablePicker from "@/app/components/meta/MetaSearchablePicker";
 import { GeradorPaginationBar } from "@/app/components/shopee/GeradorPaginationBar";
 import { janelaDuracaoMinutos, mensagemErroJanela, MAX_JANELA_MINUTOS } from "@/lib/grupos-venda-janela";
 import { createClient as createBrowserSupabase } from "utils/supabase/client";
+import { isGruposVendaMlOfferBlocked, MERCADOLIVRE_UX_COMING_SOON } from "@/lib/mercadolivre-ux-coming-soon";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type ListaGrupos = { id: string; instanceId: string; nomeLista: string; createdAt: string };
@@ -442,6 +443,10 @@ export default function GruposVendaPage() {
     const useListaMl = pickMl && !!selectedListaOfertasMlId;
     const useListaOfertas = useListaShopee || useListaMl;
     if (contentMode === "list") {
+      if (isGruposVendaMlOfferBlocked(offerListSource)) {
+        setError("Mercado Livre e crossover estão em breve. Use a lista Shopee ou keywords.");
+        return;
+      }
       if (offerListSource === "shopee" && !selectedListaOfertasId) {
         setError("Selecione uma lista de ofertas Shopee.");
         return;
@@ -523,6 +528,10 @@ export default function GruposVendaPage() {
     const useListaOfertas = useListaShopee || useListaMl;
     const kwList = keywords.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
     if (!useListaOfertas && kwList.length === 0) { setError("Digite ao menos uma keyword ou selecione uma lista de ofertas."); return; }
+    if (contentMode === "list" && isGruposVendaMlOfferBlocked(offerListSource)) {
+      setError("Mercado Livre e crossover estão em breve. Use a lista Shopee ou keywords.");
+      return;
+    }
     if (contentMode === "list" && offerListSource === "crossover" && (!selectedListaOfertasId || !selectedListaOfertasMlId)) {
       setError("No crossover, selecione uma lista Shopee e uma lista Mercado Livre.");
       return;
@@ -846,6 +855,10 @@ export default function GruposVendaPage() {
         }
         setError(null);
       } else if (contentMode === "list") {
+        if (isGruposVendaMlOfferBlocked(offerListSource)) {
+          setError("Mercado Livre e crossover estão em breve. Use a lista Shopee ou keywords.");
+          return;
+        }
         if (offerListSource === "shopee" && !selectedListaOfertasId) {
           setError("Selecione uma lista de ofertas Shopee.");
           return;
@@ -1240,86 +1253,100 @@ export default function GruposVendaPage() {
                             setSelectedListaOfertasId("");
                           }}
                           className={cn(
-                            "flex items-center justify-center gap-2 px-3 py-2.5 text-[10px] font-bold transition-all border-t sm:border-t-0 sm:border-l border-[#2c2c32]",
+                            "flex flex-col items-center justify-center gap-1 px-2 py-2.5 text-[10px] font-bold transition-all border-t sm:border-t-0 sm:border-l border-[#2c2c32] sm:flex-row sm:gap-2 sm:px-3",
                             offerListSource === "ml" ? "bg-amber-500/15 text-amber-400" : "bg-[#222228] text-[#a0a0a0] hover:text-white",
                           )}
                         >
-                          Mercado Livre
+                          <span className="text-center leading-tight">Mercado Livre</span>
+                          {MERCADOLIVRE_UX_COMING_SOON ? (
+                            <span className="shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">
+                              Em breve
+                            </span>
+                          ) : null}
                         </button>
                         <button
                           type="button"
                           onClick={() => setOfferListSource("crossover")}
                           className={cn(
-                            "flex items-center justify-center gap-2 px-3 py-2.5 text-[10px] font-bold transition-all border-t sm:border-t-0 sm:border-l border-[#2c2c32]",
+                            "flex flex-col items-center justify-center gap-1 px-2 py-2.5 text-[10px] font-bold transition-all border-t sm:border-t-0 sm:border-l border-[#2c2c32] sm:flex-row sm:gap-2 sm:px-3",
                             offerListSource === "crossover"
                               ? "bg-gradient-to-br from-[#e24c30]/20 to-amber-500/15 text-white ring-1 ring-inset ring-amber-500/30"
                               : "bg-[#222228] text-[#a0a0a0] hover:text-white",
                           )}
                         >
-                          Crossover
+                          <span className="text-center leading-tight">Crossover</span>
+                          {MERCADOLIVRE_UX_COMING_SOON ? (
+                            <span className="shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">
+                              Em breve
+                            </span>
+                          ) : null}
                         </button>
                       </div>
-                      {(offerListSource === "shopee" || offerListSource === "crossover") && (
-                        <div className="mb-3 min-w-0">
-                          <FieldLabel>Lista Shopee</FieldLabel>
-                          {loadingListasOfertas ? (
-                            <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando listas…
+                      {isGruposVendaMlOfferBlocked(offerListSource) ? null : (
+                        <>
+                          {(offerListSource === "shopee" || offerListSource === "crossover") && (
+                            <div className="mb-3 min-w-0">
+                              <FieldLabel>Lista Shopee</FieldLabel>
+                              {loadingListasOfertas ? (
+                                <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando listas…
+                                </div>
+                              ) : (
+                                <MetaSearchablePicker
+                                  value={selectedListaOfertasId}
+                                  onChange={setSelectedListaOfertasId}
+                                  options={listaOfertasPickerOptions}
+                                  modalTitle="Lista de ofertas Shopee"
+                                  modalDescription="Lista salva em Minha Lista de Ofertas (Shopee)."
+                                  searchPlaceholder="Filtrar listas…"
+                                  emptyButtonLabel="Escolher lista de ofertas"
+                                  emptyAsTag
+                                  emptyTagLabel="Selecionar Lista"
+                                  emptyOptionsMessage="Nenhuma lista cadastrada."
+                                  className="w-full max-w-full"
+                                />
+                              )}
                             </div>
-                          ) : (
-                            <MetaSearchablePicker
-                              value={selectedListaOfertasId}
-                              onChange={setSelectedListaOfertasId}
-                              options={listaOfertasPickerOptions}
-                              modalTitle="Lista de ofertas Shopee"
-                              modalDescription="Lista salva em Minha Lista de Ofertas (Shopee)."
-                              searchPlaceholder="Filtrar listas…"
-                              emptyButtonLabel="Escolher lista de ofertas"
-                              emptyAsTag
-                              emptyTagLabel="Selecionar Lista"
-                              emptyOptionsMessage="Nenhuma lista cadastrada."
-                              className="w-full max-w-full"
-                            />
                           )}
-                        </div>
-                      )}
-                      {(offerListSource === "ml" || offerListSource === "crossover") && (
-                        <div className="mb-1 min-w-0">
-                          <FieldLabel>Lista Mercado Livre</FieldLabel>
-                          {loadingListasOfertasMl ? (
-                            <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando listas ML…
+                          {(offerListSource === "ml" || offerListSource === "crossover") && (
+                            <div className="mb-1 min-w-0">
+                              <FieldLabel>Lista Mercado Livre</FieldLabel>
+                              {loadingListasOfertasMl ? (
+                                <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando listas ML…
+                                </div>
+                              ) : (
+                                <MetaSearchablePicker
+                                  value={selectedListaOfertasMlId}
+                                  onChange={setSelectedListaOfertasMlId}
+                                  options={listaOfertasMlPickerOptions}
+                                  modalTitle="Lista de ofertas Mercado Livre"
+                                  modalDescription="Listas com links de afiliado já convertidos (página Lista de Ofertas - ML)."
+                                  searchPlaceholder="Filtrar listas…"
+                                  emptyButtonLabel="Escolher lista ML"
+                                  emptyAsTag
+                                  emptyTagLabel="Selecionar Lista ML"
+                                  emptyOptionsMessage="Nenhuma lista ML cadastrada."
+                                  className="w-full max-w-full"
+                                />
+                              )}
                             </div>
-                          ) : (
-                            <MetaSearchablePicker
-                              value={selectedListaOfertasMlId}
-                              onChange={setSelectedListaOfertasMlId}
-                              options={listaOfertasMlPickerOptions}
-                              modalTitle="Lista de ofertas Mercado Livre"
-                              modalDescription="Listas com links de afiliado já convertidos (página Lista de Ofertas - ML)."
-                              searchPlaceholder="Filtrar listas…"
-                              emptyButtonLabel="Escolher lista ML"
-                              emptyAsTag
-                              emptyTagLabel="Selecionar Lista ML"
-                              emptyOptionsMessage="Nenhuma lista ML cadastrada."
-                              className="w-full max-w-full"
-                            />
                           )}
-                        </div>
+                          <p className="text-[9px] text-[#a0a0a0] mt-2 leading-relaxed">
+                            {offerListSource === "crossover" ? (
+                              <>
+                                <span className="text-amber-400/90 font-semibold">Crossover:</span> itens Shopee e ML viram{" "}
+                                <strong className="text-white">uma única fila</strong> (Shopee primeiro, depois ML, cada um na ordem da lista). O cron envia{" "}
+                                <strong className="text-white">um produto por tick</strong>, no mesmo formato de payload do n8n que você já usa para Shopee.
+                              </>
+                            ) : (
+                              <>
+                                A lista substitui as keywords: na automação, um produto por vez em rotação; no disparo manual, todos os itens são enviados em sequência.
+                              </>
+                            )}
+                          </p>
+                        </>
                       )}
-                      <p className="text-[9px] text-[#a0a0a0] mt-2 leading-relaxed">
-                        {offerListSource === "crossover" ? (
-                          <>
-                            <span className="text-amber-400/90 font-semibold">Crossover:</span> itens Shopee e ML viram{" "}
-                            <strong className="text-white">uma única fila</strong> (Shopee primeiro, depois ML, cada um na ordem da lista). O cron envia{" "}
-                            <strong className="text-white">um produto por tick</strong>, no mesmo formato de payload do n8n que você já usa para Shopee.
-                          </>
-                        ) : (
-                          <>
-                            A lista substitui as keywords: na automação, um produto por vez em rotação; no disparo manual, todos os itens são enviados em sequência.
-                          </>
-                        )}
-                      </p>
                     </div>
                   )}
                 </div>

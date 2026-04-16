@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import ConfirmModal from "@/app/components/ui/ConfirmModal";
 import { effectiveListaOfferPromoPrice } from "@/lib/lista-ofertas-effective-promo";
+import { MERCADOLIVRE_UX_COMING_SOON } from "@/lib/mercadolivre-ux-coming-soon";
+import MlEmBreveSplash from "@/app/components/ml/MlEmBreveSplash";
 
 type Lista = {
   id: string;
@@ -234,17 +236,28 @@ export default function MinhaListaOfertasPage() {
     <div className="min-h-screen bg-dark-bg text-text-primary p-4 md:p-6">
       <div className="max-w-3xl mx-auto">
         <div className="flex flex-wrap items-center gap-3 mb-4">
-          <Link
-            href={
-              listaStore === "shopee"
-                ? "/dashboard/gerador-links-shopee"
-                : "/dashboard/minha-lista-ofertas-ml"
-            }
-            className="p-2 rounded-lg border border-dark-border bg-dark-card text-text-secondary hover:text-shopee-orange hover:border-shopee-orange/50 transition-colors"
-            title="Voltar"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
+          {listaStore === "ml" && MERCADOLIVRE_UX_COMING_SOON ? (
+            <button
+              type="button"
+              onClick={() => setListaStore("shopee")}
+              className="p-2 rounded-lg border border-dark-border bg-dark-card text-text-secondary hover:text-shopee-orange hover:border-shopee-orange/50 transition-colors"
+              title="Voltar para Shopee"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+          ) : (
+            <Link
+              href={
+                listaStore === "shopee"
+                  ? "/dashboard/gerador-links-shopee"
+                  : "/dashboard/minha-lista-ofertas-ml"
+              }
+              className="p-2 rounded-lg border border-dark-border bg-dark-card text-text-secondary hover:text-shopee-orange hover:border-shopee-orange/50 transition-colors"
+              title="Voltar"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+          )}
           {listaStore === "shopee" ? (
             <img src="/shop.webp" alt="Shopee" className="w-12 object-contain" />
           ) : (
@@ -287,7 +300,13 @@ export default function MinhaListaOfertasPage() {
         </div>
 
         {listaStore === "ml" ? (
-          <MinhaListaOfertasMlListsPanel />
+          MERCADOLIVRE_UX_COMING_SOON ? (
+            <div className="rounded-xl border border-dark-border bg-dark-card p-6 flex justify-center">
+              <MlEmBreveSplash showBack={false} compact />
+            </div>
+          ) : (
+            <MinhaListaOfertasMlListsPanel />
+          )
         ) : (
           <div className="rounded-xl border border-[#2c2c32] bg-[#27272a] overflow-hidden">
             <div className="px-3 sm:px-5 py-4 border-b border-[#2c2c32] flex flex-wrap items-center justify-between gap-3">

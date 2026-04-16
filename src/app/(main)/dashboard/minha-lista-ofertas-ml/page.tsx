@@ -42,6 +42,8 @@ import { extractMlbIdFromUrl, looksLikeMercadoLivreProductUrl } from "@/lib/merc
 import { effectiveListaOfferPromoPrice } from "@/lib/lista-ofertas-effective-promo";
 import { mlEstCommissionFromPromoPrice } from "@/lib/mercadolivre/ml-lista-automation-text";
 import { useMlAffiliateLocalSettings } from "@/lib/mercadolivre/use-ml-affiliate-local-settings";
+import { MERCADOLIVRE_UX_COMING_SOON } from "@/lib/mercadolivre-ux-coming-soon";
+import MlEmBreveSplash from "@/app/components/ml/MlEmBreveSplash";
 
 type Lista = { id: string; nome: string; totalItens: number; createdAt?: string };
 
@@ -1518,6 +1520,14 @@ export default function MinhaListaOfertasMlPage() {
       setSalvandoItem(false);
     }
   };
+
+  if (MERCADOLIVRE_UX_COMING_SOON) {
+    return (
+      <div className="min-h-[calc(100vh-8rem)] bg-dark-bg text-text-primary flex flex-col items-center justify-center p-4 md:p-8">
+        <MlEmBreveSplash showBack />
+      </div>
+    );
+  }
 
   return (
     <div className="bg-[#1c1c1f] border border-[#2c2c32] text-[#f0f0f2] flex flex-col rounded-xl overflow-hidden overflow-x-hidden w-full max-w-[100vw]">

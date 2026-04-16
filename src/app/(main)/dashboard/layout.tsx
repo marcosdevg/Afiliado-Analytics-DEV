@@ -30,6 +30,7 @@ import { isTrialBlockedDashboardPath } from "@/lib/trial-dashboard-blocked-paths
 import { shouldShowPaidPlanUpsellInDashboard } from "@/lib/dashboard-paid-plan-upsell";
 import DashboardPaidPlanUpsell from "./DashboardPaidPlanUpsell";
 import type { PlanEntitlements } from "@/lib/plan-entitlements";
+import { MERCADOLIVRE_UX_COMING_SOON } from "@/lib/mercadolivre-ux-coming-soon";
 
 /** Qual flag de `PlanEntitlements` libera o item na sidebar (não use só `tier === "pro"` — staff/custom também podem ter essas flags). */
 type ProSidebarFeature =
@@ -250,6 +251,10 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           {visibleItems.map((item) => {
             const isActive = pathname === item.href;
 
+            const mlNavComingSoon =
+              MERCADOLIVRE_UX_COMING_SOON &&
+              item.href === "/dashboard/minha-lista-ofertas-ml";
+
             return (
               <Link
                 key={item.href}
@@ -268,6 +273,12 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
 
                 <span className="flex items-center gap-2 min-w-0">
                   <span className="truncate">{item.title}</span>
+
+                  {mlNavComingSoon && (
+                    <span className="shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                      Em breve
+                    </span>
+                  )}
 
                   {item.locked && (
                     <Lock className="h-3 w-3 text-text-secondary/40 shrink-0" />

@@ -6,6 +6,7 @@ import ShopeeIntegrationCard from "./ShopeeIntegrationCard";
 import MetaIntegrationCard from "./MetaIntegrationCard";
 import EvolutionIntegrationCard from "./EvolutionIntegrationCard";
 import MercadoLivreIntegrationCard from "./MercadoLivreIntegrationCard";
+import { MERCADOLIVRE_UX_COMING_SOON } from "@/lib/mercadolivre-ux-coming-soon";
 
 export type SectionKey = "shopee" | "mercadolivre" | "meta" | "evolution" | null;
 
@@ -77,34 +78,64 @@ export default function ConfiguracoesClient({
   metaHasToken,
   metaLast4,
 }: ConfiguracoesClientProps) {
-  const [openSection, setOpenSection] = useState<SectionKey>(initialOpenMl ? "mercadolivre" : null);
+  const [openSection, setOpenSection] = useState<SectionKey>(
+    MERCADOLIVRE_UX_COMING_SOON ? null : initialOpenMl ? "mercadolivre" : null,
+  );
   const visibleCards = CARDS.filter((c) => !c.hidden);
 
   return (
     <div className="space-y-6">
       {/* Grid de cards */}
       <div className={integrationCardsGridClass(visibleCards.length)}>
-        {visibleCards.map(({ key, title, description, icon: Icon }) => (
-          <button
-            key={key ?? "null"}
-            type="button"
-            onClick={() => setOpenSection(openSection === key ? null : key)}
-            className={`flex w-full min-w-0 items-start gap-4 rounded-xl border bg-dark-card p-4 text-left transition-all hover:border-shopee-orange/50 hover:bg-dark-card/90 ${
-              openSection === key ? "border-shopee-orange/60 ring-1 ring-shopee-orange/20" : "border-dark-border"
-            }`}
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-dark-bg text-shopee-orange">
-              <Icon className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-text-primary">{title}</p>
-              <p className="text-xs text-text-secondary mt-0.5">{description}</p>
-            </div>
-            <ChevronRight
-              className={`h-5 w-5 shrink-0 text-text-secondary transition-transform ${openSection === key ? "rotate-90" : ""}`}
-            />
-          </button>
-        ))}
+        {visibleCards.map(({ key, title, description, icon: Icon }) => {
+          const mlCardBlocked = MERCADOLIVRE_UX_COMING_SOON && key === "mercadolivre";
+          if (mlCardBlocked) {
+            return (
+              <div
+                key={key ?? "ml-blocked"}
+                className="flex w-full min-w-0 cursor-not-allowed items-start gap-4 rounded-xl border border-dark-border bg-dark-card p-4 text-left opacity-90"
+                role="group"
+                aria-disabled="true"
+                aria-label={`${title} — em breve`}
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-dark-bg text-shopee-orange">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="flex flex-wrap items-center gap-2 font-semibold text-text-primary">
+                    <span>{title}</span>
+                    <span className="shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                      Em breve
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-xs text-text-secondary">{description}</p>
+                </div>
+                <ChevronRight className="h-5 w-5 shrink-0 text-text-secondary/50" aria-hidden />
+              </div>
+            );
+          }
+          return (
+            <button
+              key={key ?? "null"}
+              type="button"
+              onClick={() => setOpenSection(openSection === key ? null : key)}
+              className={`flex w-full min-w-0 items-start gap-4 rounded-xl border bg-dark-card p-4 text-left transition-all hover:border-shopee-orange/50 hover:bg-dark-card/90 ${
+                openSection === key ? "border-shopee-orange/60 ring-1 ring-shopee-orange/20" : "border-dark-border"
+              }`}
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-dark-bg text-shopee-orange">
+                <Icon className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-text-primary">{title}</p>
+                <p className="text-xs text-text-secondary mt-0.5">{description}</p>
+              </div>
+              <ChevronRight
+                className={`h-5 w-5 shrink-0 text-text-secondary transition-transform ${openSection === key ? "rotate-90" : ""}`}
+              />
+            </button>
+          );
+        })}
       </div>
 
       {/* Conteúdo do card selecionado */}
@@ -117,7 +148,7 @@ export default function ConfiguracoesClient({
           />
         </div>
       )}
-      {openSection === "mercadolivre" && (
+      {openSection === "mercadolivre" && !MERCADOLIVRE_UX_COMING_SOON && (
         <div className="animate-in fade-in duration-200">
           <MercadoLivreIntegrationCard
             initialClientId={initialMlClientId}
