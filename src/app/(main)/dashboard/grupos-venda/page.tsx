@@ -149,10 +149,11 @@ function WizardStepper({ currentStep, onClose }: { currentStep: number; onClose:
 }
 
 // ─── DisparoCard ────────────────────────────────────────────────────────────────
-function DisparoCard({ c, togglingId, onToggle, onRemove, onTestPulse, testPulseId }: {
+function DisparoCard({ c, togglingId, onToggle, onRemove, onEdit, onTestPulse, testPulseId }: {
   c: ContinuoItem; togglingId: string | null;
   onToggle: (id: string, ativar: boolean) => void;
   onRemove: (id: string) => void;
+  onEdit?: () => void;
   onTestPulse?: (id: string) => void;
   testPulseId?: string | null;
 }) {
@@ -287,7 +288,19 @@ function DisparoCard({ c, togglingId, onToggle, onRemove, onTestPulse, testPulse
             )}
           </div>
         )}
+        {onEdit ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            title="Editar lista de grupos, keywords, horário e listas de ofertas"
+            aria-label="Editar automação"
+            className="text-[#a0a0a0] hover:text-[#e24c30] transition bg-[#121214] border border-[#2c2c32] p-1.5 rounded-lg hover:border-[#e24c30]/25 shrink-0"
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
+        ) : null}
         <button type="button" onClick={() => onRemove(c.id)}
+          title="Excluir automação"
           className="text-[#a0a0a0] hover:text-red-400 transition bg-[#121214] border border-[#2c2c32] p-1.5 rounded-lg hover:border-red-400/20 shrink-0">
           <Trash2 className="w-3 h-3" />
         </button>
@@ -363,6 +376,8 @@ export default function GruposVendaPage() {
   const [panelPerPage, setPanelPerPage] = useState(2);
   /** Painel: filtrar cards por status (evita confusão “Ativos” vs cards Parado) */
   const [panelStatusFilter, setPanelStatusFilter] = useState<"all" | "active" | "paused">("all");
+  /** Edição de automação existente (wizard reutilizado + POST continuo com updateOnly) */
+  const [editingContinuoId, setEditingContinuoId] = useState<string | null>(null);
 
   // ─── API ────────────────────────────────────────────────────────────────────
   const loadInstances = useCallback(async () => {
@@ -619,6 +634,8 @@ export default function GruposVendaPage() {
 
   const handleAddContinuo = useCallback(async () => {
     if (!selectedListaId) { setError("Selecione uma lista de grupos."); return; }
+    const editId = editingContinuoId;
+    const isEditing = Boolean(editId);
     const pickShopee = contentMode === "list" && (offerListSource === "shopee" || offerListSource === "crossover");
     const pickMl = contentMode === "list" && (offerListSource === "ml" || offerListSource === "crossover");
     const pickInfo = contentMode === "list" && offerListSource === "infoprodutor";
@@ -642,38 +659,45 @@ export default function GruposVendaPage() {
     }
     const jErr = mensagemErroJanela(horaInicio, horaFim);
     if (jErr) { setError(jErr); return; }
-    setContinuoTogglingId("new"); setError(null);
+    setContinuoTogglingId(isEditing && editId ? editId : "new"); setError(null);
     try {
       const res = await fetch("/api/grupos-venda/continuo", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...(isEditing && editId
+            ? { id: editId, updateOnly: true, ativo: false }
+            : {}),
           listaId: selectedListaId,
           listaOfertasId: useListaShopee ? selectedListaOfertasId : undefined,
           listaOfertasMlId: useListaMl ? selectedListaOfertasMlId : undefined,
           listaOfertasInfoId: useListaInfo ? selectedListaOfertasInfoId : undefined,
           keywords: useListaOfertas ? [] : kwList,
-          subId1, subId2, subId3, horarioInicio: horaInicio.trim(), horarioFim: horaFim.trim(), ativo: true,
+          subId1, subId2, subId3, horarioInicio: horaInicio.trim(), horarioFim: horaFim.trim(),
+          ...(!isEditing ? { ativo: true } : {}),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "Erro");
       const horarioMsg = ` Janela ${horaInicio} – ${horaFim}.`;
       const listaMsg =
-        offerListSource === "crossover" && useListaOfertas
-          ? "Automação crossover (Shopee + ML) criada."
-          : useListaInfo
-            ? "Automação por lista do Infoprodutor criada."
-            : useListaOfertas
-              ? "Automação por lista de ofertas criada."
-              : "Automação criada.";
-      setFeedback(`${listaMsg}${horarioMsg}`);
+        isEditing
+          ? "Automação atualizada."
+          : offerListSource === "crossover" && useListaOfertas
+            ? "Automação crossover (Shopee + ML) criada."
+            : useListaInfo
+              ? "Automação por lista do Infoprodutor criada."
+              : useListaOfertas
+                ? "Automação por lista de ofertas criada."
+                : "Automação criada.";
+      setFeedback(isEditing ? listaMsg : `${listaMsg}${horarioMsg}`);
       setTimeout(() => setFeedback(""), 5000);
+      setEditingContinuoId(null);
       setSelectedListaId(""); setKeywords(""); setSelectedListaOfertasId(""); setSelectedListaOfertasMlId(""); setSelectedListaOfertasInfoId(""); setSubId1(""); setSubId2(""); setSubId3(""); setHoraInicio(""); setHoraFim("");
       setView("panel");
       await loadContinuo();
     } catch (e) { setError(e instanceof Error ? e.message : "Erro ao criar automação"); }
     finally { setContinuoTogglingId(null); }
-  }, [selectedListaId, contentMode, offerListSource, selectedListaOfertasId, selectedListaOfertasMlId, selectedListaOfertasInfoId, keywords, subId1, subId2, subId3, horaInicio, horaFim, loadContinuo]);
+  }, [editingContinuoId, selectedListaId, contentMode, offerListSource, selectedListaOfertasId, selectedListaOfertasMlId, selectedListaOfertasInfoId, keywords, subId1, subId2, subId3, horaInicio, horaFim, loadContinuo]);
 
   const handleRemoveContinuo = useCallback(async (id: string) => {
     try {
@@ -948,12 +972,69 @@ export default function GruposVendaPage() {
   );
 
   function openWizard() {
+    setEditingContinuoId(null);
     setWizardStep(1);
     setShowStepInfo(false);
     setWizardListaAlvoAlertOpen(false);
     setWizardKeywordsAlertOpen(false);
     setView("wizard");
   }
+
+  function openWizardForEdit(c: ContinuoItem) {
+    setEditingContinuoId(c.id);
+    setWizardStep(1);
+    setShowStepInfo(false);
+    setWizardListaAlvoAlertOpen(false);
+    setWizardKeywordsAlertOpen(false);
+    setError(null);
+    setSelectedInstanceId(c.instanceId || "");
+    setSelectedListaId(c.listaId || "");
+    setSubId1(c.subId1 ?? "");
+    setSubId2(c.subId2 ?? "");
+    setSubId3(c.subId3 ?? "");
+    setHoraInicio((c.horarioInicio ?? "").trim());
+    setHoraFim((c.horarioFim ?? "").trim());
+
+    if (c.listaOfertasInfoId) {
+      setContentMode("list");
+      setOfferListSource("infoprodutor");
+      setSelectedListaOfertasInfoId(c.listaOfertasInfoId);
+      setSelectedListaOfertasId("");
+      setSelectedListaOfertasMlId("");
+      setKeywords("");
+    } else if (c.listaOfertasId && c.listaOfertasMlId) {
+      setContentMode("list");
+      setOfferListSource("crossover");
+      setSelectedListaOfertasId(c.listaOfertasId);
+      setSelectedListaOfertasMlId(c.listaOfertasMlId);
+      setSelectedListaOfertasInfoId("");
+      setKeywords("");
+    } else if (c.listaOfertasMlId) {
+      setContentMode("list");
+      setOfferListSource("ml");
+      setSelectedListaOfertasMlId(c.listaOfertasMlId);
+      setSelectedListaOfertasId("");
+      setSelectedListaOfertasInfoId("");
+      setKeywords("");
+    } else if (c.listaOfertasId) {
+      setContentMode("list");
+      setOfferListSource("shopee");
+      setSelectedListaOfertasId(c.listaOfertasId);
+      setSelectedListaOfertasMlId("");
+      setSelectedListaOfertasInfoId("");
+      setKeywords("");
+    } else {
+      setContentMode("keywords");
+      setOfferListSource("shopee");
+      setKeywords((c.keywords ?? []).join("\n"));
+      setSelectedListaOfertasId("");
+      setSelectedListaOfertasMlId("");
+      setSelectedListaOfertasInfoId("");
+    }
+
+    setView("wizard");
+  }
+
   function closeWizard() {
     setShowStepInfo(false);
     setWizardListaAlvoAlertOpen(false);
@@ -961,6 +1042,7 @@ export default function GruposVendaPage() {
     setModalOpen(false);
     setListaModalEdicaoId(null);
     setListaEditPrefill(null);
+    setEditingContinuoId(null);
     setView("panel");
   }
   function handleNext() {
@@ -1175,6 +1257,7 @@ export default function GruposVendaPage() {
                       togglingId={continuoTogglingId}
                       onToggle={handleContinuoToggle}
                       onRemove={handleRemoveContinuo}
+                      onEdit={() => openWizardForEdit(item)}
                       onTestPulse={handleTestPulse}
                       testPulseId={testPulseId}
                     />
@@ -1801,16 +1884,24 @@ export default function GruposVendaPage() {
                 <button
                   type="button"
                   onClick={handleFinish}
-                  disabled={continuoTogglingId === "new" || !podeAtivarAutomacao}
+                  disabled={
+                    (!!continuoTogglingId && (continuoTogglingId === "new" || continuoTogglingId === editingContinuoId))
+                    || !podeAtivarAutomacao
+                  }
                   title={!podeAtivarAutomacao && erroJanelaAtivar ? erroJanelaAtivar : undefined}
                   className={cn(
                     "w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-bold transition-all shadow-lg group bg-[#e24c30]/10 border border-[#e24c30]/25 text-[#e24c30] hover:bg-[#e24c30] hover:text-white shadow-[#e24c30]/5",
                     "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#e24c30]/10 disabled:hover:text-[#e24c30] disabled:shadow-none",
                   )}
                 >
-                  {continuoTogglingId === "new" ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : <Play className="w-3.5 h-3.5 fill-current" />}
-                  Ativar automação
+                  {(continuoTogglingId === "new" || continuoTogglingId === editingContinuoId) ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : editingContinuoId ? (
+                    <Pencil className="w-3.5 h-3.5" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                  )}
+                  {editingContinuoId ? "Salvar alterações" : "Ativar automação"}
                 </button>
               )}
             </div>

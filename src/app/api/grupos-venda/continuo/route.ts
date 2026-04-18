@@ -3,6 +3,7 @@
  * Janela obrigatória: início/fim HH:MM, duração máxima 14 horas (sem modo 24h).
  * GET → lista de configs (id, listaId, listaNome, instanceId, keywords, subIds, ativo, proximoIndice, ultimoDisparoAt)
  * POST { listaId, keywords, subId1, subId2, subId3, horarioInicio, horarioFim, ativo } → criar/atualizar ou { id, ativo: false } → parar
+ * POST { id, updateOnly: true, ativo: false, ...campos } → atualizar config mantendo ativo, proximo_indice e keyword_pool_indices (edição no painel)
  * DELETE ?id= → remover um config
  */
 
@@ -99,6 +100,8 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const id = typeof body.id === "string" ? body.id.trim() : "";
+    const updateOnly =
+      Boolean(id) && (body.updateOnly === true || body.updateOnly === "true");
     const listaId = typeof body.listaId === "string" ? body.listaId.trim() : "";
     const listaOfertasId = typeof body.listaOfertasId === "string" ? body.listaOfertasId.trim() || null : null;
     const listaOfertasMlId = typeof body.listaOfertasMlId === "string" ? body.listaOfertasMlId.trim() || null : null;
@@ -118,7 +121,7 @@ export async function POST(req: Request) {
 
     const now = new Date().toISOString();
 
-    if (!ativo && id) {
+    if (!ativo && id && !updateOnly) {
       const { data: updated, error } = await supabase
         .from("grupos_venda_continuo")
         .update({ ativo: false, keyword_pool_indices: {}, updated_at: now })
@@ -136,8 +139,8 @@ export async function POST(req: Request) {
       });
     }
 
-    // Verificar limite de campanhas ativas antes de criar/ativar
-    if (ativo) {
+    // Verificar limite de campanhas ativas antes de criar/ativar (edição “updateOnly” não altera o slot)
+    if (ativo && !updateOnly) {
       const ent = await getEntitlementsForUser(supabase, user.id);
       const usage = await getUsageSnapshot(supabase, user.id);
       const alreadyActive = id ? usage.activeCampaigns : usage.activeCampaigns;
@@ -211,7 +214,7 @@ export async function POST(req: Request) {
     const janelaErr = mensagemErroJanela(horarioInicio, horarioFim);
     if (janelaErr) return NextResponse.json({ error: janelaErr }, { status: 400 });
 
-    const payloadContinuo = {
+    const payloadContinuo: Record<string, unknown> = {
       lista_id: listaId,
       instance_id: instanceId,
       keywords: isListaOfertasMode ? [] : keywords,
@@ -230,6 +233,20 @@ export async function POST(req: Request) {
     };
 
     if (id) {
+      if (updateOnly) {
+        const { data: prev, error: prevErr } = await supabase
+          .from("grupos_venda_continuo")
+          .select("ativo, proximo_indice, keyword_pool_indices")
+          .eq("id", id)
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (prevErr) return NextResponse.json({ error: prevErr.message }, { status: 500 });
+        if (!prev) return NextResponse.json({ error: "Automação não encontrada." }, { status: 404 });
+        payloadContinuo.ativo = (prev as { ativo?: boolean }).ativo ?? false;
+        payloadContinuo.proximo_indice = (prev as { proximo_indice?: number }).proximo_indice ?? 0;
+        payloadContinuo.keyword_pool_indices =
+          (prev as { keyword_pool_indices?: unknown }).keyword_pool_indices ?? {};
+      }
       const { data: updated, error } = await supabase
         .from("grupos_venda_continuo")
         .update(payloadContinuo)
@@ -240,10 +257,10 @@ export async function POST(req: Request) {
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({
         success: true,
-        ativo: true,
+        ativo: !!(updated as { ativo?: boolean })?.ativo,
         id: updated?.id,
-        proximoIndice: 0,
-        ultimoDisparoAt: updated?.ultimo_disparo_at,
+        proximoIndice: (updated as { proximo_indice?: number })?.proximo_indice ?? 0,
+        ultimoDisparoAt: (updated as { ultimo_disparo_at?: string | null })?.ultimo_disparo_at,
       });
     }
 
