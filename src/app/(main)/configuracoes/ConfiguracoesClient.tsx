@@ -1,14 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { IdCard, Megaphone, MessageCircle, ChevronRight, ShoppingBag } from "lucide-react";
+import { IdCard, Megaphone, MessageCircle, ChevronRight, ShoppingBag, CreditCard, Truck } from "lucide-react";
 import ShopeeIntegrationCard from "./ShopeeIntegrationCard";
 import MetaIntegrationCard from "./MetaIntegrationCard";
 import EvolutionIntegrationCard from "./EvolutionIntegrationCard";
 import MercadoLivreIntegrationCard from "./MercadoLivreIntegrationCard";
+import StripeIntegrationCard from "./StripeIntegrationCard";
+import ShippingProfileCard from "./ShippingProfileCard";
 import { MERCADOLIVRE_UX_COMING_SOON } from "@/lib/mercadolivre-ux-coming-soon";
 
-export type SectionKey = "shopee" | "mercadolivre" | "meta" | "evolution" | null;
+export type SectionKey = "shopee" | "mercadolivre" | "meta" | "evolution" | "stripe" | "shipping" | null;
 
 type ConfiguracoesClientProps = {
   initialAppId: string;
@@ -22,6 +24,8 @@ type ConfiguracoesClientProps = {
   initialMlSecretLast4?: string | null;
   metaHasToken: boolean;
   metaLast4: string | null;
+  stripeHasKey?: boolean;
+  stripeLast4?: string | null;
 };
 
 const CARDS: {
@@ -56,6 +60,18 @@ const CARDS: {
     description: "Instâncias WhatsApp",
     icon: MessageCircle,
   },
+  {
+    key: "stripe",
+    title: "Integração Stripe",
+    description: "Chave secreta para criar produtos e checkout automático",
+    icon: CreditCard,
+  },
+  {
+    key: "shipping",
+    title: "Endereço do remetente",
+    description: "Dados para emitir etiquetas de envio dos pedidos",
+    icon: Truck,
+  },
 ];
 
 /** Colunas alinhadas ao número de cards visíveis — evita “buraco” (ex.: 3 itens em grelha de 4 colunas). */
@@ -77,6 +93,8 @@ export default function ConfiguracoesClient({
   initialMlSecretLast4 = null,
   metaHasToken,
   metaLast4,
+  stripeHasKey = false,
+  stripeLast4 = null,
 }: ConfiguracoesClientProps) {
   const [openSection, setOpenSection] = useState<SectionKey>(
     MERCADOLIVRE_UX_COMING_SOON ? null : initialOpenMl ? "mercadolivre" : null,
@@ -165,6 +183,16 @@ export default function ConfiguracoesClient({
       {openSection === "evolution" && (
         <div className="animate-in fade-in duration-200">
           <EvolutionIntegrationCard />
+        </div>
+      )}
+      {openSection === "stripe" && (
+        <div className="animate-in fade-in duration-200">
+          <StripeIntegrationCard initialHasKey={stripeHasKey} initialLast4={stripeLast4} />
+        </div>
+      )}
+      {openSection === "shipping" && (
+        <div className="animate-in fade-in duration-200">
+          <ShippingProfileCard />
         </div>
       )}
     </div>

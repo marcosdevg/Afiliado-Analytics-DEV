@@ -47,6 +47,19 @@ export default async function ConfiguracoesPage({
     metaLast4 = metaRow.meta_access_token_last4;
   }
 
+  // Status da Stripe (falha suave enquanto migração não for aplicada)
+  let stripeHasKey = false;
+  let stripeLast4: string | null = null;
+  const { data: stripeRow, error: stripeError } = await supabase
+    .from("profiles")
+    .select("stripe_secret_key_last4")
+    .eq("id", user.id)
+    .single();
+  if (!stripeError && stripeRow?.stripe_secret_key_last4) {
+    stripeHasKey = true;
+    stripeLast4 = stripeRow.stripe_secret_key_last4;
+  }
+
   return (
     <div className="bg-dark-bg min-h-[calc(100vh-4rem)] text-text-secondary">
       <div className="container mx-auto px-4 py-8">
@@ -74,6 +87,8 @@ export default async function ConfiguracoesPage({
           initialMlSecretLast4={profile.mercadolivre_client_secret_last4 ?? null}
           metaHasToken={metaHasToken}
           metaLast4={metaLast4}
+          stripeHasKey={stripeHasKey}
+          stripeLast4={stripeLast4}
         />
 
         <div className="mt-8 mb-8 rounded-lg border border-dark-border bg-dark-card p-6 shadow-sm">

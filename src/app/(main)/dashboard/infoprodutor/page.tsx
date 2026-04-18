@@ -23,12 +23,20 @@ import {
   AlignLeft,
   FilePlus2,
   ListPlus,
+  CreditCard,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
+import Link from "next/link";
 import ConfirmModal from "@/app/components/ui/ConfirmModal";
 import MetaSearchablePicker from "@/app/components/meta/MetaSearchablePicker";
 import { GeradorPaginationBar } from "@/app/components/shopee/GeradorPaginationBar";
+import StripeSalesDashboard from "./StripeSalesDashboard";
+import StripeOrdersSection from "./StripeOrdersSection";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
+type ProductProvider = "manual" | "stripe";
+
 type Produto = {
   id: string;
   name: string;
@@ -37,6 +45,7 @@ type Produto = {
   link: string;
   price: number | null;
   priceOld: number | null;
+  provider: ProductProvider;
   createdAt: string;
 };
 
@@ -128,6 +137,7 @@ export default function InfoprodutorPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [formEditId, setFormEditId] = useState<string | null>(null);
+  const [formProvider, setFormProvider] = useState<ProductProvider>("manual");
   const [formName, setFormName] = useState("");
   const [formDescription, setFormDescription] = useState("");
   const [formLink, setFormLink] = useState("");
@@ -139,6 +149,10 @@ export default function InfoprodutorPage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [savingProduto, setSavingProduto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ─── Estado: status da conexão Stripe ──────────────────────────────────────
+  const [stripeConnected, setStripeConnected] = useState(false);
+  const [stripeLast4, setStripeLast4] = useState<string | null>(null);
 
   // ─── Estado: listas ────────────────────────────────────────────────────────
   const [listas, setListas] = useState<Lista[]>([]);
@@ -218,10 +232,23 @@ export default function InfoprodutorPage() {
     }
   }, []);
 
+  const loadStripeStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/settings/stripe");
+      if (!res.ok) return;
+      const json = await res.json();
+      setStripeConnected(!!json?.has_key);
+      setStripeLast4(json?.last4 ?? null);
+    } catch {
+      /* ignore — Stripe é opcional */
+    }
+  }, []);
+
   useEffect(() => {
     loadProdutos();
     loadListas();
-  }, [loadProdutos, loadListas]);
+    loadStripeStatus();
+  }, [loadProdutos, loadListas, loadStripeStatus]);
 
   const toggleLista = (listaId: string) => {
     setExpandedListas((prev) => {
@@ -239,6 +266,7 @@ export default function InfoprodutorPage() {
   const resetForm = () => {
     setFormMode("create");
     setFormEditId(null);
+    setFormProvider("manual");
     setFormName("");
     setFormDescription("");
     setFormLink("");
@@ -294,32 +322,68 @@ export default function InfoprodutorPage() {
       setError("O título do produto é obrigatório.");
       return;
     }
-    if (!formLink.trim()) {
+
+    const isStripeCreate = formMode === "create" && formProvider === "stripe";
+
+    if (isStripeCreate) {
+      if (!stripeConnected) {
+        setError("Conecte sua conta Stripe em Configurações antes de criar produtos na Stripe.");
+        return;
+      }
+      if (!formPrice.trim()) {
+        setError("Preço é obrigatório para produtos criados na Stripe.");
+        return;
+      }
+    } else if (formMode === "create" && !formLink.trim()) {
       setError("Informe o link de venda.");
       return;
     }
+
     setSavingProduto(true);
     try {
       const imageUrl = await uploadImageIfNeeded();
-      const payload = {
+      const priceNum = formPrice.trim() ? Number(formPrice.replace(",", ".")) : null;
+      const priceOldNum = formPriceOld.trim() ? Number(formPriceOld.replace(",", ".")) : null;
+
+      const basePayload: Record<string, unknown> = {
         id: formEditId || undefined,
         name: formName.trim(),
         description: formDescription.trim(),
-        link: formLink.trim(),
-        price: formPrice.trim() ? Number(formPrice.replace(",", ".")) : null,
-        priceOld: formPriceOld.trim() ? Number(formPriceOld.replace(",", ".")) : null,
+        priceOld: priceOldNum,
         imageUrl,
       };
+
+      if (isStripeCreate) {
+        basePayload.provider = "stripe";
+        basePayload.price = priceNum;
+        // link é gerado pela Stripe
+      } else if (formMode === "create") {
+        basePayload.provider = "manual";
+        basePayload.link = formLink.trim();
+        basePayload.price = priceNum;
+      } else if (formProvider === "stripe") {
+        // edit em produto Stripe: apenas campos cosméticos (name/description/image/priceOld já estão no basePayload)
+        // price e link não podem ser alterados (bloqueado no backend)
+      } else {
+        // edit em produto manual
+        basePayload.link = formLink.trim();
+        basePayload.price = priceNum;
+      }
 
       const res = await fetch("/api/infoprodutor/produtos", {
         method: formMode === "edit" ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(basePayload),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Erro ao salvar produto");
 
-      setFeedback(formMode === "edit" ? "Produto atualizado." : "Produto adicionado ao catálogo.");
+      const successMsg = isStripeCreate
+        ? "Produto criado na Stripe e adicionado ao catálogo."
+        : formMode === "edit"
+          ? "Produto atualizado."
+          : "Produto adicionado ao catálogo.";
+      setFeedback(successMsg);
       setTimeout(() => setFeedback(""), 4000);
       resetForm();
       setFormOpen(false);
@@ -334,6 +398,7 @@ export default function InfoprodutorPage() {
   const handleEditProduto = (p: Produto) => {
     setFormMode("edit");
     setFormEditId(p.id);
+    setFormProvider(p.provider ?? "manual");
     setFormName(p.name);
     setFormDescription(p.description ?? "");
     setFormLink(p.link);
@@ -466,6 +531,29 @@ export default function InfoprodutorPage() {
       setError(e instanceof Error ? e.message : "Erro ao adicionar à lista");
     } finally {
       setAddingToLista(false);
+    }
+  };
+
+  // ─── Backfill: atualizar link de checkout de um produto Stripe ────────────
+  const [refreshingLinkId, setRefreshingLinkId] = useState<string | null>(null);
+  const handleRefreshCheckout = async (produtoId: string) => {
+    setError(null);
+    setRefreshingLinkId(produtoId);
+    try {
+      const res = await fetch("/api/infoprodutor/produtos/refresh-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: produtoId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Erro ao atualizar link");
+      setFeedback("Link de checkout atualizado — novos pedidos já virão com endereço e telefone.");
+      setTimeout(() => setFeedback(""), 5000);
+      await loadProdutos();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao atualizar link");
+    } finally {
+      setRefreshingLinkId(null);
     }
   };
 
@@ -694,6 +782,72 @@ export default function InfoprodutorPage() {
                 </button>
               </div>
 
+              {/* Toggle: Manual × Stripe (apenas na criação; na edição o provider é fixo) */}
+              <div className="px-4 sm:px-5 pt-3">
+                <div
+                  role="tablist"
+                  aria-label="Tipo de cadastro"
+                  className="inline-flex rounded-lg border border-[#3e3e46] bg-[#222228] p-0.5"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={formProvider === "manual"}
+                    disabled={formMode === "edit" || savingProduto || uploadingImage}
+                    onClick={() => setFormProvider("manual")}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors disabled:cursor-not-allowed ${
+                      formProvider === "manual"
+                        ? "bg-[#e24c30] text-white"
+                        : "text-[#c8c8ce] hover:bg-[#2f2f34]"
+                    }`}
+                    title={formMode === "edit" ? "Não é possível trocar o tipo em modo de edição" : undefined}
+                  >
+                    <FilePlus2 className="w-3 h-3" />
+                    Manual
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={formProvider === "stripe"}
+                    disabled={formMode === "edit" || savingProduto || uploadingImage}
+                    onClick={() => setFormProvider("stripe")}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors disabled:cursor-not-allowed ${
+                      formProvider === "stripe"
+                        ? "bg-[#635bff] text-white"
+                        : "text-[#c8c8ce] hover:bg-[#2f2f34]"
+                    }`}
+                    title={formMode === "edit" ? "Não é possível trocar o tipo em modo de edição" : undefined}
+                  >
+                    <CreditCard className="w-3 h-3" />
+                    Stripe
+                  </button>
+                </div>
+                {formProvider === "stripe" && formMode === "create" ? (
+                  stripeConnected ? (
+                    <p className="mt-2 text-[10px] text-[#9a9aa2] flex items-center gap-1.5">
+                      <Check className="w-3 h-3 text-emerald-400" />
+                      Conectado{stripeLast4 ? ` (…${stripeLast4})` : ""} — o link de checkout será gerado automaticamente.
+                    </p>
+                  ) : (
+                    <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 flex items-start gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                      <p className="text-[10px] text-amber-200 leading-relaxed">
+                        Conta Stripe não conectada.{" "}
+                        <Link href="/configuracoes" className="underline font-semibold hover:text-amber-100">
+                          Conectar em Configurações
+                        </Link>
+                        .
+                      </p>
+                    </div>
+                  )
+                ) : null}
+                {formProvider === "stripe" && formMode === "edit" ? (
+                  <p className="mt-2 text-[10px] text-[#9a9aa2]">
+                    Produto vinculado à Stripe — preço e link de venda não são editáveis.
+                  </p>
+                ) : null}
+              </div>
+
               <div className="p-4 sm:p-5 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-[minmax(0,88px)_1fr] gap-4 md:gap-5">
                 {/* Upload de imagem — compacto no desktop */}
@@ -783,27 +937,44 @@ export default function InfoprodutorPage() {
                     <div>
                       <label className="block text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest mb-1.5">
                         <Link2 className="inline w-2.5 h-2.5 mr-1" /> Link de venda
+                        {formProvider === "stripe" ? (
+                          <span className="ml-1.5 normal-case tracking-normal text-[9px] text-[#635bff]">
+                            (gerado pela Stripe)
+                          </span>
+                        ) : null}
                       </label>
                       <input
                         type="url"
-                        value={formLink}
+                        value={formProvider === "stripe" && formMode === "create" ? "" : formLink}
                         onChange={(e) => setFormLink(e.target.value)}
-                        placeholder="https://pay.hotmart.com/..."
-                        className="w-full bg-[#222228] border border-[#3e3e46] rounded-xl px-3 py-2.5 text-[11px] text-[#f0f0f2] placeholder:text-[#868686] focus:border-[#e24c30] outline-none transition"
+                        readOnly={formProvider === "stripe"}
+                        disabled={formProvider === "stripe"}
+                        placeholder={
+                          formProvider === "stripe"
+                            ? "Será gerado automaticamente na Stripe após salvar"
+                            : "https://pay.hotmart.com/..."
+                        }
+                        className={`w-full bg-[#222228] border border-[#3e3e46] rounded-xl px-3 py-2.5 text-[11px] text-[#f0f0f2] placeholder:text-[#868686] focus:border-[#e24c30] outline-none transition ${
+                          formProvider === "stripe" ? "opacity-60 cursor-not-allowed" : ""
+                        }`}
                       />
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest mb-1.5">
-                          <Tag className="inline w-2.5 h-2.5 mr-1" /> Preço atual (opcional)
+                          <Tag className="inline w-2.5 h-2.5 mr-1" />{" "}
+                          {formProvider === "stripe" ? "Preço atual (BRL) *" : "Preço atual (opcional)"}
                         </label>
                         <input
                           type="text"
                           inputMode="decimal"
                           value={formPrice}
                           onChange={(e) => setFormPrice(e.target.value)}
+                          readOnly={formProvider === "stripe" && formMode === "edit"}
                           placeholder="97,00"
-                          className="w-full bg-[#222228] border border-[#3e3e46] rounded-xl px-3 py-2.5 text-[11px] text-[#f0f0f2] placeholder:text-[#868686] focus:border-[#e24c30] outline-none transition"
+                          className={`w-full bg-[#222228] border border-[#3e3e46] rounded-xl px-3 py-2.5 text-[11px] text-[#f0f0f2] placeholder:text-[#868686] focus:border-[#e24c30] outline-none transition ${
+                            formProvider === "stripe" && formMode === "edit" ? "opacity-60 cursor-not-allowed" : ""
+                          }`}
                         />
                       </div>
                       <div>
@@ -840,23 +1011,33 @@ export default function InfoprodutorPage() {
                 <button
                   type="button"
                   onClick={handleSubmitProduto}
-                  disabled={savingProduto || uploadingImage}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-[#e24c30] hover:bg-[#c94028] text-white text-xs font-semibold disabled:opacity-60"
+                  disabled={savingProduto || uploadingImage || (formProvider === "stripe" && formMode === "create" && !stripeConnected)}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-white text-xs font-semibold disabled:opacity-60 ${
+                    formProvider === "stripe"
+                      ? "bg-[#635bff] hover:bg-[#5047e5]"
+                      : "bg-[#e24c30] hover:bg-[#c94028]"
+                  }`}
                 >
                   {savingProduto || uploadingImage ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : formMode === "edit" ? (
                     <Check className="w-3.5 h-3.5" />
+                  ) : formProvider === "stripe" ? (
+                    <CreditCard className="w-3.5 h-3.5" />
                   ) : (
                     <PlusCircle className="w-3.5 h-3.5" />
                   )}
                   {uploadingImage
                     ? "Enviando imagem…"
                     : savingProduto
-                      ? "Salvando…"
+                      ? formProvider === "stripe" && formMode === "create"
+                        ? "Criando na Stripe…"
+                        : "Salvando…"
                       : formMode === "edit"
                         ? "Salvar alterações"
-                        : "Adicionar ao catálogo"}
+                        : formProvider === "stripe"
+                          ? "Criar produto na Stripe"
+                          : "Adicionar ao catálogo"}
                 </button>
               </div>
               </div>
@@ -989,9 +1170,20 @@ export default function InfoprodutorPage() {
                       )}
 
                       <div className="flex-1 min-w-0">
-                        <p className="text-[12px] font-semibold text-[#f0f0f2] leading-snug truncate">
-                          {p.name}
-                        </p>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <p className="text-[12px] font-semibold text-[#f0f0f2] leading-snug truncate">
+                            {p.name}
+                          </p>
+                          {p.provider === "stripe" ? (
+                            <span
+                              title="Produto criado via Stripe"
+                              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-[#635bff]/40 bg-[#635bff]/10 text-[9px] font-bold uppercase tracking-wider text-[#a8a2ff]"
+                            >
+                              <CreditCard className="w-2.5 h-2.5" />
+                              Stripe
+                            </span>
+                          ) : null}
+                        </div>
                         {p.description ? (
                           <p className="text-[10px] text-[#9a9aa2] leading-snug truncate mt-0.5">
                             {p.description}
@@ -1013,6 +1205,21 @@ export default function InfoprodutorPage() {
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
+                        {p.provider === "stripe" ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleRefreshCheckout(p.id)}
+                            disabled={refreshingLinkId === p.id}
+                            className="p-1.5 rounded-md border border-[#635bff]/40 bg-[#635bff]/10 text-[#a8a2ff] hover:bg-[#635bff]/20 disabled:opacity-60"
+                            title="Atualizar link de checkout (ativa coleta de endereço/telefone)"
+                          >
+                            {refreshingLinkId === p.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3 w-3" />
+                            )}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => handleEditProduto(p)}
@@ -1253,6 +1460,12 @@ export default function InfoprodutorPage() {
           </div>
         </section>
         </div>
+
+        {/* ═══════════════ DASHBOARD DE VENDAS (STRIPE) ═══════════════ */}
+        <StripeSalesDashboard stripeConnected={stripeConnected} />
+
+        {/* ═══════════════ PEDIDOS STRIPE ═══════════════ */}
+        <StripeOrdersSection stripeConnected={stripeConnected} />
 
         {/* Modal: criar lista */}
         {createListaOpen ? (
