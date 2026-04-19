@@ -272,38 +272,70 @@ export default function CustomCheckoutTab() {
               Meios de pagamento aceitos
             </label>
             <p className="text-[10px] text-[#9a9aa2] leading-relaxed">
-              Só os marcados aqui aparecem no checkout do comprador. Lembre de habilitar o mesmo no painel
-              da sua conta Stripe — caso contrário, o Stripe recusa a cobrança.
+              Só os marcados aqui aparecem no checkout do comprador.
             </p>
             <div className="space-y-1.5">
               {(
                 [
-                  { key: "methodCard", label: "Cartão de crédito / débito", hint: "Visa, Mastercard, Elo, Amex..." },
-                  { key: "methodPix", label: "PIX", hint: "QR code instantâneo." },
-                  { key: "methodBoleto", label: "Boleto", hint: "Vencimento 3 dias úteis. Compensação demora 1–3 dias após o pagamento." },
+                  {
+                    key: "methodCard",
+                    label: "Cartão de crédito / débito",
+                    hint: "Visa, Mastercard, Elo, Amex...",
+                    requiresStripeActivation: false,
+                  },
+                  {
+                    key: "methodPix",
+                    label: "PIX",
+                    hint: "QR code instantâneo.",
+                    requiresStripeActivation: true,
+                  },
+                  {
+                    key: "methodBoleto",
+                    label: "Boleto",
+                    hint: "Vencimento 3 dias úteis. Compensação demora 1–3 dias após o pagamento.",
+                    requiresStripeActivation: true,
+                  },
                 ] as const
               ).map((m) => {
                 const checked = state[m.key];
                 return (
-                  <label
-                    key={m.key}
-                    className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
-                      checked
-                        ? "border-[#635bff]/50 bg-[#635bff]/8"
-                        : "border-[#3e3e46] bg-[#222228] hover:border-[#635bff]/30"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => setState((p) => ({ ...p, [m.key]: e.target.checked }))}
-                      className="mt-0.5 w-4 h-4 rounded border-[#3e3e46] bg-[#222228] accent-[#635bff] shrink-0"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[12px] font-semibold text-[#f0f0f2]">{m.label}</p>
-                      <p className="text-[10px] text-[#9a9aa2] mt-0.5 leading-relaxed">{m.hint}</p>
-                    </div>
-                  </label>
+                  <div key={m.key}>
+                    <label
+                      className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                        checked
+                          ? "border-[#635bff]/50 bg-[#635bff]/8"
+                          : "border-[#3e3e46] bg-[#222228] hover:border-[#635bff]/30"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => setState((p) => ({ ...p, [m.key]: e.target.checked }))}
+                        className="mt-0.5 w-4 h-4 rounded border-[#3e3e46] bg-[#222228] accent-[#635bff] shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[12px] font-semibold text-[#f0f0f2]">{m.label}</p>
+                        <p className="text-[10px] text-[#9a9aa2] mt-0.5 leading-relaxed">{m.hint}</p>
+                      </div>
+                    </label>
+                    {checked && m.requiresStripeActivation ? (
+                      <div className="mt-1.5 ml-6 text-[10px] text-amber-300/90 bg-amber-500/5 border border-amber-500/20 rounded-md px-2 py-1.5 leading-relaxed">
+                        ⚠️ {m.label} precisa estar{" "}
+                        <strong>ativado no seu painel da Stripe</strong> pra funcionar.
+                        Se não estiver, o checkout ignora essa opção (o comprador não vê erro, só não
+                        aparece a aba). Ative em{" "}
+                        <a
+                          href="https://dashboard.stripe.com/account/payments/settings"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline text-amber-200"
+                        >
+                          Stripe → Payment methods
+                        </a>
+                        .
+                      </div>
+                    ) : null}
+                  </div>
                 );
               })}
             </div>

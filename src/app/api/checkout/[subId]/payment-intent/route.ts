@@ -98,19 +98,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ subId: string 
     const allowPix = prof?.checkout_method_pix !== false;
     const allowBoleto = prof?.checkout_method_boleto !== false;
     const methods: string[] = [];
-    if (allowCard) methods.push("card");
+    if (allowCard) {
+      methods.push("card");
+      // Link é carteira digital da Stripe atrelada a cartões salvos — habilita junto com cartão
+      // pra acelerar o checkout de quem já tem conta Link (email mágico + cartão salvo).
+      methods.push("link");
+    }
     if (allowPix) methods.push("pix");
     if (allowBoleto) methods.push("boleto");
 
     const stripe = new Stripe(stripeKey);
-    const intent = await stripe.paymentIntents.create({
+    const baseParams: Stripe.PaymentIntentCreateParams = {
       amount: totalCents,
       currency: "brl",
-      // Se o afiliado selecionou pelo menos um método, usamos explícito;
-      // senão cai no automatic_payment_methods da Stripe (bota o que estiver habilitado na conta).
-      ...(methods.length > 0
-        ? { payment_method_types: methods }
-        : { automatic_payment_methods: { enabled: true } }),
       metadata: {
         produto_id: row.id,
         produto_name: row.name,
@@ -122,7 +122,47 @@ export async function POST(req: Request, ctx: { params: Promise<{ subId: string 
         shipping_price_brl: frete.toFixed(2),
         product_price_brl: productPrice.toFixed(2),
       },
-    });
+    };
+
+    // Primeiro tenta com os métodos que o afiliado selecionou. Se algum não estiver
+    // ativado na conta Stripe, cai no automatic_payment_methods — assim o comprador
+    // vê só os métodos efetivamente ativos e nunca um erro. O afiliado é alertado
+    // no Custom Checkout pra ativar no painel Stripe.
+    const fallbackToAutomatic = async () =>
+      stripe.paymentIntents.create({
+        ...baseParams,
+        automatic_payment_methods: { enabled: true },
+      });
+
+    let intent: Stripe.PaymentIntent;
+    if (methods.length === 0) {
+      intent = await fallbackToAutomatic();
+    } else {
+      try {
+        intent = await stripe.paymentIntents.create({
+          ...baseParams,
+          payment_method_types: methods,
+        });
+      } catch (e) {
+        // Qualquer erro relacionado a payment_method_types → fallback silencioso.
+        // Inclui: método inativo, preview feature não liberada, combinação inválida, etc.
+        const msg = e instanceof Error ? e.message : "";
+        const stripeType =
+          (e as { type?: string; code?: string; param?: string } | null)?.type ?? "";
+        const stripeParam = (e as { param?: string } | null)?.param ?? "";
+        const looksLikeMethodIssue =
+          stripeParam === "payment_method_types" ||
+          stripeType === "StripeInvalidRequestError" ||
+          /payment[_ ]method|activated|preview features?/i.test(msg);
+        if (!looksLikeMethodIssue) throw e;
+        console.warn("[payment-intent] payment_method_types rejeitado → fallback automatic:", {
+          slug,
+          methods,
+          msg,
+        });
+        intent = await fallbackToAutomatic();
+      }
+    }
 
     return NextResponse.json({
       clientSecret: intent.client_secret,
