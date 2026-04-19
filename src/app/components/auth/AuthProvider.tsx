@@ -3,7 +3,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { createClient } from '../../../../utils/supabase/client'
 import type { SupabaseClient, Session } from '@supabase/supabase-js'
-import { useRouter } from 'next/navigation'
 
 type SupabaseContextType = {
   supabase: SupabaseClient
@@ -19,7 +18,6 @@ export default function SupabaseProvider({
 }) {
   const supabase = createClient()
   const [session, setSession] = useState<Session | null>(null)
-  const router = useRouter()
 
   useEffect(() => {
     // Inicializa a sessão para UI do cliente (ok no browser)
@@ -38,15 +36,6 @@ export default function SupabaseProvider({
       subscription.unsubscribe()
     }
   }, [supabase])
-
-  // Redireciona do checkout para o dashboard após login (lado do cliente)
-  useEffect(() => {
-    if (session) {
-      if (window.location.pathname.startsWith('/checkout')) {
-        router.push('/dashboard')
-      }
-    }
-  }, [session, router])
 
   return (
     <SupabaseContext.Provider value={{ supabase, session }}>
