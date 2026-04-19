@@ -36,6 +36,13 @@ function digits(v: string): string {
   return v.replace(/\D/g, "");
 }
 
+/** Mascara CEP brasileiro: só dígitos (máx 8), formatado como XXXXX-XXX. */
+function maskCep(v: string): string {
+  const d = digits(v).slice(0, 8);
+  if (d.length <= 5) return d;
+  return `${d.slice(0, 5)}-${d.slice(5)}`;
+}
+
 export default function ShippingProfileCard() {
   const [form, setForm] = useState<ShippingProfile>(EMPTY);
   const [loading, setLoading] = useState(true);
@@ -92,11 +99,17 @@ export default function ShippingProfileCard() {
     setSaving(true);
     setError(null);
     setOk(false);
+    const cepDigits = digits(form.shipping_sender_cep);
+    if (cepDigits && cepDigits.length !== 8) {
+      setError("CEP precisa ter 8 dígitos (formato brasileiro: 00000-000).");
+      setSaving(false);
+      return;
+    }
     try {
       const res = await fetch("/api/settings/shipping-profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, shipping_sender_cep: cepDigits }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Erro ao salvar");
@@ -213,8 +226,10 @@ export default function ShippingProfileCard() {
             <div className="relative">
               <input
                 value={form.shipping_sender_cep}
-                onChange={(e) => set("shipping_sender_cep", e.target.value)}
+                onChange={(e) => set("shipping_sender_cep", maskCep(e.target.value))}
                 onBlur={() => void onBlurCep()}
+                inputMode="numeric"
+                maxLength={9}
                 placeholder="00000-000"
                 className={`mt-1 ${inputCls} pr-8`}
               />

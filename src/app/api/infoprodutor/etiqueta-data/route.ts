@@ -84,17 +84,22 @@ export async function POST(req: Request) {
     const sender = (profile ?? null) as SenderProfile | null;
     const senderValid = hasMinSender(sender);
 
-    // Produtos Stripe do usuário (para validar o vínculo pelo payment_link)
+    // Produtos Stripe do usuário — dois índices:
+    //   - por payment_link (fluxo antigo: Checkout Session)
+    //   - por produto.id (fluxo novo: PaymentIntent com metadata.produto_id)
     const { data: produtosRows } = await supabase
       .from("produtos_infoprodutor")
       .select("id, name, stripe_payment_link_id")
       .eq("user_id", gate.userId)
       .eq("provider", "stripe");
     const allowedPaymentLinks = new Map<string, { id: string; name: string }>();
+    const allowedProductIds = new Map<string, { id: string; name: string }>();
     for (const p of produtosRows ?? []) {
       const row = p as { id: string; name: string; stripe_payment_link_id: string | null };
+      const entry = { id: row.id, name: row.name };
+      allowedProductIds.set(row.id, entry);
       if (row.stripe_payment_link_id) {
-        allowedPaymentLinks.set(row.stripe_payment_link_id, { id: row.id, name: row.name });
+        allowedPaymentLinks.set(row.stripe_payment_link_id, entry);
       }
     }
 
@@ -119,11 +124,13 @@ export async function POST(req: Request) {
     }> = [];
     const errors: { sessionId: string; reason: string }[] = [];
 
-    // Consulta cada sessão em paralelo (limitado ao cap acima). Expandimos
-    // shipping_cost.shipping_rate para detectar pickups e pulá-los.
+    // Cada ID pode ser Checkout Session (cs_...) ou PaymentIntent (pi_...) —
+    // detecta pelo prefixo e chama o retrieve correto.
     const results = await Promise.allSettled(
       sessionIds.map((id) =>
-        stripe.checkout.sessions.retrieve(id, { expand: ["shipping_cost.shipping_rate"] }),
+        id.startsWith("pi_")
+          ? stripe.paymentIntents.retrieve(id, { expand: ["latest_charge"] })
+          : stripe.checkout.sessions.retrieve(id, { expand: ["shipping_cost.shipping_rate"] }),
       ),
     );
 
@@ -134,7 +141,56 @@ export async function POST(req: Request) {
         errors.push({ sessionId, reason: "Pedido não encontrado na Stripe" });
         continue;
       }
-      const s = r.value;
+
+      // ─── Fluxo PaymentIntent (checkout inline novo) ──────────────────────
+      if (sessionId.startsWith("pi_")) {
+        const pi = r.value as Stripe.PaymentIntent;
+        const metaProdutoId = typeof pi.metadata?.produto_id === "string" ? pi.metadata.produto_id : "";
+        if (!metaProdutoId || !allowedProductIds.has(metaProdutoId)) {
+          errors.push({ sessionId, reason: "Pedido não pertence a um produto seu" });
+          continue;
+        }
+        const deliveryMode = typeof pi.metadata?.delivery_mode === "string" ? pi.metadata.delivery_mode : "";
+        if (deliveryMode === "pickup") {
+          errors.push({ sessionId, reason: "Retirada na loja — não precisa etiqueta" });
+          continue;
+        }
+        const shipping = pi.shipping ?? null;
+        if (!shipping?.address) {
+          errors.push({ sessionId, reason: "Pedido sem endereço de entrega" });
+          continue;
+        }
+        const addr = shipping.address;
+        const latestCharge = (pi as Stripe.PaymentIntent & { latest_charge?: Stripe.Charge | string | null })
+          .latest_charge;
+        const charge = latestCharge && typeof latestCharge === "object" ? (latestCharge as Stripe.Charge) : null;
+        const billing = charge?.billing_details ?? null;
+        const productName = allowedProductIds.get(metaProdutoId)!.name;
+        const receiverLine1 = [addr.line1, addr.line2].filter(Boolean).join(" — ");
+        const createdAt = new Date((pi.created ?? 0) * 1000);
+
+        etiquetas.push({
+          sessionId: pi.id,
+          orderNumber: pi.id.slice(-10).toUpperCase(),
+          dateLabel: createdAt.toLocaleDateString("pt-BR"),
+          amount: (pi.amount_received ?? pi.amount ?? 0) / 100,
+          productName,
+          receiver: {
+            name: shipping.name ?? billing?.name ?? "—",
+            phone: shipping.phone ?? billing?.phone ?? null,
+            line1: receiverLine1 || "—",
+            line2: null,
+            neighborhood: null,
+            city: addr.city ?? "",
+            state: addr.state ?? "",
+            postalCode: formatCep(addr.postal_code),
+          },
+        });
+        continue;
+      }
+
+      // ─── Fluxo Checkout Session (fluxo antigo / Payment Link) ────────────
+      const s = r.value as Stripe.Checkout.Session;
       const plink = typeof s.payment_link === "string" ? s.payment_link : s.payment_link?.id;
       if (!plink || !allowedPaymentLinks.has(plink)) {
         errors.push({ sessionId, reason: "Pedido não pertence a um produto seu" });

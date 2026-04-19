@@ -49,6 +49,7 @@ type ShippingOption = {
 type QuoteResponse = {
   options: ShippingOption[];
   fallback: boolean;
+  fallbackReason?: string;
 };
 
 type Selection =
@@ -77,6 +78,7 @@ export default function CheckoutPage({ params }: { params: Promise<{ subId: stri
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [options, setOptions] = useState<ShippingOption[] | null>(null);
   const [isFallback, setIsFallback] = useState(false);
+  const [fallbackReason, setFallbackReason] = useState<string | null>(null);
 
   const [selection, setSelection] = useState<Selection>(null);
 
@@ -117,6 +119,7 @@ export default function CheckoutPage({ params }: { params: Promise<{ subId: stri
       const data = json as QuoteResponse;
       setOptions(data.options);
       setIsFallback(data.fallback);
+      setFallbackReason(data.fallbackReason ?? null);
     } catch (e) {
       setQuoteError(e instanceof Error ? e.message : "Erro");
     } finally {
@@ -237,9 +240,14 @@ export default function CheckoutPage({ params }: { params: Promise<{ subId: stri
               ) : null}
 
               {isFallback && options && options.length > 0 ? (
-                <p className="text-[11px] text-amber-300/90 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2">
-                  Cotação em tempo real indisponível — usando valor padrão do vendedor.
-                </p>
+                <div className="text-[11px] text-amber-300/90 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2">
+                  <p>Cotação em tempo real indisponível — usando valor padrão do vendedor.</p>
+                  {fallbackReason ? (
+                    <p className="mt-1 text-[10px] text-amber-300/60 font-mono break-all">
+                      debug: {fallbackReason}
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
 
               {options && options.length > 0 ? (

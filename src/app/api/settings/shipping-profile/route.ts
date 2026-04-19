@@ -71,6 +71,18 @@ export async function POST(req: Request) {
     patch.shipping_sender_uf = patch.shipping_sender_uf.toUpperCase().slice(0, 2);
   }
 
+  // CEP brasileiro: só dígitos, exatamente 8. Rejeita se inválido.
+  if (patch.shipping_sender_cep) {
+    const cepDigits = patch.shipping_sender_cep.replace(/\D/g, "");
+    if (cepDigits.length !== 8) {
+      return NextResponse.json(
+        { error: "CEP precisa ter 8 dígitos (formato brasileiro: 00000-000)." },
+        { status: 400 },
+      );
+    }
+    patch.shipping_sender_cep = cepDigits;
+  }
+
   const { error } = await supabase.from("profiles").update(patch).eq("id", user.id);
   if (error) return NextResponse.json({ error: "Failed" }, { status: 500 });
 
