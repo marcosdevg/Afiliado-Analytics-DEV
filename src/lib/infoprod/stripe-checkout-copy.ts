@@ -9,6 +9,8 @@ import Stripe from "stripe";
 export type DeliveryMode = {
   allowShipping: boolean;
   allowPickup: boolean;
+  allowDigital?: boolean;
+  allowLocalDelivery?: boolean;
 };
 
 export type SenderSnapshot = {
@@ -52,6 +54,9 @@ export function buildSubmitMessage(
   senderAddress: string,
 ): string | null {
   const lines: string[] = [];
+  if (mode.allowDigital) {
+    lines.push("📩 Produto digital — você receberá o conteúdo via e-mail ou WhatsApp.");
+  }
   if (waUrl) {
     lines.push(`💬 Dúvidas? Fale com a loja no WhatsApp: ${waUrl}`);
   }
@@ -69,6 +74,9 @@ export function buildHostedConfirmationMessage(
   senderAddress: string,
 ): string | null {
   const lines: string[] = ["Seu pagamento foi aprovado! 🎉"];
+  if (mode.allowDigital) {
+    lines.push("Você receberá o conteúdo por e-mail ou WhatsApp em instantes.");
+  }
   if (mode.allowPickup && senderAddress && !mode.allowShipping) {
     lines.push(`Retire seu produto em: ${senderAddress}`);
   }

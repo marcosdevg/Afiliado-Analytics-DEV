@@ -15,7 +15,10 @@ type ProductRow = {
   stripe_subid: string | null;
   allow_shipping: boolean | null;
   allow_pickup: boolean | null;
+  allow_digital: boolean | null;
+  allow_local_delivery: boolean | null;
   shipping_cost: number | string | null;
+  local_delivery_cost: number | string | null;
   peso_g: number | string | null;
   altura_cm: number | string | null;
   largura_cm: number | string | null;
@@ -70,7 +73,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ subId: string 
     const { data: produto, error } = await supabase
       .from("produtos_infoprodutor")
       .select(
-        "id, user_id, name, description, image_url, price, price_old, provider, stripe_subid, allow_shipping, allow_pickup, shipping_cost, peso_g, altura_cm, largura_cm, comprimento_cm",
+        "id, user_id, name, description, image_url, price, price_old, provider, stripe_subid, allow_shipping, allow_pickup, allow_digital, allow_local_delivery, shipping_cost, local_delivery_cost, peso_g, altura_cm, largura_cm, comprimento_cm",
       )
       .eq("public_slug", slug)
       .eq("provider", "stripe")
@@ -119,8 +122,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ subId: string 
         imageUrl: row.image_url ?? null,
         price: num(row.price) ?? 0,
         priceOld: num(row.price_old),
-        allowShipping: row.allow_shipping !== false,
-        allowPickup: Boolean(row.allow_pickup),
+        allowShipping: Boolean(row.allow_shipping) && !row.allow_digital,
+        allowPickup: Boolean(row.allow_pickup) && !row.allow_digital,
+        allowDigital: Boolean(row.allow_digital),
+        allowLocalDelivery: Boolean(row.allow_local_delivery) && !row.allow_digital,
+        localDeliveryCost: row.allow_local_delivery ? num(row.local_delivery_cost) ?? 0 : null,
         hasDimensions,
       },
       pickupAddress,

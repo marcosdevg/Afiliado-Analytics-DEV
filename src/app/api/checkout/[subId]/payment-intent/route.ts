@@ -13,6 +13,9 @@ type ProductRow = {
   stripe_payment_link_id: string | null;
   allow_shipping: boolean | null;
   allow_pickup: boolean | null;
+  allow_digital: boolean | null;
+  allow_local_delivery: boolean | null;
+  local_delivery_cost: number | string | null;
 };
 
 type ProfileRow = {
@@ -35,22 +38,38 @@ export async function POST(req: Request, ctx: { params: Promise<{ subId: string 
     if (!slug) return NextResponse.json({ error: "slug obrigatório" }, { status: 400 });
 
     const body = await req.json().catch(() => ({}));
-    const mode = String(body?.mode ?? "shipping"); // "shipping" | "pickup"
+    const mode = String(body?.mode ?? "shipping"); // "shipping" | "pickup" | "digital" | "local_delivery"
     const shippingPrice = Number(body?.shippingPrice ?? 0);
     const shippingName = String(body?.shippingName ?? "Frete").trim() || "Frete";
+    const buyerWhatsapp =
+      typeof body?.buyerWhatsapp === "string" ? body.buyerWhatsapp.trim().slice(0, 40) : "";
+    const buyerEmail =
+      typeof body?.buyerEmail === "string" ? body.buyerEmail.trim().slice(0, 200) : "";
 
-    if (mode !== "shipping" && mode !== "pickup") {
+    if (mode !== "shipping" && mode !== "pickup" && mode !== "digital" && mode !== "local_delivery") {
       return NextResponse.json({ error: "Modo de entrega inválido" }, { status: 400 });
     }
     if (mode === "shipping" && (!Number.isFinite(shippingPrice) || shippingPrice < 0)) {
       return NextResponse.json({ error: "Valor de frete inválido" }, { status: 400 });
+    }
+    if (mode === "digital") {
+      const waDigits = buyerWhatsapp.replace(/\D/g, "");
+      if (waDigits.length < 10) {
+        return NextResponse.json(
+          { error: "Informe o WhatsApp com DDD (mínimo 10 dígitos)." },
+          { status: 400 },
+        );
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
+        return NextResponse.json({ error: "Informe um e-mail válido." }, { status: 400 });
+      }
     }
 
     const supabase = createAdminClient();
     const { data: produto, error } = await supabase
       .from("produtos_infoprodutor")
       .select(
-        "id, user_id, name, price, stripe_subid, stripe_payment_link_id, allow_shipping, allow_pickup",
+        "id, user_id, name, price, stripe_subid, stripe_payment_link_id, allow_shipping, allow_pickup, allow_digital, allow_local_delivery, local_delivery_cost",
       )
       .eq("public_slug", slug)
       .eq("provider", "stripe")
@@ -66,12 +85,24 @@ export async function POST(req: Request, ctx: { params: Promise<{ subId: string 
     if (mode === "pickup" && !row.allow_pickup) {
       return NextResponse.json({ error: "Produto não aceita retirada" }, { status: 400 });
     }
+    if (mode === "digital" && !row.allow_digital) {
+      return NextResponse.json({ error: "Produto não é digital" }, { status: 400 });
+    }
+    if (mode === "local_delivery" && !row.allow_local_delivery) {
+      return NextResponse.json({ error: "Produto não aceita entrega em casa" }, { status: 400 });
+    }
 
     const productPrice = num(row.price);
     if (productPrice <= 0) {
       return NextResponse.json({ error: "Produto sem preço válido" }, { status: 400 });
     }
-    const frete = mode === "pickup" ? 0 : shippingPrice;
+    const localDeliveryCost = num(row.local_delivery_cost);
+    const frete =
+      mode === "shipping"
+        ? shippingPrice
+        : mode === "local_delivery"
+          ? localDeliveryCost
+          : 0;
     const totalCents = Math.round((productPrice + frete) * 100);
 
     const { data: profile } = await supabase
@@ -118,9 +149,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ subId: string 
         stripe_subid: row.stripe_subid ?? "",
         stripe_payment_link_id: row.stripe_payment_link_id ?? "",
         delivery_mode: mode,
-        shipping_name: mode === "pickup" ? "Retirada na loja" : shippingName,
+        shipping_name:
+          mode === "pickup"
+            ? "Retirada na loja"
+            : mode === "digital"
+              ? "Entrega digital (WhatsApp/E-mail)"
+              : mode === "local_delivery"
+                ? "Receber em casa"
+                : shippingName,
         shipping_price_brl: frete.toFixed(2),
         product_price_brl: productPrice.toFixed(2),
+        ...(mode === "digital"
+          ? { buyer_whatsapp: buyerWhatsapp, buyer_email: buyerEmail }
+          : {}),
       },
     };
 

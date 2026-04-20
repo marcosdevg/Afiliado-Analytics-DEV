@@ -119,22 +119,39 @@ export async function POST(req: Request, context: { params: Promise<{ userId: st
       const billing = chargeObj?.billing_details;
       const shipping = fullIntent.shipping ?? null;
 
+      const metaBuyerWhatsapp = typeof meta.buyer_whatsapp === "string" ? meta.buyer_whatsapp : "";
+      const metaBuyerEmail = typeof meta.buyer_email === "string" ? meta.buyer_email : "";
+      const deliveryMode = typeof meta.delivery_mode === "string" ? meta.delivery_mode : "";
+
       const buyerName = shipping?.name ?? billing?.name ?? "—";
-      const buyerEmail = billing?.email ?? fullIntent.receipt_email ?? "—";
-      const buyerPhone = billing?.phone ?? shipping?.phone ?? "";
+      const buyerEmail =
+        (deliveryMode === "digital" && metaBuyerEmail) ||
+        billing?.email ||
+        fullIntent.receipt_email ||
+        "—";
+      const buyerPhone =
+        (deliveryMode === "digital" && metaBuyerWhatsapp) ||
+        billing?.phone ||
+        shipping?.phone ||
+        "";
 
       const amount = formatBRL(fullIntent.amount_received ?? fullIntent.amount ?? 0);
       const orderShort = fullIntent.id.slice(-10).toUpperCase();
       const shippingName = typeof meta.shipping_name === "string" ? meta.shipping_name : "";
-      const deliveryMode = typeof meta.delivery_mode === "string" ? meta.delivery_mode : "";
 
       let deliveryLine = "";
       let deliverySummaryForBuyer = "";
       if (shippingName) {
-        deliveryLine = `🚚 Entrega: ${shippingName}`;
+        const icon =
+          deliveryMode === "digital"
+            ? "📩"
+            : deliveryMode === "local_delivery"
+              ? "🏠"
+              : "🚚";
+        deliveryLine = `${icon} Entrega: ${shippingName}`;
         deliverySummaryForBuyer = shippingName;
       }
-      if (shipping?.address && deliveryMode !== "pickup") {
+      if (shipping?.address && deliveryMode !== "pickup" && deliveryMode !== "digital") {
         const addr = shipping.address;
         const line = [addr.line1, addr.line2].filter(Boolean).join(" — ");
         const cityUf = [addr.city, addr.state].filter(Boolean).join("/");

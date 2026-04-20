@@ -54,7 +54,10 @@ type Produto = {
   stripeSubid: string | null;
   allowShipping: boolean;
   allowPickup: boolean;
+  allowDigital: boolean;
+  allowLocalDelivery: boolean;
   shippingCost: number | null;
+  localDeliveryCost: number | null;
   thankYouMessage: string;
   pesoG: number | null;
   alturaCm: number | null;
@@ -170,7 +173,11 @@ export default function InfoprodutorPage() {
   const [formStripeSubid, setFormStripeSubid] = useState("");
   const [formAllowShipping, setFormAllowShipping] = useState(true);
   const [formAllowPickup, setFormAllowPickup] = useState(false);
+  const [formAllowDigital, setFormAllowDigital] = useState(false);
+  const [formAllowLocalDelivery, setFormAllowLocalDelivery] = useState(false);
   const [formShippingCost, setFormShippingCost] = useState("");
+  const [formLocalDeliveryCost, setFormLocalDeliveryCost] = useState("");
+  const [formDeliveryExpanded, setFormDeliveryExpanded] = useState(false);
   const [formPesoG, setFormPesoG] = useState("");
   const [formAlturaCm, setFormAlturaCm] = useState("");
   const [formLarguraCm, setFormLarguraCm] = useState("");
@@ -327,7 +334,10 @@ export default function InfoprodutorPage() {
     setFormStripeSubid("");
     setFormAllowShipping(true);
     setFormAllowPickup(false);
+    setFormAllowDigital(false);
+    setFormAllowLocalDelivery(false);
     setFormShippingCost("");
+    setFormLocalDeliveryCost("");
     setFormPesoG("");
     setFormAlturaCm("");
     setFormLarguraCm("");
@@ -404,12 +414,16 @@ export default function InfoprodutorPage() {
         setError("SubId: use apenas letras, números, hífen, ponto e underscore.");
         return;
       }
-      if (!formAllowShipping && !formAllowPickup) {
-        setError("Marque ao menos uma opção de entrega: envio ou retirada.");
+      if (!formAllowShipping && !formAllowPickup && !formAllowDigital && !formAllowLocalDelivery) {
+        setError("Marque ao menos uma opção de entrega.");
         return;
       }
-      if (formAllowShipping && !formShippingCost.trim()) {
+      if (!formAllowDigital && formAllowShipping && !formAllowLocalDelivery && !formShippingCost.trim()) {
         setError("Informe o valor do frete (use 0 para frete grátis).");
+        return;
+      }
+      if (formAllowLocalDelivery && !formLocalDeliveryCost.trim()) {
+        setError("Informe o valor da entrega em casa (use 0 para grátis).");
         return;
       }
     } else if (formMode === "edit" && formProvider === "stripe") {
@@ -444,13 +458,20 @@ export default function InfoprodutorPage() {
         basePayload.provider = "stripe";
         basePayload.price = priceNum;
         basePayload.stripeSubid = normalizedSubid;
-        basePayload.allowShipping = formAllowShipping;
-        basePayload.allowPickup = formAllowPickup;
-        basePayload.shippingCost = formAllowShipping
+        const effectiveLocalDelivery = !formAllowDigital && formAllowLocalDelivery;
+        const effectiveShipping = !formAllowDigital && !effectiveLocalDelivery && formAllowShipping;
+        basePayload.allowShipping = effectiveShipping;
+        basePayload.allowPickup = formAllowDigital ? false : formAllowPickup;
+        basePayload.allowDigital = formAllowDigital;
+        basePayload.allowLocalDelivery = effectiveLocalDelivery;
+        basePayload.shippingCost = effectiveShipping
           ? Number((formShippingCost || "0").replace(",", "."))
           : 0;
+        basePayload.localDeliveryCost = effectiveLocalDelivery
+          ? Number((formLocalDeliveryCost || "0").replace(",", "."))
+          : 0;
         basePayload.thankYouMessage = formThankYouMessage.trim();
-        if (formAllowShipping) {
+        if (effectiveShipping) {
           const toNum = (s: string) => Number((s || "").replace(",", "."));
           basePayload.pesoG = toNum(formPesoG);
           basePayload.alturaCm = toNum(formAlturaCm);
@@ -509,7 +530,10 @@ export default function InfoprodutorPage() {
     setFormStripeSubid(p.stripeSubid ?? "");
     setFormAllowShipping(p.allowShipping);
     setFormAllowPickup(p.allowPickup);
+    setFormAllowDigital(p.allowDigital ?? false);
+    setFormAllowLocalDelivery(p.allowLocalDelivery ?? false);
     setFormShippingCost(p.shippingCost != null ? String(p.shippingCost) : "");
+    setFormLocalDeliveryCost(p.localDeliveryCost != null ? String(p.localDeliveryCost) : "");
     setFormPesoG(p.pesoG != null ? String(p.pesoG) : "");
     setFormAlturaCm(p.alturaCm != null ? String(p.alturaCm) : "");
     setFormLarguraCm(p.larguraCm != null ? String(p.larguraCm) : "");
@@ -1197,31 +1221,20 @@ export default function InfoprodutorPage() {
                   </div>
 
                   <div className="space-y-3">
-                    <div>
-                      <label className="block text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest mb-1.5">
-                        <Link2 className="inline w-2.5 h-2.5 mr-1" /> Link de venda
-                        {formProvider === "stripe" ? (
-                          <span className="ml-1.5 normal-case tracking-normal text-[9px] text-[#635bff]">
-                            (gerado pela Stripe)
-                          </span>
-                        ) : null}
-                      </label>
-                      <input
-                        type="url"
-                        value={formProvider === "stripe" && formMode === "create" ? "" : formLink}
-                        onChange={(e) => setFormLink(e.target.value)}
-                        readOnly={formProvider === "stripe"}
-                        disabled={formProvider === "stripe"}
-                        placeholder={
-                          formProvider === "stripe"
-                            ? "Será gerado automaticamente na Stripe após salvar"
-                            : "https://pay.hotmart.com/..."
-                        }
-                        className={`w-full bg-[#222228] border border-[#3e3e46] rounded-xl px-3 py-2.5 text-[11px] text-[#f0f0f2] placeholder:text-[#868686] focus:border-[#e24c30] outline-none transition ${
-                          formProvider === "stripe" ? "opacity-60 cursor-not-allowed" : ""
-                        }`}
-                      />
-                    </div>
+                    {formProvider !== "stripe" ? (
+                      <div>
+                        <label className="block text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest mb-1.5">
+                          <Link2 className="inline w-2.5 h-2.5 mr-1" /> Link de venda
+                        </label>
+                        <input
+                          type="url"
+                          value={formLink}
+                          onChange={(e) => setFormLink(e.target.value)}
+                          placeholder="https://pay.hotmart.com/..."
+                          className="w-full bg-[#222228] border border-[#3e3e46] rounded-xl px-3 py-2.5 text-[11px] text-[#f0f0f2] placeholder:text-[#868686] focus:border-[#e24c30] outline-none transition"
+                        />
+                      </div>
+                    ) : null}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest mb-1.5">
@@ -1280,18 +1293,49 @@ export default function InfoprodutorPage() {
 
                     {formProvider === "stripe" ? (
                       <div className="space-y-2">
-                        <label className="block text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest">
-                          Formas de entrega
-                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setFormDeliveryExpanded((v) => !v)}
+                          className="w-full flex items-center justify-between gap-2 text-left px-3 py-2.5 rounded-xl border border-[#3e3e46] bg-[#222228] hover:border-[#635bff]/40 transition-colors"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest">
+                              Formas de entrega
+                            </p>
+                            <p className="text-[10px] text-[#9a9aa2] mt-0.5 truncate">
+                              {(() => {
+                                const opts: string[] = [];
+                                if (formAllowDigital) opts.push("Digital");
+                                else {
+                                  if (formAllowShipping) opts.push("Correios");
+                                  if (formAllowPickup) opts.push("Retirada");
+                                  if (formAllowLocalDelivery) opts.push("Receber em casa");
+                                }
+                                return opts.length > 0 ? opts.join(" · ") : "Nenhuma selecionada";
+                              })()}
+                            </p>
+                          </div>
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 text-[#9a9aa2] shrink-0 transition-transform ${
+                              formDeliveryExpanded ? "rotate-180" : ""
+                            }`}
+                          />
+                        </button>
+                        {formDeliveryExpanded ? (
+                        <>
                         <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px] gap-3 items-start">
-                          <label className={`flex items-start gap-2 p-3 rounded-xl border cursor-pointer transition-colors ${
-                            formAllowShipping ? "border-[#635bff]/50 bg-[#635bff]/8" : "border-[#3e3e46] bg-[#222228] hover:border-[#635bff]/30"
+                          <label className={`flex items-start gap-2 p-3 rounded-xl border transition-colors ${
+                            formAllowDigital || formAllowLocalDelivery
+                              ? "border-[#3e3e46] bg-[#222228] opacity-40 cursor-not-allowed"
+                              : formAllowShipping
+                                ? "border-[#635bff]/50 bg-[#635bff]/8 cursor-pointer"
+                                : "border-[#3e3e46] bg-[#222228] hover:border-[#635bff]/30 cursor-pointer"
                           }`}>
                             <input
                               type="checkbox"
-                              checked={formAllowShipping}
+                              checked={formAllowShipping && !formAllowDigital && !formAllowLocalDelivery}
                               onChange={(e) => setFormAllowShipping(e.target.checked)}
-                              disabled={formMode === "edit"}
+                              disabled={formMode === "edit" || formAllowDigital || formAllowLocalDelivery}
                               className="mt-0.5 w-4 h-4 rounded border-[#3e3e46] bg-[#222228] accent-[#635bff] shrink-0"
                             />
                             <div className="min-w-0 flex-1">
@@ -1310,13 +1354,13 @@ export default function InfoprodutorPage() {
                               inputMode="decimal"
                               value={formShippingCost}
                               onChange={(e) => setFormShippingCost(e.target.value)}
-                              disabled={!formAllowShipping || formMode === "edit"}
+                              disabled={!formAllowShipping || formAllowDigital || formAllowLocalDelivery || formMode === "edit"}
                               placeholder="0,00"
                               className="w-full bg-[#222228] border border-[#3e3e46] rounded-xl px-3 py-2 text-[11px] text-[#f0f0f2] placeholder:text-[#868686] focus:border-[#635bff] outline-none transition disabled:opacity-40"
                             />
                           </div>
                         </div>
-                        {formAllowShipping ? (
+                        {formAllowShipping && !formAllowDigital && !formAllowLocalDelivery ? (
                           <div>
                             <label className="block text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest mb-1.5">
                               Dimensões do produto{" "}
@@ -1375,20 +1419,24 @@ export default function InfoprodutorPage() {
                           </div>
                         ) : null}
 
-                        {formAllowShipping && formMode !== "edit" ? (
+                        {formAllowShipping && !formAllowDigital && !formAllowLocalDelivery && formMode !== "edit" ? (
                           <FreteCalculator
                             onPick={(v) => setFormShippingCost(v)}
                             disabled={!formAllowShipping}
                           />
                         ) : null}
-                        <label className={`flex items-start gap-2 p-3 rounded-xl border cursor-pointer transition-colors ${
-                          formAllowPickup ? "border-[#635bff]/50 bg-[#635bff]/8" : "border-[#3e3e46] bg-[#222228] hover:border-[#635bff]/30"
+                        <label className={`flex items-start gap-2 p-3 rounded-xl border transition-colors ${
+                          formAllowDigital
+                            ? "border-[#3e3e46] bg-[#222228] opacity-40 cursor-not-allowed"
+                            : formAllowPickup
+                              ? "border-[#635bff]/50 bg-[#635bff]/8 cursor-pointer"
+                              : "border-[#3e3e46] bg-[#222228] hover:border-[#635bff]/30 cursor-pointer"
                         }`}>
                           <input
                             type="checkbox"
-                            checked={formAllowPickup}
+                            checked={formAllowPickup && !formAllowDigital}
                             onChange={(e) => setFormAllowPickup(e.target.checked)}
-                            disabled={formMode === "edit"}
+                            disabled={formMode === "edit" || formAllowDigital}
                             className="mt-0.5 w-4 h-4 rounded border-[#3e3e46] bg-[#222228] accent-[#635bff] shrink-0"
                           />
                           <div className="min-w-0 flex-1">
@@ -1398,10 +1446,81 @@ export default function InfoprodutorPage() {
                             </p>
                           </div>
                         </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-[1fr_140px] gap-3 items-start">
+                          <label className={`flex items-start gap-2 p-3 rounded-xl border transition-colors ${
+                            formAllowDigital
+                              ? "border-[#3e3e46] bg-[#222228] opacity-40 cursor-not-allowed"
+                              : formAllowLocalDelivery
+                                ? "border-[#635bff]/50 bg-[#635bff]/8 cursor-pointer"
+                                : "border-[#3e3e46] bg-[#222228] hover:border-[#635bff]/30 cursor-pointer"
+                          }`}>
+                            <input
+                              type="checkbox"
+                              checked={formAllowLocalDelivery && !formAllowDigital}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setFormAllowLocalDelivery(checked);
+                                if (checked) setFormAllowShipping(false);
+                                else setFormAllowShipping(true);
+                              }}
+                              disabled={formMode === "edit" || formAllowDigital}
+                              className="mt-0.5 w-4 h-4 rounded border-[#3e3e46] bg-[#222228] accent-[#635bff] shrink-0"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[11px] font-semibold text-[#f0f0f2]">Receber em casa</p>
+                              <p className="text-[9px] text-[#9a9aa2] mt-0.5 leading-relaxed">
+                                Você entrega no endereço do comprador. Valor fixo (sem cálculo de frete). Não convive com Correios.
+                              </p>
+                            </div>
+                          </label>
+                          <div>
+                            <label className="block text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest mb-1">
+                              Valor da entrega
+                            </label>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={formLocalDeliveryCost}
+                              onChange={(e) => setFormLocalDeliveryCost(e.target.value)}
+                              disabled={!formAllowLocalDelivery || formAllowDigital || formMode === "edit"}
+                              placeholder="0,00"
+                              className="w-full bg-[#222228] border border-[#3e3e46] rounded-xl px-3 py-2 text-[11px] text-[#f0f0f2] placeholder:text-[#868686] focus:border-[#635bff] outline-none transition disabled:opacity-40"
+                            />
+                          </div>
+                        </div>
+                        <label className={`flex items-start gap-2 p-3 rounded-xl border cursor-pointer transition-colors ${
+                          formAllowDigital ? "border-emerald-500/50 bg-emerald-500/8" : "border-[#3e3e46] bg-[#222228] hover:border-emerald-500/30"
+                        }`}>
+                          <input
+                            type="checkbox"
+                            checked={formAllowDigital}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setFormAllowDigital(checked);
+                              if (checked) {
+                                setFormAllowShipping(false);
+                                setFormAllowPickup(false);
+                                setFormAllowLocalDelivery(false);
+                              } else {
+                                setFormAllowShipping(true);
+                              }
+                            }}
+                            disabled={formMode === "edit"}
+                            className="mt-0.5 w-4 h-4 rounded border-[#3e3e46] bg-[#222228] accent-emerald-500 shrink-0"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-semibold text-[#f0f0f2]">Entrega digital (WhatsApp/E-mail)</p>
+                            <p className="text-[9px] text-[#9a9aa2] mt-0.5 leading-relaxed">
+                              Pra ebooks e produtos digitais. Cliente informa WhatsApp + e-mail no checkout e recebe o conteúdo por lá. Exclusivo — desmarca as demais.
+                            </p>
+                          </div>
+                        </label>
                         {formMode === "edit" ? (
                           <p className="text-[9px] text-[#7a7a80] italic">
                             Modos de entrega não podem ser editados em produtos já criados. Remova e crie de novo se precisar alterar.
                           </p>
+                        ) : null}
+                        </>
                         ) : null}
                       </div>
                     ) : null}
@@ -1410,7 +1529,7 @@ export default function InfoprodutorPage() {
                       <div>
                         <label className="flex items-center gap-1.5 text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest mb-1.5">
                           <MessageCircle className="inline w-2.5 h-2.5 text-emerald-400" />
-                          <span>Mensagem de agradecimento ao comprador</span>
+                          <span>Mensagem que será enviada ao whtatsapp do comprador pós compra!</span>
                           <span className="text-[#9a9aa2] normal-case tracking-normal">(opcional)</span>
                           <Toolist
                             variant="floating"

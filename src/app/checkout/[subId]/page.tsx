@@ -9,6 +9,8 @@ import {
   CreditCard,
   Package,
   Settings2,
+  Mail,
+  Home,
 } from "lucide-react";
 import { loadStripe } from "@stripe/stripe-js";
 import {
@@ -29,6 +31,9 @@ type Produto = {
   priceOld: number | null;
   allowShipping: boolean;
   allowPickup: boolean;
+  allowDigital: boolean;
+  allowLocalDelivery: boolean;
+  localDeliveryCost: number | null;
   hasDimensions: boolean;
 };
 
@@ -103,6 +108,8 @@ type QuoteResponse = {
 type Selection =
   | { type: "shipping"; option: ShippingOption }
   | { type: "pickup" }
+  | { type: "digital" }
+  | { type: "local_delivery" }
   | null;
 
 function formatBRL(v: number): string {
@@ -129,6 +136,14 @@ export default function CheckoutPage({ params }: { params: Promise<{ subId: stri
   const [fallbackReason, setFallbackReason] = useState<string | null>(null);
 
   const [selection, setSelection] = useState<Selection>(null);
+  const [buyerWhatsapp, setBuyerWhatsapp] = useState("");
+  const [buyerEmail, setBuyerEmail] = useState("");
+
+  useEffect(() => {
+    if (info?.produto.allowDigital && !selection) {
+      setSelection({ type: "digital" });
+    }
+  }, [info, selection]);
 
   useEffect(() => {
     let alive = true;
@@ -219,6 +234,8 @@ export default function CheckoutPage({ params }: { params: Promise<{ subId: stri
 
   const hasShippingFlow = produto.allowShipping;
   const hasPickupFlow = produto.allowPickup && pickupAddress;
+  const hasDigitalFlow = produto.allowDigital;
+  const hasLocalDeliveryFlow = produto.allowLocalDelivery;
 
   return (
     <div className="min-h-screen px-4 py-10" style={{ background: palette.bg, color: palette.text }}>
@@ -291,6 +308,29 @@ export default function CheckoutPage({ params }: { params: Promise<{ subId: stri
           >
             Entrega
           </h2>
+
+          {hasDigitalFlow ? (
+            <div
+              className="rounded-xl border px-4 py-3.5 flex items-start gap-3"
+              style={{
+                background: palette.mode === "light" ? "#ecfdf5" : "#10b9811a",
+                borderColor: palette.mode === "light" ? "#34d39966" : "#10b98155",
+              }}
+            >
+              <Mail
+                className="w-5 h-5 shrink-0 mt-0.5"
+                style={{ color: palette.emerald }}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold" style={{ color: palette.text }}>
+                  Produto digital
+                </p>
+                <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: palette.textMuted }}>
+                  Você receberá o conteúdo via e-mail ou WhatsApp logo após a confirmação do pagamento.
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           {hasShippingFlow ? (
             <div className="space-y-3">
@@ -420,6 +460,46 @@ export default function CheckoutPage({ params }: { params: Promise<{ subId: stri
               </label>
             </div>
           ) : null}
+
+          {hasLocalDeliveryFlow ? (
+            <div className="pt-1">
+              <label
+                className="flex items-start gap-3 px-3 py-3 rounded-xl border cursor-pointer transition-colors"
+                style={{
+                  background: selection?.type === "local_delivery" ? "#635bff1a" : palette.inputBg,
+                  borderColor:
+                    selection?.type === "local_delivery" ? palette.accent : palette.inputBorder,
+                }}
+              >
+                <input
+                  type="radio"
+                  name="delivery"
+                  checked={selection?.type === "local_delivery"}
+                  onChange={() => setSelection({ type: "local_delivery" })}
+                  className="mt-0.5 w-4 h-4 accent-[#635bff] shrink-0"
+                />
+                <Home className="w-4 h-4 shrink-0 mt-0.5" style={{ color: palette.accent }} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[13px] font-semibold" style={{ color: palette.text }}>
+                      Receber em casa
+                    </p>
+                    <span
+                      className="text-[12px] font-mono font-bold"
+                      style={{ color: palette.emerald }}
+                    >
+                      {(produto.localDeliveryCost ?? 0) > 0
+                        ? formatBRL(produto.localDeliveryCost ?? 0)
+                        : "Grátis"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: palette.textFaint }}>
+                    A loja entrega no seu endereço. Informe endereço e WhatsApp ao pagar.
+                  </p>
+                </div>
+              </label>
+            </div>
+          ) : null}
         </div>
 
         {/* Pagamento */}
@@ -430,6 +510,10 @@ export default function CheckoutPage({ params }: { params: Promise<{ subId: stri
             selection={selection}
             publishableKey={publishableKey}
             palette={palette}
+            buyerWhatsapp={buyerWhatsapp}
+            setBuyerWhatsapp={setBuyerWhatsapp}
+            buyerEmail={buyerEmail}
+            setBuyerEmail={setBuyerEmail}
           />
         ) : (
           <div
@@ -472,23 +556,47 @@ function PaymentSection({
   selection,
   publishableKey,
   palette,
+  buyerWhatsapp,
+  setBuyerWhatsapp,
+  buyerEmail,
+  setBuyerEmail,
 }: {
   slug: string;
   produto: Produto;
   selection: NonNullable<Selection>;
   publishableKey: string;
   palette: ThemePalette;
+  buyerWhatsapp: string;
+  setBuyerWhatsapp: (v: string) => void;
+  buyerEmail: string;
+  setBuyerEmail: (v: string) => void;
 }) {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const frete = selection.type === "shipping" ? selection.option.price : 0;
+  const frete =
+    selection.type === "shipping"
+      ? selection.option.price
+      : selection.type === "local_delivery"
+        ? (produto.localDeliveryCost ?? 0)
+        : 0;
   const total = produto.price + frete;
+  const isDigital = selection.type === "digital";
 
   const stripePromise = useMemo(() => loadStripe(publishableKey), [publishableKey]);
 
+  const waDigits = buyerWhatsapp.replace(/\D/g, "");
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail.trim());
+  const digitalReady = !isDigital || (waDigits.length >= 10 && emailValid);
+
   useEffect(() => {
+    if (!digitalReady) {
+      setClientSecret(null);
+      setError(null);
+      setCreating(false);
+      return;
+    }
     let alive = true;
     setClientSecret(null);
     setError(null);
@@ -498,11 +606,19 @@ function PaymentSection({
         const payload =
           selection.type === "pickup"
             ? { mode: "pickup" }
-            : {
-                mode: "shipping",
-                shippingPrice: selection.option.price,
-                shippingName: selection.option.name,
-              };
+            : selection.type === "digital"
+              ? {
+                  mode: "digital",
+                  buyerWhatsapp: buyerWhatsapp.trim(),
+                  buyerEmail: buyerEmail.trim(),
+                }
+              : selection.type === "local_delivery"
+                ? { mode: "local_delivery" }
+                : {
+                    mode: "shipping",
+                    shippingPrice: selection.option.price,
+                    shippingName: selection.option.name,
+                  };
         const res = await fetch(`/api/checkout/${encodeURIComponent(slug)}/payment-intent`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -522,57 +638,116 @@ function PaymentSection({
     return () => {
       alive = false;
     };
-  }, [slug, selection]);
+  }, [slug, selection, digitalReady, buyerWhatsapp, buyerEmail]);
+
+  const digitalForm = isDigital ? (
+    <div
+      className="rounded-xl border p-5 space-y-3"
+      style={{ background: palette.cardBg, borderColor: palette.cardBorder }}
+    >
+      <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: palette.textMuted }}>
+        Onde você quer receber?
+      </h2>
+      <p className="text-[11px]" style={{ color: palette.textFaint }}>
+        O conteúdo chega via e-mail e WhatsApp assim que o pagamento for confirmado.
+      </p>
+      <div className="space-y-2">
+        <label className="block text-[11px] font-semibold" style={{ color: palette.textMuted }}>
+          E-mail
+        </label>
+        <input
+          type="email"
+          value={buyerEmail}
+          onChange={(e) => setBuyerEmail(e.target.value)}
+          placeholder="voce@email.com"
+          className="w-full rounded-xl px-3 py-2.5 text-[13px] border outline-none focus:border-[#635bff]"
+          style={{ background: palette.inputBg, borderColor: palette.inputBorder, color: palette.text }}
+        />
+      </div>
+      <div className="space-y-2">
+        <label className="block text-[11px] font-semibold" style={{ color: palette.textMuted }}>
+          WhatsApp (com DDD)
+        </label>
+        <input
+          type="tel"
+          value={buyerWhatsapp}
+          onChange={(e) => setBuyerWhatsapp(e.target.value)}
+          placeholder="(11) 99999-9999"
+          className="w-full rounded-xl px-3 py-2.5 text-[13px] border outline-none focus:border-[#635bff]"
+          style={{ background: palette.inputBg, borderColor: palette.inputBorder, color: palette.text }}
+        />
+      </div>
+      {!digitalReady ? (
+        <p className="text-[11px]" style={{ color: palette.textFaint }}>
+          Preencha e-mail e WhatsApp válidos pra liberar o pagamento.
+        </p>
+      ) : null}
+    </div>
+  ) : null;
+
+  if (!digitalReady) {
+    return <>{digitalForm}</>;
+  }
 
   if (creating) {
     return (
-      <div
-        className="rounded-xl border p-8 flex items-center justify-center"
-        style={{ background: palette.cardBg, borderColor: palette.cardBorder }}
-      >
-        <Loader2 className="w-6 h-6 animate-spin" style={{ color: palette.accent }} />
-      </div>
+      <>
+        {digitalForm}
+        <div
+          className="rounded-xl border p-8 flex items-center justify-center"
+          style={{ background: palette.cardBg, borderColor: palette.cardBorder }}
+        >
+          <Loader2 className="w-6 h-6 animate-spin" style={{ color: palette.accent }} />
+        </div>
+      </>
     );
   }
 
   if (error) {
     return (
-      <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
-        <p className="text-[12px] text-red-300">{error}</p>
-      </div>
+      <>
+        {digitalForm}
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
+          <p className="text-[12px] text-red-300">{error}</p>
+        </div>
+      </>
     );
   }
 
   if (!clientSecret) return null;
 
   return (
-    <Elements
-      stripe={stripePromise}
-      options={{
-        clientSecret,
-        appearance: {
-          theme: palette.mode === "light" ? "stripe" : "night",
-          variables: {
-            colorPrimary: palette.accent,
-            colorBackground: palette.inputBg,
-            colorText: palette.text,
-            colorDanger: "#ef4444",
-            fontFamily: "Inter, system-ui, sans-serif",
-            borderRadius: "10px",
+    <>
+      {digitalForm}
+      <Elements
+        stripe={stripePromise}
+        options={{
+          clientSecret,
+          appearance: {
+            theme: palette.mode === "light" ? "stripe" : "night",
+            variables: {
+              colorPrimary: palette.accent,
+              colorBackground: palette.inputBg,
+              colorText: palette.text,
+              colorDanger: "#ef4444",
+              fontFamily: "Inter, system-ui, sans-serif",
+              borderRadius: "10px",
+            },
           },
-        },
-        loader: "auto",
-      }}
-    >
-      <CheckoutForm
-        total={total}
-        productPrice={produto.price}
-        frete={frete}
-        showShippingAddress={selection.type === "shipping"}
-        slug={slug}
-        palette={palette}
-      />
-    </Elements>
+          loader: "auto",
+        }}
+      >
+        <CheckoutForm
+          total={total}
+          productPrice={produto.price}
+          frete={frete}
+          showShippingAddress={selection.type === "shipping" || selection.type === "local_delivery"}
+          digitalEmail={isDigital ? buyerEmail.trim() : ""}
+          slug={slug}
+          palette={palette}
+        />
+      </Elements>
+    </>
   );
 }
 
@@ -581,6 +756,7 @@ function CheckoutForm({
   productPrice,
   frete,
   showShippingAddress,
+  digitalEmail,
   slug: slugForReturn,
   palette,
 }: {
@@ -588,6 +764,7 @@ function CheckoutForm({
   productPrice: number;
   frete: number;
   showShippingAddress: boolean;
+  digitalEmail: string;
   slug: string;
   palette: ThemePalette;
 }) {
@@ -620,7 +797,7 @@ function CheckoutForm({
         <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: palette.textMuted }}>
           Seus dados
         </h2>
-        <LinkAuthenticationElement options={{ defaultValues: { email: "" } }} />
+        <LinkAuthenticationElement options={{ defaultValues: { email: digitalEmail } }} />
         {showShippingAddress ? (
           <AddressElement
             options={{

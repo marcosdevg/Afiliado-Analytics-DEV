@@ -44,7 +44,10 @@ type Row = {
   stripe_subid: string | null;
   allow_shipping: boolean | null;
   allow_pickup: boolean | null;
+  allow_digital: boolean | null;
+  allow_local_delivery: boolean | null;
   shipping_cost: number | string | null;
+  local_delivery_cost: number | string | null;
   stripe_account_id: string | null;
   thank_you_message: string | null;
   peso_g: number | string | null;
@@ -77,7 +80,10 @@ function mapProduto(r: Record<string, unknown>) {
     stripeSubid: (r.stripe_subid as string | null) ?? null,
     allowShipping: r.allow_shipping === null || r.allow_shipping === undefined ? true : Boolean(r.allow_shipping),
     allowPickup: Boolean(r.allow_pickup ?? false),
+    allowDigital: Boolean(r.allow_digital ?? false),
+    allowLocalDelivery: Boolean(r.allow_local_delivery ?? false),
     shippingCost: numOrNull(r.shipping_cost),
+    localDeliveryCost: numOrNull(r.local_delivery_cost),
     stripeAccountId: (r.stripe_account_id as string | null) ?? null,
     thankYouMessage: (r.thank_you_message as string | null) ?? "",
     pesoG: numOrNull(r.peso_g),
@@ -91,7 +97,7 @@ function mapProduto(r: Record<string, unknown>) {
 }
 
 const SELECT =
-  "id, user_id, name, description, image_url, link, price, price_old, provider, stripe_product_id, stripe_price_id, stripe_payment_link_id, stripe_subid, allow_shipping, allow_pickup, shipping_cost, stripe_account_id, thank_you_message, peso_g, altura_cm, largura_cm, comprimento_cm, public_slug, created_at, updated_at";
+  "id, user_id, name, description, image_url, link, price, price_old, provider, stripe_product_id, stripe_price_id, stripe_payment_link_id, stripe_subid, allow_shipping, allow_pickup, allow_digital, allow_local_delivery, shipping_cost, local_delivery_cost, stripe_account_id, thank_you_message, peso_g, altura_cm, largura_cm, comprimento_cm, public_slug, created_at, updated_at";
 
 const SUBID_REGEX = /^[a-zA-Z0-9_\-.]+$/;
 
@@ -236,12 +242,15 @@ export async function POST(req: Request) {
       };
       const senderAddress = formatSenderAddressShort(senderSnapshot);
 
-      // Modo de entrega (aceita envio, aceita retirada, valor do frete)
-      const allowShipping = body?.allowShipping !== false; // default true
-      const allowPickup = body?.allowPickup === true; // default false
-      if (!allowShipping && !allowPickup) {
+      // Modo de entrega (aceita envio, aceita retirada, digital, receber em casa).
+      // Digital é exclusivo. "Receber em casa" não convive com Correios.
+      const allowDigital = body?.allowDigital === true;
+      const allowLocalDelivery = allowDigital ? false : body?.allowLocalDelivery === true;
+      const allowShipping = allowDigital || allowLocalDelivery ? false : body?.allowShipping !== false;
+      const allowPickup = allowDigital ? false : body?.allowPickup === true;
+      if (!allowShipping && !allowPickup && !allowDigital && !allowLocalDelivery) {
         return NextResponse.json(
-          { error: "Marque ao menos uma opção de entrega: envio ou retirada." },
+          { error: "Marque ao menos uma opção de entrega." },
           { status: 400 },
         );
       }
@@ -258,6 +267,19 @@ export async function POST(req: Request) {
           { status: 400 },
         );
       }
+      const localDeliveryCostRaw = body?.localDeliveryCost;
+      const localDeliveryCost =
+        localDeliveryCostRaw == null || localDeliveryCostRaw === ""
+          ? null
+          : Number.isFinite(Number(localDeliveryCostRaw))
+            ? Math.max(0, Number(localDeliveryCostRaw))
+            : null;
+      if (allowLocalDelivery && (localDeliveryCost == null || localDeliveryCost < 0)) {
+        return NextResponse.json(
+          { error: "Informe o valor da entrega em casa (use 0 para grátis)." },
+          { status: 400 },
+        );
+      }
       if (allowPickup && !senderAddress) {
         return NextResponse.json(
           {
@@ -268,7 +290,7 @@ export async function POST(req: Request) {
         );
       }
 
-      const mode: DeliveryMode = { allowShipping, allowPickup };
+      const mode: DeliveryMode = { allowShipping, allowPickup, allowDigital, allowLocalDelivery };
 
       const stripe = new Stripe(stripeKey);
 
@@ -343,12 +365,16 @@ export async function POST(req: Request) {
         allowShipping && pesoGVal !== null && alturaCmVal !== null && larguraCmVal !== null && comprimentoCmVal !== null;
 
       // Gera slug público único pra checkout (`public_slug`). Independe de dimensões —
-      // todo produto Stripe ganha slug. Se há dimensões, o `link` aponta pro checkout
-      // dinâmico nosso; caso contrário, pro Payment Link estático da Stripe.
+      // todo produto Stripe ganha slug. Casos que vão pro checkout dinâmico nosso:
+      //   - Correios com dimensões (cotação dinâmica)
+      //   - Digital (precisa coletar WhatsApp/e-mail)
+      //   - Receber em casa (valor fixo nosso, não existe no Payment Link)
+      //   - Só retirada na loja (sem frete pra cobrar — melhor o nosso UI)
       const publicSlug = await generateUniquePublicSlug(supabase, name);
       const appUrl = getAppPublicUrl();
+      const onlyPickup = allowPickup && !allowShipping && !allowDigital && !allowLocalDelivery;
       const publicLink =
-        hasDimensions && appUrl
+        (hasDimensions || allowDigital || allowLocalDelivery || onlyPickup) && appUrl
           ? `${appUrl}/checkout/${encodeURIComponent(publicSlug)}`
           : paymentLinkUrl;
 
@@ -370,7 +396,10 @@ export async function POST(req: Request) {
           stripe_subid: stripeSubid,
           allow_shipping: allowShipping,
           allow_pickup: allowPickup,
+          allow_digital: allowDigital,
+          allow_local_delivery: allowLocalDelivery,
           shipping_cost: allowShipping ? (shippingCost ?? 0) : null,
+          local_delivery_cost: allowLocalDelivery ? (localDeliveryCost ?? 0) : null,
           stripe_account_id: userStripeAccountId,
           thank_you_message:
             typeof body?.thankYouMessage === "string" && body.thankYouMessage.trim()
