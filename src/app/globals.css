@@ -703,6 +703,13 @@ html.light section[class*="bg-[linear-gradient(90deg"] * {
 html.light section[class*="bg-[linear-gradient(90deg"] [class*="text-white"] {
   color: #FFFFFF !important;
 }
+/* Overlay interno da seção laranja: torna transparente pra não cobrir o laranja.
+ * Sem esse reset, meu rule global para "bg-[linear-gradient(180deg,rgba(255,255,255..."
+ * pinta esse overlay de branco, escondendo a faixa.
+ */
+html.light section[class*="bg-[linear-gradient(90deg"] [class*="bg-[linear-gradient(180deg,rgba(255,255,255"] {
+  background: transparent !important;
+}
 
 /* —— Header: borda/shadow inferior no modo claro para separar do body —— */
 html.light header.sticky {
