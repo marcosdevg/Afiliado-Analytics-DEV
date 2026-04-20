@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { User, LogOut, Menu, X } from 'lucide-react'
 import { useSupabase } from '../auth/AuthProvider'
 import { usePathname, useRouter } from 'next/navigation'
+import { ThemeToggle } from '../theme/ThemeToggle'
 
 type HeaderProps = {
   onLoginClick: () => void
@@ -198,6 +199,8 @@ export function Header({ onLoginClick }: HeaderProps) {
                 <span>Minha Conta</span>
               </Link>
 
+              <ThemeToggle />
+
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
@@ -207,7 +210,8 @@ export function Header({ onLoginClick }: HeaderProps) {
               </button>
             </div>
 
-            <div className="relative sm:hidden">
+            <div className="relative flex items-center gap-3 sm:hidden">
+              <ThemeToggle />
               <button
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                 aria-label="Abrir menu do usuário"

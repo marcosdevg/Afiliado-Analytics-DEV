@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import type { ChartOptions } from 'chart.js';
+import { useChartColors } from '../../components/theme/useChartColors';
 
 // Carrega o Bar somente no cliente (sem SSR).
 const Bar = dynamic(() => import('react-chartjs-2').then(m => m.Bar), {
@@ -17,6 +18,7 @@ const formatCurrency = (value: number) =>
   `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function TopCategoriesChart({ data = [] }: { data: TopCategoryData[] }) {
+  const c = useChartColors();
   const options: ChartOptions<'bar'> = {
     indexAxis: 'y' as const,
     responsive: true,
@@ -29,7 +31,7 @@ export default function TopCategoriesChart({ data = [] }: { data: TopCategoryDat
       title: {
         display: true,
         text: 'Top 5 Categorias (L1) por Comissão Líquida',
-        color: '#FFFFFF',
+        color: c.text,
         font: {
           size: 18,
           weight: 'bold',
@@ -40,10 +42,10 @@ export default function TopCategoriesChart({ data = [] }: { data: TopCategoryDat
         },
       },
       tooltip: {
-        backgroundColor: '#18181B',
-        titleColor: '#FFFFFF',
-        bodyColor: '#E9E9E9',
-        borderColor: '#27272A',
+        backgroundColor: c.tooltipBg,
+        titleColor: c.tooltipTitle,
+        bodyColor: c.tooltipBody,
+        borderColor: c.tooltipBorder,
         borderWidth: 1,
         padding: 12,
         cornerRadius: 8,
@@ -58,17 +60,17 @@ export default function TopCategoriesChart({ data = [] }: { data: TopCategoryDat
     },
     scales: {
       x: {
-        grid: { color: 'rgba(233, 233, 233, 0.1)' },
-        ticks: { color: '#E9E9E9' },
+        grid: { color: c.grid },
+        ticks: { color: c.textSecondary },
         title: {
           display: true,
           text: 'Comissão Líquida (R$)',
-          color: '#E9E9E9',
+          color: c.textSecondary,
         },
       },
       y: {
-        grid: { color: 'rgba(233, 233, 233, 0.1)' },
-        ticks: { color: '#E9E9E9' },
+        grid: { color: c.grid },
+        ticks: { color: c.textSecondary },
       },
     },
   };

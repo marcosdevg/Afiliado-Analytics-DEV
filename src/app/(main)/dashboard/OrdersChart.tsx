@@ -10,6 +10,7 @@ import type {
   ChartData,
 } from 'chart.js';
 import type { TemporalChartData } from '@/types';
+import { useChartColors } from '../../components/theme/useChartColors';
 
 // Carrega o Bar somente no cliente (sem SSR).
 const Bar = dynamic(() => import('react-chartjs-2').then(m => m.Bar), {
@@ -43,6 +44,7 @@ function OrdersChartComponent({
     { id: 'month', label: 'Por Mês' },
   ];
 
+  const c = useChartColors();
   const options: ChartOptions<'bar'> = {
     responsive: true,
     maintainAspectRatio: false,
@@ -53,13 +55,13 @@ function OrdersChartComponent({
       },
       tooltip: {
         enabled: true,
-        backgroundColor: '#18181B',
-        titleColor: '#FFFFFF',
+        backgroundColor: c.tooltipBg,
+        titleColor: c.tooltipTitle,
         titleFont: { weight: 'bold', size: 14 },
-        bodyColor: '#E9E9E9',
+        bodyColor: c.tooltipBody,
         bodyFont: { size: 12 },
         padding: 12,
-        borderColor: '#27272A',
+        borderColor: c.tooltipBorder,
         borderWidth: 1,
         cornerRadius: 8,
         displayColors: false,
@@ -86,12 +88,12 @@ function OrdersChartComponent({
     },
     scales: {
       x: {
-        grid: { color: 'rgba(233, 233, 233, 0.1)' },
-        ticks: { color: '#E9E9E9' },
+        grid: { color: c.grid },
+        ticks: { color: c.textSecondary },
       },
       y: {
-        grid: { color: 'rgba(233, 233, 233, 0.1)' },
-        ticks: { color: '#E9E9E9' },
+        grid: { color: c.grid },
+        ticks: { color: c.textSecondary },
       },
     },
     onClick: (_: ChartEvent, elements: ActiveElement[]) => {
