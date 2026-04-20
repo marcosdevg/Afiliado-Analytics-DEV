@@ -130,7 +130,7 @@ export async function POST(req: Request, context: { params: Promise<{ userId: st
         fullIntent.receipt_email ||
         "—";
       const buyerPhone =
-        (deliveryMode === "digital" && metaBuyerWhatsapp) ||
+        ((deliveryMode === "digital" || deliveryMode === "pickup") && metaBuyerWhatsapp) ||
         billing?.phone ||
         shipping?.phone ||
         "";

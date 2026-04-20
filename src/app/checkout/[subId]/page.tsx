@@ -583,15 +583,18 @@ function PaymentSection({
         : 0;
   const total = produto.price + frete;
   const isDigital = selection.type === "digital";
+  const isPickup = selection.type === "pickup";
 
   const stripePromise = useMemo(() => loadStripe(publishableKey), [publishableKey]);
 
   const waDigits = buyerWhatsapp.replace(/\D/g, "");
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail.trim());
   const digitalReady = !isDigital || (waDigits.length >= 10 && emailValid);
+  const pickupReady = !isPickup || waDigits.length >= 10;
+  const ready = digitalReady && pickupReady;
 
   useEffect(() => {
-    if (!digitalReady) {
+    if (!ready) {
       setClientSecret(null);
       setError(null);
       setCreating(false);
@@ -605,7 +608,7 @@ function PaymentSection({
       try {
         const payload =
           selection.type === "pickup"
-            ? { mode: "pickup" }
+            ? { mode: "pickup", buyerWhatsapp: buyerWhatsapp.trim() }
             : selection.type === "digital"
               ? {
                   mode: "digital",
@@ -638,7 +641,7 @@ function PaymentSection({
     return () => {
       alive = false;
     };
-  }, [slug, selection, digitalReady, buyerWhatsapp, buyerEmail]);
+  }, [slug, selection, ready, buyerWhatsapp, buyerEmail]);
 
   const digitalForm = isDigital ? (
     <div
@@ -685,14 +688,52 @@ function PaymentSection({
     </div>
   ) : null;
 
-  if (!digitalReady) {
-    return <>{digitalForm}</>;
+  const pickupForm = isPickup ? (
+    <div
+      className="rounded-xl border p-5 space-y-3"
+      style={{ background: palette.cardBg, borderColor: palette.cardBorder }}
+    >
+      <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: palette.textMuted }}>
+        Seu WhatsApp
+      </h2>
+      <p className="text-[11px]" style={{ color: palette.textFaint }}>
+        Pra combinarmos a retirada e te avisar quando o pedido estiver pronto.
+      </p>
+      <div className="space-y-2">
+        <label className="block text-[11px] font-semibold" style={{ color: palette.textMuted }}>
+          WhatsApp (com DDD)
+        </label>
+        <input
+          type="tel"
+          value={buyerWhatsapp}
+          onChange={(e) => setBuyerWhatsapp(e.target.value)}
+          placeholder="(11) 99999-9999"
+          className="w-full rounded-xl px-3 py-2.5 text-[13px] border outline-none focus:border-[#635bff]"
+          style={{ background: palette.inputBg, borderColor: palette.inputBorder, color: palette.text }}
+        />
+      </div>
+      {!pickupReady ? (
+        <p className="text-[11px]" style={{ color: palette.textFaint }}>
+          Informe um WhatsApp válido pra liberar o pagamento.
+        </p>
+      ) : null}
+    </div>
+  ) : null;
+
+  if (!ready) {
+    return (
+      <>
+        {digitalForm}
+        {pickupForm}
+      </>
+    );
   }
 
   if (creating) {
     return (
       <>
         {digitalForm}
+        {pickupForm}
         <div
           className="rounded-xl border p-8 flex items-center justify-center"
           style={{ background: palette.cardBg, borderColor: palette.cardBorder }}
@@ -707,6 +748,7 @@ function PaymentSection({
     return (
       <>
         {digitalForm}
+        {pickupForm}
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
           <p className="text-[12px] text-red-300">{error}</p>
         </div>
@@ -719,6 +761,7 @@ function PaymentSection({
   return (
     <>
       {digitalForm}
+      {pickupForm}
       <Elements
         stripe={stripePromise}
         options={{

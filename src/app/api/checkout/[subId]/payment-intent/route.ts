@@ -52,7 +52,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ subId: string 
     if (mode === "shipping" && (!Number.isFinite(shippingPrice) || shippingPrice < 0)) {
       return NextResponse.json({ error: "Valor de frete inválido" }, { status: 400 });
     }
-    if (mode === "digital") {
+    if (mode === "digital" || mode === "pickup") {
       const waDigits = buyerWhatsapp.replace(/\D/g, "");
       if (waDigits.length < 10) {
         return NextResponse.json(
@@ -60,7 +60,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ subId: string 
           { status: 400 },
         );
       }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
+      if (mode === "digital" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
         return NextResponse.json({ error: "Informe um e-mail válido." }, { status: 400 });
       }
     }
@@ -161,7 +161,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ subId: string 
         product_price_brl: productPrice.toFixed(2),
         ...(mode === "digital"
           ? { buyer_whatsapp: buyerWhatsapp, buyer_email: buyerEmail }
-          : {}),
+          : mode === "pickup"
+            ? { buyer_whatsapp: buyerWhatsapp }
+            : {}),
       },
     };
 

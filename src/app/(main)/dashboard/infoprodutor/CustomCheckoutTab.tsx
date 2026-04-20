@@ -372,7 +372,7 @@ export default function CustomCheckoutTab() {
         </div>
 
         {/* ═══════════════ PREVIEW ═══════════════ */}
-        <div className="rounded-lg border border-dark-border overflow-hidden bg-dark-card">
+        <div className="self-start rounded-lg border border-dark-border overflow-hidden bg-dark-card">
           <div className="px-4 py-3 border-b border-dark-border flex items-center justify-between gap-3">
             <div className="text-sm font-semibold text-text-primary">Preview do checkout</div>
             <div className="flex items-center gap-2">
