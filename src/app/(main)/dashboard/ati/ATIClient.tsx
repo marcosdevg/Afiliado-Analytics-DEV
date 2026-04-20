@@ -1551,7 +1551,7 @@ export default function ATIClient() {
       </div>
 
       {loading ? (
-        <div className="min-h-[min(360px,calc(100vh-12rem))] flex flex-col items-center justify-center px-6 py-16 -mx-1 rounded-none" style={{ backgroundColor: "#18181b" }}>
+        <div className="min-h-[min(360px,calc(100vh-12rem))] flex flex-col items-center justify-center px-6 py-16 -mx-1 rounded-none bg-dark-bg">
           <div className="relative flex items-center justify-center">
             <span className="absolute inline-flex h-20 w-20 rounded-full bg-shopee-orange/10 animate-ping" />
             <span className="absolute inline-flex h-14 w-14 rounded-full bg-shopee-orange/15 animate-pulse" />

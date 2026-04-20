@@ -144,7 +144,7 @@ export default function HomePage() {
             transition={{ duration: 1, delay: 1 }}
             className="animate-floatx flex flex-col items-center gap-2"
           >
-            <div className="flex h-9 w-6 justify-center rounded-xl border-2 border-white/25 pt-1.5">
+            <div className="flex h-9 w-6 justify-center rounded-xl border-2 border-white/25 light:border-shopee-orange pt-1.5">
               <div className="h-2 w-1 rounded-sm bg-shopee-orange" />
             </div>
           </motion.div>
