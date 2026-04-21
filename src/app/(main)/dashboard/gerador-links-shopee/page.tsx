@@ -1004,12 +1004,22 @@ export default function GeradorLinksShopeePage() {
 
       {/* Histórico */}
       <section className={cn("border-t border-[#2c2c32] bg-[#27272a]", mobileTab === "historico" ? "block" : "hidden lg:block")}>
+        <div className="lg:hidden px-3 sm:px-5 pt-4">
+          <button
+            onClick={() => setMobileTab("config")}
+            className="w-full flex items-center justify-center gap-2 bg-[#e24c30] text-white text-[11px] font-extrabold rounded-xl py-3 shadow-lg shadow-[#e24c30]/20 active:scale-[0.98] transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            CRIAR NOVO LINK
+          </button>
+        </div>
+
         <div className="px-3 sm:px-5 py-4 border-b border-[#2c2c32] flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-6 h-6 rounded-lg bg-[#e24c30]/15 border border-[#e24c30]/25 flex items-center justify-center shrink-0">
               <LinkIcon className="w-3 h-3 text-[#e24c30]" />
             </div>
-            <h2 className="text-sm font-bold text-[#f0f0f2] truncate">Histórico de Links</h2>
+            <h2 className="text-sm font-bold text-[#f0f0f2] truncate">Links Gerados</h2>
             {historyTotal > 0 && (
               <span className="text-[9px] text-[#bebebe] bg-[#232328] px-1.5 py-px rounded-full border border-[#3e3e3e] shrink-0">{historyTotal} links</span>
             )}
