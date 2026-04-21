@@ -22,6 +22,7 @@ import {
   useElements,
 } from "@stripe/react-stripe-js";
 import WhatsAppInputBR from "@/app/components/ui/WhatsAppInputBR";
+import { loadBuyerData, saveBuyerData, type BuyerData } from "../_lib/buyerStorage";
 import {
   SaleNotificationsToast,
   CountdownBar,
@@ -150,6 +151,29 @@ export default function CheckoutPage({ params }: { params: Promise<{ subId: stri
   const [selection, setSelection] = useState<Selection>(null);
   const [buyerWhatsapp, setBuyerWhatsapp] = useState("");
   const [buyerEmail, setBuyerEmail] = useState("");
+  /** Dados do comprador carregados do localStorage na montagem. Passados como
+   * `defaultValues` no AddressElement/LinkAuthenticationElement da Stripe. */
+  const [savedBuyer, setSavedBuyer] = useState<BuyerData>({});
+
+  // Hidrata campos custom (email + WhatsApp) a partir do localStorage uma vez.
+  useEffect(() => {
+    const saved = loadBuyerData();
+    setSavedBuyer(saved);
+    if (saved.email) setBuyerEmail(saved.email);
+    if (saved.whatsapp) setBuyerWhatsapp(saved.whatsapp);
+  }, []);
+
+  // Persiste email e WhatsApp conforme o usuário digita (com dígitos só pra WhatsApp,
+  // sem o "55" — na hora de enviar pro backend a gente prepend).
+  useEffect(() => {
+    const email = buyerEmail.trim();
+    const whatsapp = buyerWhatsapp.replace(/\D/g, "");
+    if (!email && !whatsapp) return;
+    const patch: BuyerData = {};
+    if (email) patch.email = email;
+    if (whatsapp) patch.whatsapp = whatsapp;
+    saveBuyerData(patch);
+  }, [buyerEmail, buyerWhatsapp]);
 
   useEffect(() => {
     if (info?.produto.allowDigital && !selection) {
@@ -564,6 +588,7 @@ export default function CheckoutPage({ params }: { params: Promise<{ subId: stri
             setBuyerWhatsapp={setBuyerWhatsapp}
             buyerEmail={buyerEmail}
             setBuyerEmail={setBuyerEmail}
+            savedBuyer={savedBuyer}
             triggers={triggers}
             triggerPalette={triggerPalette}
           />
@@ -613,6 +638,7 @@ function PaymentSection({
   setBuyerWhatsapp,
   buyerEmail,
   setBuyerEmail,
+  savedBuyer,
   triggers,
   triggerPalette,
 }: {
@@ -625,6 +651,7 @@ function PaymentSection({
   setBuyerWhatsapp: (v: string) => void;
   buyerEmail: string;
   setBuyerEmail: (v: string) => void;
+  savedBuyer: BuyerData;
   triggers: TriggerConfig;
   triggerPalette: TriggerPalette;
 }) {
@@ -838,6 +865,7 @@ function PaymentSection({
           frete={frete}
           showShippingAddress={selection.type === "shipping" || selection.type === "local_delivery"}
           digitalEmail={isDigital ? buyerEmail.trim() : ""}
+          savedBuyer={savedBuyer}
           slug={slug}
           palette={palette}
           triggers={triggers}
@@ -854,6 +882,7 @@ function CheckoutForm({
   frete,
   showShippingAddress,
   digitalEmail,
+  savedBuyer,
   slug: slugForReturn,
   palette,
   triggers,
@@ -864,6 +893,7 @@ function CheckoutForm({
   frete: number;
   showShippingAddress: boolean;
   digitalEmail: string;
+  savedBuyer: BuyerData;
   slug: string;
   palette: ThemePalette;
   triggers: TriggerConfig;
@@ -898,7 +928,15 @@ function CheckoutForm({
         <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: palette.textMuted }}>
           Seus dados
         </h2>
-        <LinkAuthenticationElement options={{ defaultValues: { email: digitalEmail } }} />
+        <LinkAuthenticationElement
+          options={{
+            defaultValues: { email: digitalEmail || savedBuyer.email || "" },
+          }}
+          onChange={(event) => {
+            const email = event.value?.email?.trim();
+            if (email) saveBuyerData({ email });
+          }}
+        />
         {showShippingAddress ? (
           <AddressElement
             options={{
@@ -906,6 +944,38 @@ function CheckoutForm({
               allowedCountries: ["BR"],
               fields: { phone: "always" },
               validation: { phone: { required: "always" } },
+              defaultValues: {
+                name: savedBuyer.name ?? undefined,
+                phone: savedBuyer.phone ?? undefined,
+                address: savedBuyer.address
+                  ? {
+                      line1: savedBuyer.address.line1 ?? "",
+                      line2: savedBuyer.address.line2 ?? "",
+                      city: savedBuyer.address.city ?? "",
+                      state: savedBuyer.address.state ?? "",
+                      postal_code: savedBuyer.address.postal_code ?? "",
+                      country: savedBuyer.address.country ?? "BR",
+                    }
+                  : undefined,
+              },
+            }}
+            onChange={(event) => {
+              if (!event.complete || !event.value) return;
+              const v = event.value;
+              saveBuyerData({
+                name: v.name ?? undefined,
+                phone: v.phone ?? undefined,
+                address: v.address
+                  ? {
+                      line1: v.address.line1 ?? null,
+                      line2: v.address.line2 ?? null,
+                      city: v.address.city ?? null,
+                      state: v.address.state ?? null,
+                      postal_code: v.address.postal_code ?? null,
+                      country: v.address.country ?? null,
+                    }
+                  : undefined,
+              });
             }}
           />
         ) : null}

@@ -77,16 +77,26 @@ export default function WhatsAppInputBR({
 }: Props) {
   const formatted = useMemo(() => formatBRPhone(value), [value])
 
+  // Sem `style` prop → usa cores padrão do app (bg-dark-bg, border-dark-border,
+  // text-text-primary) que já adaptam ao tema claro/escuro via CSS vars.
+  const hasCustomStyle = !!(style?.background || style?.borderColor || style?.color)
+  const defaultCls = hasCustomStyle
+    ? ''
+    : 'bg-dark-bg border-dark-border text-text-primary'
+  const innerDefaultCls = hasCustomStyle
+    ? ''
+    : 'border-dark-border text-text-primary'
+
   return (
     <div
-      className="flex items-stretch rounded-xl border overflow-hidden transition-colors focus-within:border-[#635bff]"
+      className={`flex items-stretch rounded-md border overflow-hidden transition-colors focus-within:border-shopee-orange focus-within:ring-1 focus-within:ring-shopee-orange ${defaultCls}`}
       style={{
         background: style?.background,
         borderColor: style?.borderColor,
       }}
     >
       <div
-        className="flex items-center gap-1.5 px-3 shrink-0 border-r select-none"
+        className={`flex items-center gap-1.5 px-3 shrink-0 border-r select-none ${innerDefaultCls}`}
         style={{ borderColor: style?.borderColor, color: style?.color }}
         aria-hidden
       >
@@ -102,7 +112,7 @@ export default function WhatsAppInputBR({
         onChange={(e) => onChange(formatBRPhone(e.target.value))}
         placeholder={placeholder}
         disabled={disabled}
-        className="flex-1 min-w-0 px-3 py-2.5 text-[13px] bg-transparent outline-none disabled:opacity-50"
+        className="flex-1 min-w-0 px-3 py-2 text-sm bg-transparent outline-none placeholder-text-secondary/60 disabled:opacity-50"
         style={{ color: style?.color }}
       />
     </div>
