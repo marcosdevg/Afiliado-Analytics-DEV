@@ -2,6 +2,23 @@
 
 import { useMemo } from 'react'
 
+/** SVG da bandeira brasileira — renderização consistente (Windows/Chrome
+ * não renderiza flag emoji, cai em "BR" texto). */
+function BRFlagSVG({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 14 10"
+      className={className}
+      aria-hidden
+      preserveAspectRatio="xMidYMid slice"
+    >
+      <rect width="14" height="10" fill="#009C3B" />
+      <polygon points="7,1 13,5 7,9 1,5" fill="#FFDF00" />
+      <circle cx="7" cy="5" r="2" fill="#002776" />
+    </svg>
+  )
+}
+
 /** Formata dígitos BR: 11XXXXXXXXX → (11) XXXXX-XXXX.
  * Aceita até 11 dígitos (DDD 2 + número 8 ou 9). Descarta não-dígitos.
  */
@@ -12,6 +29,25 @@ export function formatBRPhone(input: string): string {
   if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`
   if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
+}
+
+/** Remove prefixo "55" se o valor salvo já estiver com ele (12 ou 13 dígitos).
+ * Útil pra hidratar o input com valores do DB que vieram no formato E.164 sem `+`.
+ */
+export function stripBRPrefix(input: string): string {
+  const d = input.replace(/\D/g, '')
+  if (d.startsWith('55') && d.length >= 12 && d.length <= 13) return d.slice(2)
+  return d
+}
+
+/** Converte input BR (formatado ou não) em "55" + dígitos — sem `+` nem formatação.
+ * Formato esperado pelo backend (n8n / Evolution API / Supabase). Ex.: 5579999062401.
+ */
+export function toBRWhatsappWithPrefix(input: string): string {
+  const d = input.replace(/\D/g, '')
+  if (d.length === 0) return ''
+  if (d.startsWith('55') && d.length >= 12 && d.length <= 13) return d
+  return `55${d}`
 }
 
 type InputStyle = {
@@ -41,20 +77,30 @@ export default function WhatsAppInputBR({
 }: Props) {
   const formatted = useMemo(() => formatBRPhone(value), [value])
 
+  // Sem `style` prop → usa cores padrão do app (bg-dark-bg, border-dark-border,
+  // text-text-primary) que já adaptam ao tema claro/escuro via CSS vars.
+  const hasCustomStyle = !!(style?.background || style?.borderColor || style?.color)
+  const defaultCls = hasCustomStyle
+    ? ''
+    : 'bg-dark-bg border-dark-border text-text-primary'
+  const innerDefaultCls = hasCustomStyle
+    ? ''
+    : 'border-dark-border text-text-primary'
+
   return (
     <div
-      className="flex items-stretch rounded-xl border overflow-hidden transition-colors focus-within:border-[#635bff]"
+      className={`flex items-stretch rounded-md border overflow-hidden transition-colors focus-within:border-shopee-orange focus-within:ring-1 focus-within:ring-shopee-orange ${defaultCls}`}
       style={{
         background: style?.background,
         borderColor: style?.borderColor,
       }}
     >
       <div
-        className="flex items-center gap-1.5 px-3 shrink-0 border-r select-none"
+        className={`flex items-center gap-1.5 px-3 shrink-0 border-r select-none ${innerDefaultCls}`}
         style={{ borderColor: style?.borderColor, color: style?.color }}
         aria-hidden
       >
-        <span className="text-base leading-none">🇧🇷</span>
+        <BRFlagSVG className="h-4 w-[22px] shrink-0 rounded-sm" />
         <span className="text-[13px] font-medium">+55</span>
       </div>
       <input
@@ -66,7 +112,7 @@ export default function WhatsAppInputBR({
         onChange={(e) => onChange(formatBRPhone(e.target.value))}
         placeholder={placeholder}
         disabled={disabled}
-        className="flex-1 min-w-0 px-3 py-2.5 text-[13px] bg-transparent outline-none disabled:opacity-50"
+        className="flex-1 min-w-0 px-3 py-2 text-sm bg-transparent outline-none placeholder-text-secondary/60 disabled:opacity-50"
         style={{ color: style?.color }}
       />
     </div>
