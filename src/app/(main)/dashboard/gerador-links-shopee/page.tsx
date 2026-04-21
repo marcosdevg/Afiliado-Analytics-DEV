@@ -851,8 +851,8 @@ export default function GeradorLinksShopeePage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
               <button onClick={runSearchNow} disabled={searchLoading || !inputValue.trim() || !hasApiKeys}
-                className="flex w-full items-center justify-center gap-1.5 bg-[#1c1c1f] border border-[#3e3e3e] text-[#d2d2d2] rounded-xl py-2.5 text-[11px] font-semibold hover:text-[#f0f0f2] hover:border-[#585858] disabled:opacity-40 transition min-h-[42px]">
-                {searchLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />} Buscar
+                className="flex w-full items-center justify-center gap-1.5 bg-transparent border border-[#e24c30] text-[#e24c30] rounded-xl py-2.5 text-[11px] font-semibold hover:text-[#e24c30] hover:border-[#e24c30]/70 hover:bg-[#e24c30]/5 disabled:opacity-40 transition min-h-[42px]">
+                {searchLoading ? <Loader2 className="w-3 h-3 animate-spin text-[#e24c30]" /> : <Search className="w-3 h-3 text-[#e24c30]" />} Buscar
               </button>
               <button type="button" onClick={handleConvertLink} disabled={!canConvert}
                 className="hidden lg:flex items-center justify-center gap-1.5 bg-[#e24c30] text-white rounded-xl py-2.5 text-[11px] font-semibold hover:bg-[#c94028] disabled:opacity-40 transition shadow-lg shadow-[#e24c30]/20 min-h-[42px]">
@@ -994,27 +994,6 @@ export default function GeradorLinksShopeePage() {
                   className="w-full flex items-center justify-center gap-2 bg-[#e24c30] text-white rounded-xl py-3 text-[12px] font-semibold hover:bg-[#c94028] disabled:opacity-40 transition shadow-lg shadow-[#e24c30]/20 min-h-[48px]">
                   {convertLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />} Converter link
                     </button>
-                  </div>
-
-              <div className="flex flex-col gap-1.5 w-full min-w-0">
-                <span className="text-[9px] font-bold text-[#f0f0f2] uppercase tracking-widest">Link de afiliado gerado</span>
-                {lastGeneratedLink ? (
-                  <div className="flex items-center gap-2 bg-[#1c1c1f] border border-[#2c2c32] rounded-xl px-3.5 py-2.5 hover:border-[#3e3e3e] transition min-w-0 flex-wrap min-[420px]:flex-nowrap">
-                    <p className="flex-1 min-w-0 text-[11px] text-[#e24c30] truncate font-mono basis-full min-[420px]:basis-auto">{lastGeneratedLink}</p>
-                    <div className="flex items-center gap-2 min-[420px]:gap-1.5 shrink-0 ml-auto">
-                      <IconBtn onClick={() => { void navigator.clipboard.writeText(lastGeneratedLink); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000); }} title={linkCopied ? "Copiado!" : "Copiar"} active={linkCopied}>
-                        {linkCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      </IconBtn>
-                      <IconBtn onClick={() => window.open(lastGeneratedLink, "_blank", "noopener,noreferrer")} title="Abrir">
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </IconBtn>
-                        </div>
-                      </div>
-                ) : (
-                  <div className="dash bg-[#17171a] border border-[#2c2c32] rounded-xl px-4 py-4">
-                    <p className="text-[11px] text-[#b5b5ba]">O link aparecerá aqui após clicar em <span className="font-semibold text-[#f0f0f2]">Converter</span>.</p>
-                      </div>
-                    )}
                   </div>
                 </div>
           )}
