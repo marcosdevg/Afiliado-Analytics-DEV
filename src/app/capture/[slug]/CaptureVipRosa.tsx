@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Flame } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
 import { parseColorToRgb } from "@/app/(main)/dashboard/captura/_lib/captureUtils";
+import type { CaptureVipLandingProps } from "./capture-vip-types";
 import { handlePixelCTAClick, isWhatsAppUrl, useCaptureVipFonts } from "./capture-vip-shared";
 import CaptureVipEntradaToasts from "./CaptureVipEntradaToasts";
 import { CaptureYoutubeAtSlot } from "./CaptureYoutubeAtSlot";
