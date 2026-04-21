@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Flame } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
 import { parseColorToRgb } from "@/app/(main)/dashboard/captura/_lib/captureUtils";
-import { isWhatsAppUrl, trackPixelLead, useCaptureVipFonts } from "./capture-vip-shared";
+import { handlePixelCTAClick, isWhatsAppUrl, useCaptureVipFonts } from "./capture-vip-shared";
 import CaptureVipEntradaToasts from "./CaptureVipEntradaToasts";
 import { CaptureYoutubeAtSlot } from "./CaptureYoutubeAtSlot";
 import {
@@ -287,7 +287,7 @@ export default function CaptureVipRosa(props: CaptureVipLandingProps) {
           <div className="my-2">
             <a
               href={ctaHref}
-              onClick={() => trackPixelLead(metaPixelId)}
+              onClick={(e) => handlePixelCTAClick(e, metaPixelId)}
               className={`relative isolate ${CAPTURE_CTA_CLASS} uppercase font-black tracking-wide overflow-hidden shadow-lg transition-transform hover:-translate-y-0.5`}
               style={{
                 borderRadius: theme.ctaRadius,
