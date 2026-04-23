@@ -286,7 +286,6 @@ export async function POST(req: NextRequest) {
           reason: "webhook_failed",
           webhookStatus,
           ...disparoWebhookDebugMeta(webhookUrl),
-          disparoPayload,
           detail: t.slice(0, 200),
         },
         { status: 200 }
@@ -309,7 +308,6 @@ export async function POST(req: NextRequest) {
       webhookDelivered: webhookOk,
       webhookStatus,
       ...disparoWebhookDebugMeta(webhookUrl),
-      disparoPayload,
       textoSaida,
     });
   } catch (e) {
