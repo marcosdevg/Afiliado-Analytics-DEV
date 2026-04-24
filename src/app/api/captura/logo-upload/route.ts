@@ -100,14 +100,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Envie um arquivo em 'file'." }, { status: 400 });
   }
 
-  // PNG only
-  if (file.type !== "image/png") {
-    return NextResponse.json({ error: "Formato inválido. Envie apenas PNG." }, { status: 400 });
+  // PNG or JPEG
+  const isPng = file.type === "image/png";
+  const isJpeg = file.type === "image/jpeg" || file.type === "image/jpg";
+
+  if (!isPng && !isJpeg) {
+    return NextResponse.json({ error: "Formato inválido. Envie apenas PNG ou JPEG." }, { status: 400 });
   }
 
-  const maxBytes = 1 * 1024 * 1024; // 1MB
+  const maxBytes = 2 * 1024 * 1024; // Aumentar levemente para 2MB no server para segurança, embora o client vá comprimir para 1MB
   if (file.size > maxBytes) {
-    return NextResponse.json({ error: "Arquivo muito grande (máx 1MB)." }, { status: 400 });
+    return NextResponse.json({ error: "Arquivo muito grande (máx 2MB)." }, { status: 400 });
   }
 
   const resolved = await resolveCaptureSiteIdForUser(supaUser, siteIdFromForm);
@@ -133,12 +136,13 @@ export async function POST(req: NextRequest) {
 
   // Nome novo a cada upload (evita cache velho)
   const ts = Date.now();
-  const path = `${folderPrefix}/logo-${ts}.png`;
+  const ext = isPng ? "png" : "jpg";
+  const path = `${folderPrefix}/logo-${ts}.${ext}`;
 
   // Upload sem sobrescrever
   const { error: upErr } = await admin.storage.from(BUCKET).upload(path, file, {
     upsert: false,
-    contentType: "image/png",
+    contentType: file.type,
     cacheControl: "3600",
   });
 

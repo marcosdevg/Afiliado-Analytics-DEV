@@ -26,6 +26,8 @@ export async function compressImageFileToMaxBytes(file: File, maxBytes: number):
     throw new Error("Seu navegador não permite comprimir imagens aqui.");
   }
 
+  const outputFormat = file.type === "image/png" ? "image/png" : "image/jpeg";
+
   const encode = (width: number, height: number, quality: number): Promise<Blob> =>
     new Promise((resolve, reject) => {
       canvas.width = width;
@@ -36,7 +38,7 @@ export async function compressImageFileToMaxBytes(file: File, maxBytes: number):
           if (b) resolve(b);
           else reject(new Error("Falha ao gerar a versão menor da imagem."));
         },
-        "image/jpeg",
+        outputFormat,
         quality,
       );
     });
