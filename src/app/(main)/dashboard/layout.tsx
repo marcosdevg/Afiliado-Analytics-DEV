@@ -392,7 +392,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
         .sidebar {
           width: 264px;
           flex-shrink: 0;
-          background: #212124;
+          background: #151518;
           border-right: 1px solid rgba(255,255,255,0.02);
           display: flex;
           flex-direction: column;
@@ -401,9 +401,9 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
           scrollbar-width: thin;
           scrollbar-color: rgba(238,77,45,0.3) transparent;
           padding: 32px 12px 24px;
-          border-radius: 0 30px 30px 0;
-         margin: 8px 0;
-          height: calc(100% - 16px);
+          border-radius: 0;
+          margin: 0;
+          height: 100%;
           position: fixed;
           top: 0;
           left: 0;
@@ -793,7 +793,7 @@ function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
                     entitlements={entitlements}
                     pathname={pathname}
                     onItemClick={handleItemClick}
-                    defaultOpen={hasActiveInGroup || idx < 2}
+                    defaultOpen={hasActiveInGroup || idx < 1}
                   />
                 );
               }
