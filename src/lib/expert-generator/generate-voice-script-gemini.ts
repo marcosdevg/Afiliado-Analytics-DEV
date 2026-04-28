@@ -33,17 +33,18 @@ function extractText(json: GeminiTextResponse): string | null {
  * Chão no prompt: a IA deve preencher o tempo do vídeo, não responder com 3–5 palavras.
  */
 const VOICE_SCRIPT_WORD_RANGE: Record<
-  4 | 6 | 8,
+  4 | 6 | 8 | 12,
   { min: number; max: number }
 > = {
   4: { min: 7, max: 11 },
   6: { min: 12, max: 16 },
   8: { min: 18, max: 22 },
+  12: { min: 24, max: 30 },
 };
 
 function buildPrompt(params: {
   productBrief: string;
-  durationSeconds: 4 | 6 | 8;
+  durationSeconds: 4 | 6 | 8 | 12;
   motionSummary: string;
   voiceGender: "female" | "male";
 }): string {
@@ -90,7 +91,7 @@ function countWords(script: string): number {
 }
 
 function buildExpandPrompt(params: {
-  durationSeconds: 4 | 6 | 8;
+  durationSeconds: 4 | 6 | 8 | 12;
   tooShortScript: string;
   min: number;
   max: number;
@@ -240,7 +241,7 @@ function isModelNotFound(r: VoiceScriptGeminiResult): boolean {
 
 export async function generateVoiceScriptWithGemini(params: {
   productBrief: string;
-  durationSeconds: 4 | 6 | 8;
+  durationSeconds: 4 | 6 | 8 | 12;
   motionSummary: string;
   voiceGender: "female" | "male";
 }): Promise<VoiceScriptGeminiResult> {

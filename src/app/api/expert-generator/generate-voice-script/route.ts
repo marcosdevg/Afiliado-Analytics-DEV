@@ -32,7 +32,7 @@ export async function POST(req: Request) {
 
   const d = b.durationSeconds;
   const durationSeconds =
-    d === 4 || d === 6 || d === 8 ? d : 6;
+    d === 4 || d === 6 || d === 8 || d === 12 ? d : 6;
 
   const motionSummary =
     typeof b.motionSummary === "string" ? b.motionSummary.trim() : "";

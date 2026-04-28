@@ -48,6 +48,7 @@ import {
   DEFAULT_VIDEO_PROMPT,
 } from "@/lib/expert-generator/build-prompt";
 import { humanizeVertexUserFacingMessage } from "@/lib/expert-generator/humanize-vertex-user-message";
+import { generate12sVideo } from "@/lib/expert-generator/generate-12s-video-client";
 import {
   AFILIADO_COINS_IMAGE_COST,
   AFILIADO_COINS_VIDEO_COST,
@@ -419,7 +420,7 @@ function ExpertGeneratorInner() {
   const [sceneUseCustom, setSceneUseCustom] = useState(false);
   const [poseUseCustom, setPoseUseCustom] = useState(false);
   const [motionUseCustom, setMotionUseCustom] = useState(false);
-  const [durationSec, setDurationSec] = useState<4 | 6 | 8>(6);
+  const [durationSec, setDurationSec] = useState<4 | 6 | 8 | 12>(6);
   const [videoAspect, setVideoAspect] = useState<"9:16" | "16:9">("9:16");
   const [videoRes, setVideoRes] = useState<"720p" | "1080p">("720p");
   const [generateAudio, setGenerateAudio] = useState(false);
@@ -956,6 +957,30 @@ function ExpertGeneratorInner() {
     setVideoGcsUri(null);
     setVeoProgress("A iniciar geração…");
     try {
+      if (durationSec === 12) {
+        const result = await generate12sVideo(
+          {
+            imageBase64: imageResult.base64,
+            imageMimeType: imageResult.mime,
+            aspectRatio: videoAspect,
+            resolution: videoRes,
+            generateAudio:
+              videoVoiceScript.trim().length > 0 ? true : generateAudio,
+            voiceScript: videoVoiceScript.trim() || undefined,
+            voiceGender: videoVoiceGender,
+            advancedVideoPrompt,
+            advancedImagePrompt,
+            productDescription: activeProductDescription,
+            options: buildOptionsPayload(),
+          },
+          (p) => setVeoProgress(p.message)
+        );
+        setVideoDataUrl(URL.createObjectURL(result.blob));
+        setVideoGcsUri(null);
+        void refreshPlanUsage();
+        return;
+      }
+
       const res = await fetch("/api/expert-generator/veo-start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1985,7 +2010,7 @@ function ExpertGeneratorInner() {
                           Duração do vídeo
                         </FieldLabel>
                         <div className="flex flex-wrap gap-2">
-                          {([ 6 ] as const).map((d) => (
+                          {([4, 6, 8, 12] as const).map((d) => (
                             <button
                               key={d}
                               type="button"
@@ -2305,7 +2330,13 @@ function ExpertGeneratorInner() {
                       desbloquear a geração.
                     </p>
                   ) : null}
-                 
+                  {veoLoading ? (
+                    <p className="flex items-center justify-center gap-2 text-xs text-text-secondary text-center">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-shopee-orange" />
+                      Demora entre 1 e 3 minutos, tome um café!
+                    </p>
+                  ) : null}
+
                 </div>
 
                 <aside className="flex flex-col p-5 lg:w-1/2 lg:flex-none lg:min-w-0 lg:min-h-0 lg:max-h-[min(88vh,860px)] border-t lg:border-t-0 border-dark-border/60 bg-dark-bg/30 overflow-hidden">
