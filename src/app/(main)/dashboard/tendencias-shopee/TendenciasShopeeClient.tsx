@@ -510,6 +510,7 @@ export default function TendenciasShopeeClient({
                 stats={stats}
                 hottestCategoryName={hottestCategoryName}
                 fetchedAt={data?.fetchedAt ?? null}
+                onShopClick={setSelectedShop}
               />
               <MetricsCharts
                 products={data?.products ?? []}
@@ -760,11 +761,15 @@ function AiConsole({
   return (
     <div className="rounded-xl border border-[#2c2c32] bg-[#101015] light:border-zinc-200 light:bg-white overflow-hidden">
       <div className="px-4 py-2.5 flex items-center gap-2">
-        <Sparkles className="w-3.5 h-3.5 text-[#ee4d2d] animate-pulse" />
-        <span className="text-[10px] uppercase tracking-widest font-bold text-[#ee4d2d]">
-          IA · Análise contínua
+        {/* Label "IA · Análise contínua" some no mobile pra liberar espaço —
+            o status à direita já comunica que algo está vivo. */}
+        <span className="hidden sm:inline-flex items-center gap-2">
+          <Sparkles className="w-3.5 h-3.5 text-[#ee4d2d] animate-pulse" />
+          <span className="text-[10px] uppercase tracking-widest font-bold text-[#ee4d2d]">
+            IA · Análise contínua
+          </span>
         </span>
-        <span className="ml-auto inline-flex items-center gap-1.5 text-[10px] text-text-secondary light:text-zinc-600">
+        <span className="inline-flex items-center gap-1.5 text-[10px] text-text-secondary light:text-zinc-600 sm:ml-auto">
           <span
             className={`inline-block w-1.5 h-1.5 rounded-full transition-all ${
               heartbeatPulse
@@ -783,10 +788,12 @@ function MetricsDashboard({
   stats,
   hottestCategoryName,
   fetchedAt,
+  onShopClick,
 }: {
   stats: ApiResponse["stats"];
   hottestCategoryName: string | null;
   fetchedAt: string | null;
+  onShopClick?: (shopName: string) => void;
 }) {
   return (
     <div className="rounded-xl border border-[#2c2c32] light:border-zinc-200 bg-[#1c1c1f] light:bg-white p-4">
@@ -814,9 +821,17 @@ function MetricsDashboard({
       {stats.topShop ? (
         <div className="mt-3 flex items-center gap-2 text-[11px] text-text-secondary light:text-zinc-600">
           <Store className="w-3.5 h-3.5 text-[#7cd0f7] light:text-cyan-600" />
-          <span>
-            Loja com mais aparições no top: <span className="font-semibold text-text-primary light:text-zinc-900">{stats.topShop}</span>
-          </span>
+          <span>Loja com mais vendas em 1 hora:</span>
+          <button
+            type="button"
+            onClick={() => stats.topShop && onShopClick?.(stats.topShop)}
+            disabled={!onShopClick}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-[#ee4d2d]/40 bg-[#ee4d2d]/10 text-[#ee4d2d] font-semibold hover:bg-[#ee4d2d]/20 transition-colors disabled:opacity-60"
+            title="Ver produtos dessa loja"
+          >
+            {stats.topShop}
+            <ExternalLink className="w-3 h-3" />
+          </button>
         </div>
       ) : null}
     </div>

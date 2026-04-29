@@ -22,7 +22,7 @@ import { ArcElement, BubbleController, Chart as ChartJS, LogarithmicScale } from
 import { TreemapController, TreemapElement } from "chartjs-chart-treemap";
 import { TagCloud } from "react-tagcloud";
 import { useChartColors } from "@/app/components/theme/useChartColors";
-import { ArrowDown, ArrowUp, Minus, TrendingUp } from "lucide-react";
+import { ArrowDown, ArrowUp, TrendingUp } from "lucide-react";
 
 const Pie = dynamic(() => import("react-chartjs-2").then((m) => m.Pie), { ssr: false });
 const Line = dynamic(() => import("react-chartjs-2").then((m) => m.Line), { ssr: false });
@@ -40,6 +40,7 @@ type Product = {
   priceMin?: number | null;
   sparkline?: number[];
   categoryIds?: number[];
+  imageUrl?: string | null;
 };
 
 type CategoryRow = {
@@ -417,7 +418,12 @@ export function MetricsCharts<T extends ClickableProduct>({
     [colors],
   );
 
-  // ── Score Velocity: top em ascensão ─────────────────────────────────────
+  // ── Top em destaque (era "ascensão") ────────────────────────────────────
+  // O score é determinístico nos mesmos inputs e quase não muda entre runs
+  // do cron — então delta de score normalmente fica 0. Em vez de filtrar e
+  // mostrar empty state, sempre populamos: ordena por delta desc (positivos
+  // primeiro), tiebreaker por score atual desc. Quem tá subindo aparece no
+  // topo; quando tudo está estável, mostra os de maior score absoluto.
   const velocityList = useMemo(() => {
     return products
       .map((p) => {
@@ -429,8 +435,10 @@ export function MetricsCharts<T extends ClickableProduct>({
           last: sp[sp.length - 1],
         };
       })
-      .filter((x) => x.delta !== 0)
-      .sort((a, b) => b.delta - a.delta)
+      .sort((a, b) => {
+        if (b.delta !== a.delta) return b.delta - a.delta;
+        return b.last - a.last;
+      })
       .slice(0, 8);
   }, [products]);
 
@@ -633,13 +641,13 @@ export function MetricsCharts<T extends ClickableProduct>({
         </ChartCard>
       </div>
 
-      {/* Linha 3: Score Velocity */}
+      {/* Linha 3: Destaques (subindo OU score alto estável) */}
       <ChartCard
-        title="Em ascensão · 24h"
-        subtitle="Produtos com maior ganho de score desde o primeiro snapshot"
+        title="Em destaque agora"
+        subtitle="Produtos subindo mais (Δscore 24h) — quando não há movimento, mostra os de maior score atual"
       >
         {velocityList.length === 0 ? (
-          <EmptyState text="Histórico ainda vazio. Próximas varreduras vão alimentar essa lista." />
+          <EmptyState text="Aguardando dados." />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             {velocityList.map(({ product, delta, last }) => (
@@ -647,29 +655,44 @@ export function MetricsCharts<T extends ClickableProduct>({
                 key={product.itemId}
                 type="button"
                 onClick={() => onProductClick?.(product)}
-                className="text-left rounded-lg border border-[#2c2c32] light:border-zinc-200 bg-[#222228] light:bg-zinc-50 hover:bg-[#2f2f34] light:hover:bg-zinc-100 px-3 py-2 transition-colors"
+                className="flex items-stretch text-left rounded-lg border border-[#2c2c32] light:border-zinc-200 bg-[#222228] light:bg-zinc-50 hover:bg-[#2f2f34] light:hover:bg-zinc-100 transition-colors overflow-hidden min-h-[68px]"
               >
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span
-                    className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold tabular-nums ${
-                      delta > 0
-                        ? "bg-emerald-500/15 text-emerald-400 light:text-emerald-700"
-                        : delta < 0
-                          ? "bg-red-500/15 text-red-400 light:text-red-700"
-                          : "bg-[#3e3e46] light:bg-zinc-200 text-[#9a9aa2] light:text-zinc-500"
-                    }`}
-                  >
-                    {delta > 0 ? <ArrowUp className="w-2.5 h-2.5" /> : delta < 0 ? <ArrowDown className="w-2.5 h-2.5" /> : <Minus className="w-2.5 h-2.5" />}
-                    {delta > 0 ? "+" : ""}
-                    {delta}
-                  </span>
-                  <span className="text-[9px] text-[#7a7a80] light:text-zinc-500 tabular-nums">
-                    score {last}
-                  </span>
+                {/* Imagem ocupa 30% no mobile / 80px no desktop, h-full sempre */}
+                {product.imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={product.imageUrl}
+                    alt=""
+                    aria-hidden
+                    className="w-[30%] sm:w-20 self-stretch object-cover bg-[#1c1c1f] light:bg-zinc-100 shrink-0"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-[30%] sm:w-20 self-stretch bg-[#1c1c1f] light:bg-zinc-100 shrink-0" />
+                )}
+                <div className="flex-1 min-w-0 px-3 py-2">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    {delta !== 0 ? (
+                      <span
+                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold tabular-nums ${
+                          delta > 0
+                            ? "bg-emerald-500/15 text-emerald-400 light:text-emerald-700"
+                            : "bg-red-500/15 text-red-400 light:text-red-700"
+                        }`}
+                      >
+                        {delta > 0 ? <ArrowUp className="w-2.5 h-2.5" /> : <ArrowDown className="w-2.5 h-2.5" />}
+                        {delta > 0 ? "+" : ""}
+                        {delta}
+                      </span>
+                    ) : null}
+                    <span className="text-[9px] font-bold text-[#ee4d2d] tabular-nums">
+                      score {last}
+                    </span>
+                  </div>
+                  <p className="text-[10px] font-semibold text-text-primary light:text-zinc-900 line-clamp-2 leading-snug">
+                    {product.productName}
+                  </p>
                 </div>
-                <p className="text-[10px] font-semibold text-text-primary light:text-zinc-900 line-clamp-2 leading-snug">
-                  {product.productName}
-                </p>
               </button>
             ))}
           </div>
@@ -764,19 +787,19 @@ export function MetricsCharts<T extends ClickableProduct>({
                     <span className="text-[9px] text-[#9a9aa2] light:text-zinc-500 tabular-nums">
                       {item.product.score}
                     </span>
-                    <span
-                      className={`inline-flex items-center gap-0.5 text-[9px] font-bold tabular-nums ${
-                        up
-                          ? "text-emerald-400 light:text-emerald-700"
-                          : down
-                            ? "text-red-400 light:text-red-700"
-                            : "text-[#9a9aa2] light:text-zinc-500"
-                      }`}
-                    >
-                      {up ? <ArrowUp className="w-2.5 h-2.5" /> : down ? <ArrowDown className="w-2.5 h-2.5" /> : <Minus className="w-2.5 h-2.5" />}
-                      {up ? "+" : ""}
-                      {item.delta}
-                    </span>
+                    {item.delta !== 0 ? (
+                      <span
+                        className={`inline-flex items-center gap-0.5 text-[9px] font-bold tabular-nums ${
+                          up
+                            ? "text-emerald-400 light:text-emerald-700"
+                            : "text-red-400 light:text-red-700"
+                        }`}
+                      >
+                        {up ? <ArrowUp className="w-2.5 h-2.5" /> : <ArrowDown className="w-2.5 h-2.5" />}
+                        {up ? "+" : ""}
+                        {item.delta}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}

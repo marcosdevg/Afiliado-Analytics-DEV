@@ -115,32 +115,47 @@ export async function GET(req: Request) {
       ? Date.now() - new Date(fetchedAt).getTime() > stagnantThreshold
       : true;
 
-    // Sparklines (vamos fetchar uma vez só pra todos os IDs).
+    // Sparklines + delta de vendas (uma única query cobre os dois).
     const itemIds = allRows.map((r) => r.item_id);
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: observations } = await supabase
       .from("shopee_trend_observations")
-      .select("item_id, observed_at, score")
+      .select("item_id, observed_at, score, sales")
       .in("item_id", itemIds)
       .gte("observed_at", since)
       .order("observed_at", { ascending: true });
 
     const sparkByItem = new Map<number, number[]>();
-    for (const obs of (observations ?? []) as Array<ObservationRow & { score?: number | null }>) {
-      const arr = sparkByItem.get(obs.item_id) ?? [];
-      // Sparkline do SCORE (não vendas) — variação visual mais rica que vendas
-      // monotônicas, e bate com o que a UI destaca como métrica primária.
-      const v = typeof obs.score === "number" ? obs.score : 0;
-      arr.push(v);
-      sparkByItem.set(obs.item_id, arr);
+    // Pra cada item, capturamos a primeira e última observação de vendas em
+    // 24h. `salesDelta24h = last - first` revela o ritmo real do mercado e é o
+    // que a curadoria Sho.IA usa pra ranquear "o que mais vende agora".
+    const salesRangeByItem = new Map<number, { first: number; last: number }>();
+    for (const obs of (observations ?? []) as Array<
+      ObservationRow & { score?: number | null; sales?: number | null }
+    >) {
+      // Sparkline do SCORE (variação visual mais rica que vendas monotônicas)
+      const sArr = sparkByItem.get(obs.item_id) ?? [];
+      sArr.push(typeof obs.score === "number" ? obs.score : 0);
+      sparkByItem.set(obs.item_id, sArr);
+
+      // Sales range (primeiro = oldest na ordem ASC, last vai sobrescrevendo)
+      const salesVal = typeof obs.sales === "number" ? obs.sales : 0;
+      const cur = salesRangeByItem.get(obs.item_id);
+      if (!cur) {
+        salesRangeByItem.set(obs.item_id, { first: salesVal, last: salesVal });
+      } else {
+        cur.last = salesVal;
+      }
     }
 
-    // Mapeia rows → shape público + computa discountRate
+    // Mapeia rows → shape público + computa discountRate + salesDelta24h
     const allProducts = allRows.map((r) => {
       const priceMin = num(r.price_min);
       const priceMax = num(r.price_max);
       const discountRate = computeDiscountRate(priceMin, priceMax);
       const score = r.viralization_score ?? 0;
+      const range = salesRangeByItem.get(r.item_id);
+      const salesDelta24h = range ? Math.max(0, range.last - range.first) : 0;
       return {
         itemId: r.item_id,
         productName: r.product_name,
@@ -149,6 +164,7 @@ export async function GET(req: Request) {
         priceMin,
         priceMax,
         sales: r.sales,
+        salesDelta24h,
         commissionRate: num(r.commission_rate),
         ratingStar: num(r.rating_star),
         productLink: r.product_link,
