@@ -356,11 +356,12 @@ export default function TendenciasShopeeClient({
       <div className="container mx-auto px-4 py-6 sm:py-8">
         <PageHeader />
 
-        {/* Console "Engenheiro de IA" */}
-        <div className="mt-4 rounded-xl border border-[#2c2c32] bg-[#101015] overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-[#2c2c32] flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-[#7cd0f7] animate-pulse" />
-            <span className="text-[10px] uppercase tracking-widest font-bold text-[#9a9aa2]">
+        {/* Console "Engenheiro de IA" — visual de terminal, mas adapta ao tema:
+            no dark fica preto/ciano; no light fica branco com texto teal escuro. */}
+        <div className="mt-4 rounded-xl border border-[#2c2c32] bg-[#101015] light:border-zinc-200 light:bg-white overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-[#2c2c32] light:border-zinc-200 flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-[#7cd0f7] light:text-cyan-600 animate-pulse" />
+            <span className="text-[10px] uppercase tracking-widest font-bold text-[#9a9aa2] light:text-zinc-500">
               IA · Análise contínua
             </span>
             <span className="ml-auto inline-flex items-center gap-1.5 text-[10px] text-text-secondary">
@@ -372,10 +373,10 @@ export default function TendenciasShopeeClient({
               {data?.stagnant ? "Snapshot pausado" : "Monitorando em tempo real"} · atualizado {formatRelative(data?.fetchedAt ?? null)}
             </span>
           </div>
-          <div className="px-4 py-3 font-mono text-[12px] text-[#7cd0f7] flex items-center gap-2">
-            <span className="text-[#5a5a64]">{">"}</span>
+          <div className="px-4 py-3 font-mono text-[12px] text-[#7cd0f7] light:text-cyan-700 flex items-center gap-2">
+            <span className="text-[#5a5a64] light:text-zinc-400">{">"}</span>
             <span className="truncate">{aiTyped}</span>
-            <span className="inline-block w-1.5 h-3.5 bg-[#7cd0f7] animate-blink" />
+            <span className="inline-block w-1.5 h-3.5 bg-[#7cd0f7] light:bg-cyan-700 animate-blink" />
           </div>
         </div>
 
@@ -486,9 +487,7 @@ function PageHeader() {
           <Flame className="w-6 h-6 text-[#ee4d2d]" />
           Tendências Shopee
         </h1>
-        <p className="text-[11px] sm:text-xs text-text-secondary mt-1">
-          Os produtos que mais vendem na Shopee agora — atualizando em tempo real.
-        </p>
+        
       </div>
       <Link
         href="/dashboard"

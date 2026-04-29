@@ -50,7 +50,7 @@ type GqlResponse = {
   data?: {
     productOfferV2?: {
       nodes?: GqlNode[];
-      pageInfo?: { hasNextPage?: boolean; page?: number; pageSize?: number };
+      pageInfo?: { hasNextPage?: boolean };
     };
   };
   errors?: { message?: string }[];
@@ -112,7 +112,7 @@ async function fetchPage(
           shopName
           productCatIds
         }
-        pageInfo { hasNextPage page pageSize }
+        pageInfo { hasNextPage }
       }
     }
   `;
@@ -129,7 +129,11 @@ async function fetchPage(
   }
   const nodes = json.data?.productOfferV2?.nodes ?? [];
   const products = nodes.map(nodeToProduct).filter((p): p is ShopeeTrendingProduct => p !== null);
-  const hasNextPage = Boolean(json.data?.productOfferV2?.pageInfo?.hasNextPage);
+  // Se a Shopee não devolver `pageInfo.hasNextPage`, inferimos: lista cheia ⇒
+  // provável próxima página; lista incompleta ⇒ acabou.
+  const reportedHasNext = json.data?.productOfferV2?.pageInfo?.hasNextPage;
+  const hasNextPage =
+    typeof reportedHasNext === "boolean" ? reportedHasNext : products.length >= PAGE_SIZE;
   return { products, hasNextPage };
 }
 
