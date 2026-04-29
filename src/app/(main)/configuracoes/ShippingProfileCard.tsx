@@ -276,7 +276,7 @@ export default function ShippingProfileCard() {
             <Toolist
               variant="floating"
               wide
-              text="Aparece no checkout Stripe como link clicável e na tela de confirmação após o pagamento. Ao salvar, todos os seus Payment Links são atualizados automaticamente na Stripe."
+              text="Aparece no checkout Mercado Pago como link clicável e na tela de confirmação após o pagamento."
             />
           </label>
           <div className="mt-1">

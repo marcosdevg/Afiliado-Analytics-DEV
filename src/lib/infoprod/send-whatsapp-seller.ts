@@ -1,6 +1,8 @@
 /**
- * Envia notificações de venda Stripe ao vendedor e ao comprador via webhook n8n
- * dedicado (STRIPE_WEBHOOK_NOTIFICACOES). O n8n roteia internamente com base em
+ * Envia notificações de venda (Mercado Pago) ao vendedor e ao comprador via
+ * webhook n8n dedicado. URL lida de `INFOPROD_NOTIFICATIONS_WEBHOOK_URL`
+ * (com fallback histórico pra `STRIPE_WEBHOOK_NOTIFICACOES` enquanto a .env
+ * antiga ainda usar esse nome). O n8n roteia internamente com base em
  * `tipoAcao: "vendedor" | "comprador"` e usa a instância Evolution do vendedor
  * pra mandar o WhatsApp.
  *
@@ -76,7 +78,7 @@ async function resolveSellerInstance(userId: string): Promise<
 }
 
 /**
- * Dispara UMA notificação no webhook n8n dedicado (STRIPE_WEBHOOK_NOTIFICACOES).
+ * Dispara UMA notificação no webhook n8n dedicado.
  * Payload: { tipoAcao, nomeInstancia, hash, numeroDestino, mensagem }
  */
 export async function sendInfoprodNotification(params: {
@@ -85,9 +87,14 @@ export async function sendInfoprodNotification(params: {
   numeroDestino: string; // livre — será normalizado pra dígitos
   mensagem: string;
 }): Promise<Result> {
-  const webhookUrl = (process.env.STRIPE_WEBHOOK_NOTIFICACOES ?? "").trim();
+  // Preferimos o nome novo; mantém o legado pra não exigir rotação imediata da .env.
+  const webhookUrl = (
+    process.env.INFOPROD_NOTIFICATIONS_WEBHOOK_URL ??
+    process.env.STRIPE_WEBHOOK_NOTIFICACOES ??
+    ""
+  ).trim();
   if (!webhookUrl) {
-    return { ok: false, reason: "STRIPE_WEBHOOK_NOTIFICACOES não configurado" };
+    return { ok: false, reason: "INFOPROD_NOTIFICATIONS_WEBHOOK_URL não configurado" };
   }
 
   const instance = await resolveSellerInstance(params.userId);
@@ -124,8 +131,9 @@ export async function sendInfoprodNotification(params: {
 }
 
 /**
- * Atalho usado no webhook da Stripe: dispara as duas notificações (vendedor +
- * comprador) em paralelo. Se o comprador não tiver telefone, pula só essa.
+ * Atalho usado no webhook do Mercado Pago: dispara as duas notificações
+ * (vendedor + comprador) em paralelo. Se o comprador não tiver telefone,
+ * pula só essa.
  */
 export async function notifyPurchase(params: {
   userId: string;

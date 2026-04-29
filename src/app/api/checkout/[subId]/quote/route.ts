@@ -34,7 +34,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ subId: string 
       .from("produtos_infoprodutor")
       .select("user_id, allow_shipping, shipping_cost, peso_g, altura_cm, largura_cm, comprimento_cm")
       .eq("public_slug", slug)
-      .eq("provider", "stripe")
+      .eq("provider", "mercadopago")
       .maybeSingle();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

@@ -434,15 +434,15 @@ function AdAccordionItem({
             )}
           </div>
 
-          {/* ── SubId InfoP (cruzamento com produtos Stripe) — só aparece em campanhas marcadas como InfoP ── */}
+          {/* ── SubId InfoP (cruzamento com produtos Mercado Pago) — só aparece em campanhas marcadas como InfoP ── */}
           {campaignIsInfoP ? (
           <div className="rounded-lg border border-[#635bff]/30 bg-[#635bff]/5 p-3 space-y-2">
             <p className="text-xs font-semibold text-text-primary flex items-center gap-1.5">
               <CreditCard className="h-3.5 w-3.5 text-[#a8a2ff]" />
-              SubId InfoP (produtos Stripe)
+              SubId InfoP (produtos Mercado Pago)
             </p>
             <p className="text-[11px] text-text-secondary leading-relaxed">
-              Cole aqui o mesmo SubId do produto Stripe (ex.: <code className="bg-dark-bg px-1 rounded">whey-protein</code>) para cruzar custos e receita na aba Trackeamento.
+              Cole aqui o mesmo SubId do produto Mercado Pago (ex.: <code className="bg-dark-bg px-1 rounded">whey-protein</code>) para cruzar custos e receita na aba Trackeamento.
             </p>
             <div className="flex flex-wrap items-end gap-2">
               <div className="flex-1 min-w-[140px]">
@@ -1838,7 +1838,7 @@ export default function ATIClient() {
                         type="button"
                         disabled={infopTogglingId === camp.campaignId}
                         onClick={(e) => { e.stopPropagation(); handleToggleInfoP(camp.campaignId); }}
-                        title={campaignIdsInfoP.includes(camp.campaignId) ? "Remover tag Tráfego para InfoP" : "Marcar como Tráfego para InfoP (cruza com produtos Stripe)"}
+                        title={campaignIdsInfoP.includes(camp.campaignId) ? "Remover tag Tráfego para InfoP" : "Marcar como Tráfego para InfoP (cruza com produtos Mercado Pago)"}
                         aria-label="Tráfego para InfoP"
                         className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium transition-all ${
                           campaignIdsInfoP.includes(camp.campaignId)

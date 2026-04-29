@@ -96,13 +96,15 @@ function relativeTime(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR");
 }
 
-const CACHE_SECTION = "sales";
+// Cache namespace dedicado pro dashboard MP (shapes diferentes causariam
+// undefined.length / undefined.map se reusasse cache de outro provider).
+const CACHE_SECTION = "mp-sales";
 
-export default function StripeSalesDashboard({
-  stripeConnected,
+export default function MpSalesDashboard({
+  mpConnected,
   refreshSignal = 0,
 }: {
-  stripeConnected: boolean;
+  mpConnected: boolean;
   refreshSignal?: number;
 }) {
   const [period, setPeriod] = useState<Period>("30d");
@@ -112,10 +114,15 @@ export default function StripeSalesDashboard({
 
   const load = useCallback(
     async (p: Period, opts?: { skipCache?: boolean }) => {
-      if (!stripeConnected) return;
+      if (!mpConnected) return;
       if (!opts?.skipCache) {
         const cached = readInfoprodCache<SalesResponse>(CACHE_SECTION, p);
-        if (cached) {
+        if (
+          cached &&
+          cached.summary &&
+          Array.isArray(cached.byDay) &&
+          Array.isArray(cached.topProducts)
+        ) {
           setData(cached);
           setError(null);
           return;
@@ -124,34 +131,49 @@ export default function StripeSalesDashboard({
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`/api/infoprodutor/stripe-sales?period=${p}`);
+        const res = await fetch(`/api/infoprodutor/mp-sales?period=${p}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error ?? "Erro ao carregar vendas");
-        setData(json as SalesResponse);
-        writeInfoprodCache(CACHE_SECTION, p, json);
+        const safe: SalesResponse = {
+          period: (json?.period as Period) ?? p,
+          hasProducts: Boolean(json?.hasProducts),
+          summary: json?.summary ?? {
+            totalRevenue: 0,
+            totalSales: 0,
+            avgTicket: 0,
+            totalRefunded: 0,
+            refundRate: 0,
+            uniqueCustomers: 0,
+          },
+          byDay: Array.isArray(json?.byDay) ? json.byDay : [],
+          topProducts: Array.isArray(json?.topProducts) ? json.topProducts : [],
+          fetchedAt: typeof json?.fetchedAt === "string" ? json.fetchedAt : new Date().toISOString(),
+        };
+        setData(safe);
+        writeInfoprodCache(CACHE_SECTION, p, safe);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Erro ao carregar vendas");
       } finally {
         setLoading(false);
       }
     },
-    [stripeConnected],
+    [mpConnected],
   );
 
   useEffect(() => {
-    if (stripeConnected) void load(period);
-  }, [period, stripeConnected, load]);
+    if (mpConnected) void load(period);
+  }, [period, mpConnected, load]);
 
   // Quando o refresh global é acionado, invalida todo o cache desta seção e recarrega.
   const lastSignalRef = useRef(refreshSignal);
   useEffect(() => {
     if (refreshSignal === lastSignalRef.current) return;
     lastSignalRef.current = refreshSignal;
-    if (stripeConnected) {
+    if (mpConnected) {
       clearInfoprodCache(CACHE_SECTION);
       void load(period, { skipCache: true });
     }
-  }, [refreshSignal, stripeConnected, period, load]);
+  }, [refreshSignal, mpConnected, period, load]);
 
   const chartData = useMemo(() => {
     const byDay = data?.byDay ?? [];
@@ -162,13 +184,13 @@ export default function StripeSalesDashboard({
           fill: true,
           label: "Receita",
           data: byDay.map((d) => Number(d.revenue.toFixed(2))),
-          borderColor: "#635bff",
+          borderColor: "#009ee3",
           backgroundColor: "rgba(99, 91, 255, 0.18)",
-          pointBackgroundColor: "#635bff",
+          pointBackgroundColor: "#009ee3",
           pointBorderColor: "#FFFFFF",
           pointBorderWidth: 2,
           pointHoverBackgroundColor: "#FFFFFF",
-          pointHoverBorderColor: "#635bff",
+          pointHoverBorderColor: "#009ee3",
           pointHoverBorderWidth: 2,
           pointRadius: byDay.length > 45 ? 0 : 3,
           tension: 0.35,
@@ -221,28 +243,28 @@ export default function StripeSalesDashboard({
     [data],
   );
 
-  if (!stripeConnected) {
+  if (!mpConnected) {
     return (
       <section className="rounded-xl border border-[#2c2c32] bg-[#27272a] overflow-hidden mt-6">
         <div className="px-3 sm:px-5 py-4 border-b border-[#2c2c32] flex items-center gap-2.5">
-          <div className="w-6 h-6 rounded-lg bg-[#635bff]/15 border border-[#635bff]/25 flex items-center justify-center shrink-0">
-            <BarChart3 className="w-3 h-3 text-[#a8a2ff]" />
+          <div className="w-6 h-6 rounded-lg bg-[#009ee3]/15 border border-[#009ee3]/25 flex items-center justify-center shrink-0">
+            <BarChart3 className="w-3 h-3 text-[#7cd0f7]" />
           </div>
-          <h2 className="text-sm font-bold text-[#f0f0f2] truncate">Vendas Stripe</h2>
+          <h2 className="text-sm font-bold text-[#f0f0f2] truncate">Vendas Mercado Pago</h2>
         </div>
         <div className="px-4 sm:px-6 py-10 flex flex-col items-center text-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-[#635bff]/10 border border-[#635bff]/25 flex items-center justify-center">
-            <CreditCard className="w-6 h-6 text-[#a8a2ff]" />
+          <div className="w-12 h-12 rounded-xl bg-[#009ee3]/10 border border-[#009ee3]/25 flex items-center justify-center">
+            <CreditCard className="w-6 h-6 text-[#7cd0f7]" />
           </div>
           <div className="max-w-sm">
-            <p className="text-sm font-semibold text-[#f0f0f2]">Conecte sua conta Stripe</p>
+            <p className="text-sm font-semibold text-[#f0f0f2]">Conecte sua conta Mercado Pago</p>
             <p className="text-[11px] text-[#9a9aa2] mt-1.5 leading-relaxed">
               Depois de conectar, você verá aqui receita, ticket médio, top produtos e evolução diária das vendas.
             </p>
           </div>
           <Link
             href="/configuracoes"
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-[#635bff] hover:bg-[#5047e5] text-white text-xs font-semibold"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-[#009ee3] hover:bg-[#0084c2] text-white text-xs font-semibold"
           >
             Conectar em Configurações
           </Link>
@@ -256,10 +278,10 @@ export default function StripeSalesDashboard({
       {/* Header */}
       <div className="px-3 sm:px-5 py-4 border-b border-[#2c2c32] flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-6 h-6 rounded-lg bg-[#635bff]/15 border border-[#635bff]/25 flex items-center justify-center shrink-0">
-            <BarChart3 className="w-3 h-3 text-[#a8a2ff]" />
+          <div className="w-6 h-6 rounded-lg bg-[#009ee3]/15 border border-[#009ee3]/25 flex items-center justify-center shrink-0">
+            <BarChart3 className="w-3 h-3 text-[#7cd0f7]" />
           </div>
-          <h2 className="text-sm font-bold text-[#f0f0f2] truncate">Vendas Stripe</h2>
+          <h2 className="text-sm font-bold text-[#f0f0f2] truncate">Vendas Mercado Pago</h2>
           {data?.fetchedAt ? (
             <span className="text-[9px] text-[#7a7a80] hidden sm:inline">
               atualizado {relativeTime(data.fetchedAt)}
@@ -275,7 +297,7 @@ export default function StripeSalesDashboard({
                 onClick={() => setPeriod(p.value)}
                 disabled={loading}
                 className={`px-2.5 py-1 rounded-md text-[10px] font-semibold transition-colors disabled:opacity-60 ${
-                  period === p.value ? "bg-[#635bff] text-white" : "text-[#c8c8ce] hover:bg-[#2f2f34]"
+                  period === p.value ? "bg-[#009ee3] text-white" : "text-[#c8c8ce] hover:bg-[#2f2f34]"
                 }`}
               >
                 {p.label}
@@ -306,16 +328,16 @@ export default function StripeSalesDashboard({
         </div>
       ) : null}
 
-      {/* Empty state: conectado mas sem produtos Stripe */}
+      {/* Empty state: conectado mas sem produtos Mercado Pago */}
       {data && !data.hasProducts ? (
         <div className="px-4 sm:px-6 py-10 flex flex-col items-center text-center gap-3 bg-[#1c1c1f]">
-          <div className="w-12 h-12 rounded-xl bg-[#635bff]/10 border border-[#635bff]/25 flex items-center justify-center">
-            <ShoppingBag className="w-6 h-6 text-[#a8a2ff]" />
+          <div className="w-12 h-12 rounded-xl bg-[#009ee3]/10 border border-[#009ee3]/25 flex items-center justify-center">
+            <ShoppingBag className="w-6 h-6 text-[#7cd0f7]" />
           </div>
           <div className="max-w-sm">
-            <p className="text-sm font-semibold text-[#f0f0f2]">Nenhum produto Stripe cadastrado</p>
+            <p className="text-sm font-semibold text-[#f0f0f2]">Nenhum produto Mercado Pago cadastrado</p>
             <p className="text-[11px] text-[#9a9aa2] mt-1.5 leading-relaxed">
-              Crie um produto no modo Stripe (botão acima) para começar a ver métricas de venda aqui.
+              Crie um produto no modo Mercado Pago (botão acima) para começar a ver métricas de venda aqui.
             </p>
           </div>
         </div>
@@ -324,7 +346,7 @@ export default function StripeSalesDashboard({
       {/* Loading placeholder */}
       {loading && !data ? (
         <div className="px-4 py-16 flex items-center justify-center bg-[#1c1c1f]">
-          <Loader2 className="w-6 h-6 animate-spin text-[#635bff]" />
+          <Loader2 className="w-6 h-6 animate-spin text-[#009ee3]" />
         </div>
       ) : null}
 
@@ -340,10 +362,10 @@ export default function StripeSalesDashboard({
               accent="emerald"
             />
             <KpiCard
-              icon={<ShoppingBag className="w-4 h-4 text-[#a8a2ff]" />}
+              icon={<ShoppingBag className="w-4 h-4 text-[#7cd0f7]" />}
               label="Vendas"
               value={formatInt(data.summary.totalSales)}
-              accent="stripe"
+              accent="mp"
             />
             <KpiCard
               icon={<Receipt className="w-4 h-4 text-sky-400" />}
@@ -396,13 +418,13 @@ export default function StripeSalesDashboard({
                   Top produtos
                 </p>
                 <a
-                  href="https://dashboard.stripe.com/payments"
+                  href="https://www.mercadopago.com.br/activities"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[10px] text-[#a8a2ff] hover:underline inline-flex items-center gap-1"
-                  title="Ver no painel da Stripe"
+                  className="text-[10px] text-[#7cd0f7] hover:underline inline-flex items-center gap-1"
+                  title="Ver no painel do Mercado Pago"
                 >
-                  Stripe <ExternalLink className="w-2.5 h-2.5" />
+                  Mercado Pago <ExternalLink className="w-2.5 h-2.5" />
                 </a>
               </div>
               {data.topProducts.length === 0 ? (
@@ -462,11 +484,11 @@ function KpiCard({
   label: string;
   value: string;
   sub?: string;
-  accent: "emerald" | "stripe" | "sky" | "amber" | "fuchsia";
+  accent: "emerald" | "mp" | "sky" | "amber" | "fuchsia";
 }) {
   const borderClass = {
     emerald: "border-emerald-500/20",
-    stripe: "border-[#635bff]/25",
+    mp: "border-[#009ee3]/25",
     sky: "border-sky-500/20",
     amber: "border-amber-500/20",
     fuchsia: "border-fuchsia-500/20",

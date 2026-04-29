@@ -610,15 +610,15 @@ function StepPagamento({
           <Toolist
             variant="floating"
             wide
-            text="Só os marcados aqui aparecem no checkout do comprador. PIX e Boleto também precisam estar ativados no painel da Stripe."
+            text="Só os marcados aqui aparecem no checkout do comprador. Os métodos disponíveis dependem da sua conta Mercado Pago — verifique em mercadopago.com.br/developers se algum estiver desativado."
           />
         </label>
         <div className="space-y-1.5">
           {(
             [
-              { key: "methodCard", label: "Cartão de crédito / débito", hint: "Visa, Mastercard, Elo, Amex...", requiresStripeActivation: false },
-              { key: "methodPix", label: "PIX", hint: "QR code instantâneo.", requiresStripeActivation: true },
-              { key: "methodBoleto", label: "Boleto", hint: "Vencimento 3 dias úteis. Compensação demora 1–3 dias após o pagamento.", requiresStripeActivation: true },
+              { key: "methodCard", label: "Cartão de crédito / débito", hint: "Visa, Mastercard, Elo, Amex..." },
+              { key: "methodPix", label: "PIX", hint: "QR code instantâneo." },
+              { key: "methodBoleto", label: "Boleto", hint: "Vencimento 3 dias úteis. Compensação demora 1–3 dias após o pagamento." },
             ] as const
           ).map((m) => {
             const checked = state[m.key];
@@ -640,21 +640,6 @@ function StepPagamento({
                     <Toolist variant="floating" wide text={m.hint} />
                   </div>
                 </label>
-                {checked && m.requiresStripeActivation ? (
-                  <div className="mt-1.5 ml-6 text-[10px] text-amber-300/90 bg-amber-500/5 border border-amber-500/20 rounded-md px-2 py-1.5 leading-relaxed">
-                    ⚠️ {m.label} precisa estar <strong>ativado no seu painel da Stripe</strong> pra funcionar.
-                    Ative em{" "}
-                    <a
-                      href="https://dashboard.stripe.com/account/payments/settings"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline text-amber-200"
-                    >
-                      Stripe → Payment methods
-                    </a>
-                    .
-                  </div>
-                ) : null}
               </div>
             );
           })}

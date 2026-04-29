@@ -5,25 +5,19 @@
  *
  * Providers suportados:
  *   - 'manual' (padrão): usuário informa o link de venda livremente.
- *   - 'stripe': criamos product + price + payment_link na Stripe e o link de venda
- *     é o payment_link gerado. Exige chave salva em profiles.stripe_secret_key.
+ *   - 'mercadopago': pedidos pagos via Mercado Pago — Preference é criada por
+ *     checkout (em /api/checkout/[subId]/mp-preference), não na criação do
+ *     produto. Exige `mp_access_token` em profiles.
  */
 
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
 import { createClient } from "@/lib/supabase-server";
 import { gateInfoprodutor } from "@/lib/require-entitlements";
 import {
-  toWhatsAppUrl,
-  buildPaymentLinkCustomText,
-  buildAfterCompletion,
-  buildStripeProductDescription,
   formatSenderAddressShort,
-  SHIPPING_RATE_DISPLAY_NAMES,
   type SenderSnapshot,
-  type DeliveryMode,
-} from "@/lib/infoprod/stripe-checkout-copy";
-import { getAppPublicUrl } from "@/lib/infoprod/stripe-webhook-setup";
+} from "@/lib/infoprod/infoprod-shared";
+import { getAppPublicUrl } from "@/lib/app-url";
 import { generateUniquePublicSlug } from "@/lib/infoprod/slug";
 
 export const dynamic = "force-dynamic";
@@ -38,17 +32,13 @@ type Row = {
   price: number | string | null;
   price_old: number | string | null;
   provider: string | null;
-  stripe_product_id: string | null;
-  stripe_price_id: string | null;
-  stripe_payment_link_id: string | null;
-  stripe_subid: string | null;
+  subid: string | null;
   allow_shipping: boolean | null;
   allow_pickup: boolean | null;
   allow_digital: boolean | null;
   allow_local_delivery: boolean | null;
   shipping_cost: number | string | null;
   local_delivery_cost: number | string | null;
-  stripe_account_id: string | null;
   thank_you_message: string | null;
   peso_g: number | string | null;
   altura_cm: number | string | null;
@@ -74,17 +64,13 @@ function mapProduto(r: Record<string, unknown>) {
     price: numOrNull(r.price),
     priceOld: numOrNull(r.price_old),
     provider: (r.provider as string | null) ?? "manual",
-    stripeProductId: (r.stripe_product_id as string | null) ?? null,
-    stripePriceId: (r.stripe_price_id as string | null) ?? null,
-    stripePaymentLinkId: (r.stripe_payment_link_id as string | null) ?? null,
-    stripeSubid: (r.stripe_subid as string | null) ?? null,
+    subid: (r.subid as string | null) ?? null,
     allowShipping: r.allow_shipping === null || r.allow_shipping === undefined ? true : Boolean(r.allow_shipping),
     allowPickup: Boolean(r.allow_pickup ?? false),
     allowDigital: Boolean(r.allow_digital ?? false),
     allowLocalDelivery: Boolean(r.allow_local_delivery ?? false),
     shippingCost: numOrNull(r.shipping_cost),
     localDeliveryCost: numOrNull(r.local_delivery_cost),
-    stripeAccountId: (r.stripe_account_id as string | null) ?? null,
     thankYouMessage: (r.thank_you_message as string | null) ?? "",
     pesoG: numOrNull(r.peso_g),
     alturaCm: numOrNull(r.altura_cm),
@@ -97,25 +83,12 @@ function mapProduto(r: Record<string, unknown>) {
 }
 
 const SELECT =
-  "id, user_id, name, description, image_url, link, price, price_old, provider, stripe_product_id, stripe_price_id, stripe_payment_link_id, stripe_subid, allow_shipping, allow_pickup, allow_digital, allow_local_delivery, shipping_cost, local_delivery_cost, stripe_account_id, thank_you_message, peso_g, altura_cm, largura_cm, comprimento_cm, public_slug, created_at, updated_at";
+  "id, user_id, name, description, image_url, link, price, price_old, provider, subid, allow_shipping, allow_pickup, allow_digital, allow_local_delivery, shipping_cost, local_delivery_cost, thank_you_message, peso_g, altura_cm, largura_cm, comprimento_cm, public_slug, created_at, updated_at";
 
 const SUBID_REGEX = /^[a-zA-Z0-9_\-.]+$/;
 
 function normalizeSubid(raw: unknown): string {
   return typeof raw === "string" ? raw.trim().slice(0, 64) : "";
-}
-
-async function getStripeKeyForUser(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
-): Promise<string | null> {
-  const { data } = await supabase
-    .from("profiles")
-    .select("stripe_secret_key")
-    .eq("id", userId)
-    .single();
-  const key = (data as { stripe_secret_key?: string | null } | null)?.stripe_secret_key ?? null;
-  return key && key.trim() ? key.trim() : null;
 }
 
 export async function GET() {
@@ -132,26 +105,9 @@ export async function GET() {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // Lê a conta Stripe atual pra marcar produtos órfãos (criados em conta anterior).
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("stripe_account_id")
-      .eq("id", gate.userId)
-      .single();
-    const currentAccountId =
-      (profile as { stripe_account_id?: string | null } | null)?.stripe_account_id ?? null;
+    const produtos = (data ?? []).map((r) => mapProduto(r as Record<string, unknown>));
 
-    const produtos = (data ?? []).map((r) => {
-      const mapped = mapProduto(r as Record<string, unknown>);
-      const isOrphan =
-        mapped.provider === "stripe" &&
-        !!mapped.stripeAccountId &&
-        !!currentAccountId &&
-        mapped.stripeAccountId !== currentAccountId;
-      return { ...mapped, isOrphan };
-    });
-
-    return NextResponse.json({ data: produtos, currentAccountId });
+    return NextResponse.json({ data: produtos });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "Erro" }, { status: 500 });
   }
@@ -164,7 +120,12 @@ export async function POST(req: Request) {
     const supabase = await createClient();
 
     const body = await req.json().catch(() => ({}));
-    const provider = String(body?.provider ?? "manual").trim().toLowerCase() as "manual" | "stripe";
+    const providerRaw = String(body?.provider ?? "manual").trim().toLowerCase();
+    if (providerRaw !== "manual" && providerRaw !== "mercadopago") {
+      return NextResponse.json({ error: `Provider inválido: ${providerRaw}` }, { status: 400 });
+    }
+    const provider = providerRaw as "manual" | "mercadopago";
+
     const name = String(body?.name ?? "").trim();
     const description = String(body?.description ?? "").trim();
     const imageUrl = String(body?.imageUrl ?? body?.image_url ?? "").trim();
@@ -185,42 +146,30 @@ export async function POST(req: Request) {
 
     if (!name) return NextResponse.json({ error: "Título do produto é obrigatório." }, { status: 400 });
 
-    if (provider === "stripe") {
+    if (provider === "mercadopago") {
       if (price == null || price <= 0) {
-        return NextResponse.json({ error: "Preço é obrigatório (em BRL) para produtos Stripe." }, { status: 400 });
+        return NextResponse.json({ error: "Preço é obrigatório (em BRL) para produtos Mercado Pago." }, { status: 400 });
       }
 
-      const stripeSubid = normalizeSubid(body?.stripeSubid ?? body?.stripe_subid);
-      if (!stripeSubid || stripeSubid.length < 2) {
+      // SubId é opcional, usado só pra rastreamento (cruzamento ATI × MP).
+      const subid = normalizeSubid(body?.subid);
+      if (subid && (subid.length < 2 || !SUBID_REGEX.test(subid))) {
         return NextResponse.json(
-          { error: "SubId é obrigatório em produtos Stripe (mínimo 2 caracteres, ex.: suplementos)." },
-          { status: 400 },
-        );
-      }
-      if (!SUBID_REGEX.test(stripeSubid)) {
-        return NextResponse.json(
-          { error: "SubId: use apenas letras, números, hífen, ponto e underscore." },
+          { error: "SubId: use 2+ caracteres com apenas letras, números, hífen, ponto e underscore." },
           { status: 400 },
         );
       }
 
-      const stripeKey = await getStripeKeyForUser(supabase, gate.userId);
-      if (!stripeKey) {
-        return NextResponse.json(
-          { error: "Conecte sua conta Stripe em Configurações antes de criar produtos na Stripe." },
-          { status: 400 },
-        );
-      }
-
-      // Lê WhatsApp + endereço do remetente + account_id (p/ custom_text de checkout, pickup e marca conta).
-      const { data: senderProfile } = await supabase
+      // Confirma que o vendedor conectou MP em /configuracoes.
+      const { data: profileMp } = await supabase
         .from("profiles")
         .select(
-          "shipping_sender_whatsapp, shipping_sender_street, shipping_sender_number, shipping_sender_complement, shipping_sender_neighborhood, shipping_sender_city, shipping_sender_uf, stripe_account_id",
+          "mp_access_token, shipping_sender_whatsapp, shipping_sender_street, shipping_sender_number, shipping_sender_complement, shipping_sender_neighborhood, shipping_sender_city, shipping_sender_uf",
         )
         .eq("id", gate.userId)
         .single();
-      const senderRow = senderProfile as {
+      const profileMpRow = profileMp as {
+        mp_access_token?: string | null;
         shipping_sender_whatsapp?: string | null;
         shipping_sender_street?: string | null;
         shipping_sender_number?: string | null;
@@ -228,31 +177,30 @@ export async function POST(req: Request) {
         shipping_sender_neighborhood?: string | null;
         shipping_sender_city?: string | null;
         shipping_sender_uf?: string | null;
-        stripe_account_id?: string | null;
       } | null;
-      const userStripeAccountId = senderRow?.stripe_account_id ?? null;
-      const waUrl = toWhatsAppUrl(senderRow?.shipping_sender_whatsapp ?? null);
+      if (!profileMpRow?.mp_access_token?.trim()) {
+        return NextResponse.json(
+          { error: "Conecte sua conta Mercado Pago em Configurações antes de criar produtos." },
+          { status: 400 },
+        );
+      }
       const senderSnapshot: SenderSnapshot = {
-        street: senderRow?.shipping_sender_street ?? null,
-        number: senderRow?.shipping_sender_number ?? null,
-        complement: senderRow?.shipping_sender_complement ?? null,
-        neighborhood: senderRow?.shipping_sender_neighborhood ?? null,
-        city: senderRow?.shipping_sender_city ?? null,
-        uf: senderRow?.shipping_sender_uf ?? null,
+        street: profileMpRow?.shipping_sender_street ?? null,
+        number: profileMpRow?.shipping_sender_number ?? null,
+        complement: profileMpRow?.shipping_sender_complement ?? null,
+        neighborhood: profileMpRow?.shipping_sender_neighborhood ?? null,
+        city: profileMpRow?.shipping_sender_city ?? null,
+        uf: profileMpRow?.shipping_sender_uf ?? null,
       };
       const senderAddress = formatSenderAddressShort(senderSnapshot);
 
-      // Modo de entrega (aceita envio, aceita retirada, digital, receber em casa).
-      // Digital é exclusivo. "Receber em casa" não convive com Correios.
+      // Modo de entrega — mesmas regras do fluxo antigo.
       const allowDigital = body?.allowDigital === true;
       const allowLocalDelivery = allowDigital ? false : body?.allowLocalDelivery === true;
       const allowShipping = allowDigital || allowLocalDelivery ? false : body?.allowShipping !== false;
       const allowPickup = allowDigital ? false : body?.allowPickup === true;
       if (!allowShipping && !allowPickup && !allowDigital && !allowLocalDelivery) {
-        return NextResponse.json(
-          { error: "Marque ao menos uma opção de entrega." },
-          { status: 400 },
-        );
+        return NextResponse.json({ error: "Marque ao menos uma opção de entrega." }, { status: 400 });
       }
       const shippingCostRaw = body?.shippingCost;
       const shippingCost =
@@ -262,10 +210,7 @@ export async function POST(req: Request) {
             ? Math.max(0, Number(shippingCostRaw))
             : null;
       if (allowShipping && (shippingCost == null || shippingCost < 0)) {
-        return NextResponse.json(
-          { error: "Informe o valor do frete (use 0 para frete grátis)." },
-          { status: 400 },
-        );
+        return NextResponse.json({ error: "Informe o valor do frete (use 0 para frete grátis)." }, { status: 400 });
       }
       const localDeliveryCostRaw = body?.localDeliveryCost;
       const localDeliveryCost =
@@ -275,10 +220,7 @@ export async function POST(req: Request) {
             ? Math.max(0, Number(localDeliveryCostRaw))
             : null;
       if (allowLocalDelivery && (localDeliveryCost == null || localDeliveryCost < 0)) {
-        return NextResponse.json(
-          { error: "Informe o valor da entrega em casa (use 0 para grátis)." },
-          { status: 400 },
-        );
+        return NextResponse.json({ error: "Informe o valor da entrega em casa (use 0 para grátis)." }, { status: 400 });
       }
       if (allowPickup && !senderAddress) {
         return NextResponse.json(
@@ -290,93 +232,21 @@ export async function POST(req: Request) {
         );
       }
 
-      const mode: DeliveryMode = { allowShipping, allowPickup, allowDigital, allowLocalDelivery };
-
-      const stripe = new Stripe(stripeKey);
-
-      let createdProductId: string | null = null;
-      let createdPriceId: string | null = null;
-      let createdPaymentLinkId: string | null = null;
-      let paymentLinkUrl = "";
-
-      try {
-        const stripeDescription = buildStripeProductDescription(description, waUrl);
-        const stripeProduct = await stripe.products.create({
-          name,
-          description: stripeDescription ?? undefined,
-          images: imageUrl ? [imageUrl] : undefined,
-        });
-        createdProductId = stripeProduct.id;
-
-        const stripePrice = await stripe.prices.create({
-          product: stripeProduct.id,
-          currency: "brl",
-          unit_amount: Math.round(price * 100),
-        });
-        createdPriceId = stripePrice.id;
-
-        // ShippingRates dinâmicas conforme modos de entrega habilitados
-        const shippingRateIds: string[] = [];
-        if (allowShipping) {
-          const rate = await stripe.shippingRates.create({
-            display_name: SHIPPING_RATE_DISPLAY_NAMES.shipping,
-            type: "fixed_amount",
-            fixed_amount: { amount: Math.round((shippingCost ?? 0) * 100), currency: "brl" },
-          });
-          shippingRateIds.push(rate.id);
-        }
-        if (allowPickup) {
-          const rate = await stripe.shippingRates.create({
-            display_name: SHIPPING_RATE_DISPLAY_NAMES.pickup,
-            type: "fixed_amount",
-            fixed_amount: { amount: 0, currency: "brl" },
-          });
-          shippingRateIds.push(rate.id);
-        }
-
-        const customText = buildPaymentLinkCustomText(waUrl, mode, senderAddress);
-        const afterCompletion = buildAfterCompletion(waUrl, mode, senderAddress);
-        const stripePaymentLink = await stripe.paymentLinks.create({
-          line_items: [{ price: stripePrice.id, quantity: 1 }],
-          // shipping_address_collection só é obrigatório quando aceita envio
-          // (pickup puro evita fricção de preencher endereço)
-          ...(allowShipping
-            ? { shipping_address_collection: { allowed_countries: ["BR"] } }
-            : {}),
-          phone_number_collection: { enabled: true },
-          ...(shippingRateIds.length > 0
-            ? { shipping_options: shippingRateIds.map((id) => ({ shipping_rate: id })) }
-            : {}),
-          ...(customText ? { custom_text: customText } : {}),
-          ...(afterCompletion ? { after_completion: afterCompletion } : {}),
-        });
-        createdPaymentLinkId = stripePaymentLink.id;
-        paymentLinkUrl = stripePaymentLink.url;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Erro na Stripe";
-        return NextResponse.json({ error: `Falha ao criar produto na Stripe: ${msg}` }, { status: 502 });
-      }
-
       const pesoGVal = Number.isFinite(Number(body?.pesoG)) && Number(body?.pesoG) > 0 ? Math.round(Number(body.pesoG)) : null;
       const alturaCmVal = Number.isFinite(Number(body?.alturaCm)) && Number(body?.alturaCm) > 0 ? Number(body.alturaCm) : null;
       const larguraCmVal = Number.isFinite(Number(body?.larguraCm)) && Number(body?.larguraCm) > 0 ? Number(body.larguraCm) : null;
       const comprimentoCmVal = Number.isFinite(Number(body?.comprimentoCm)) && Number(body?.comprimentoCm) > 0 ? Number(body.comprimentoCm) : null;
-      const hasDimensions =
-        allowShipping && pesoGVal !== null && alturaCmVal !== null && larguraCmVal !== null && comprimentoCmVal !== null;
 
-      // Gera slug público único pra checkout (`public_slug`). Independe de dimensões —
-      // todo produto Stripe ganha slug. Casos que vão pro checkout dinâmico nosso:
-      //   - Correios com dimensões (cotação dinâmica)
-      //   - Digital (precisa coletar WhatsApp/e-mail)
-      //   - Receber em casa (valor fixo nosso, não existe no Payment Link)
-      //   - Só retirada na loja (sem frete pra cobrar — melhor o nosso UI)
+      // Slug + link interno (todo produto MP usa nosso checkout — Bricks vai aqui).
       const publicSlug = await generateUniquePublicSlug(supabase, name);
       const appUrl = getAppPublicUrl();
-      const onlyPickup = allowPickup && !allowShipping && !allowDigital && !allowLocalDelivery;
-      const publicLink =
-        (hasDimensions || allowDigital || allowLocalDelivery || onlyPickup) && appUrl
-          ? `${appUrl}/checkout/${encodeURIComponent(publicSlug)}`
-          : paymentLinkUrl;
+      if (!appUrl) {
+        return NextResponse.json(
+          { error: "NEXT_PUBLIC_APP_URL não configurada — necessária para gerar o link de checkout." },
+          { status: 500 },
+        );
+      }
+      const publicLink = `${appUrl}/checkout/${encodeURIComponent(publicSlug)}`;
 
       const { data, error } = await supabase
         .from("produtos_infoprodutor")
@@ -389,18 +259,14 @@ export async function POST(req: Request) {
           public_slug: publicSlug,
           price,
           price_old,
-          provider: "stripe",
-          stripe_product_id: createdProductId,
-          stripe_price_id: createdPriceId,
-          stripe_payment_link_id: createdPaymentLinkId,
-          stripe_subid: stripeSubid,
+          provider: "mercadopago",
+          subid: subid || null,
           allow_shipping: allowShipping,
           allow_pickup: allowPickup,
           allow_digital: allowDigital,
           allow_local_delivery: allowLocalDelivery,
           shipping_cost: allowShipping ? (shippingCost ?? 0) : null,
           local_delivery_cost: allowLocalDelivery ? (localDeliveryCost ?? 0) : null,
-          stripe_account_id: userStripeAccountId,
           thank_you_message:
             typeof body?.thankYouMessage === "string" && body.thankYouMessage.trim()
               ? body.thankYouMessage.trim()
@@ -414,10 +280,7 @@ export async function POST(req: Request) {
         .single();
 
       if (error) {
-        return NextResponse.json(
-          { error: `Produto criado na Stripe (${createdProductId}) mas falhou ao salvar no banco: ${error.message}` },
-          { status: 500 },
-        );
+        return NextResponse.json({ error: `Falha ao salvar produto: ${error.message}` }, { status: 500 });
       }
 
       return NextResponse.json({ data: mapProduto(data as unknown as Row) });
@@ -473,7 +336,7 @@ export async function PATCH(req: Request) {
     if (!current) return NextResponse.json({ error: "Produto não encontrado" }, { status: 404 });
 
     const currentRow = current as unknown as Row;
-    const isStripe = currentRow.provider === "stripe";
+    const isPaidProvider = currentRow.provider === "mercadopago";
 
     const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
     let newName: string | null = null;
@@ -497,18 +360,19 @@ export async function PATCH(req: Request) {
       newImageUrl = v || null;
     }
 
-    if (isStripe) {
-      // v1: preço e link de venda não podem ser alterados em produtos Stripe
-      // (mudar preço exige criar Price novo e invalidar o antigo — fora do escopo).
+    if (isPaidProvider) {
+      // Preço e link não podem ser alterados em produtos Mercado Pago via PATCH
+      // (link é gerado a partir do public_slug; preço travado pra preservar
+      // histórico de pedidos/checkouts em curso). Se precisar mudar, recrie.
       if (Object.prototype.hasOwnProperty.call(body ?? {}, "price")) {
         return NextResponse.json(
-          { error: "Não é possível alterar o preço de produtos criados na Stripe. Remova e recrie se necessário." },
+          { error: "Não é possível alterar o preço deste produto. Remova e recrie se necessário." },
           { status: 400 },
         );
       }
       if (Object.prototype.hasOwnProperty.call(body ?? {}, "link")) {
         return NextResponse.json(
-          { error: "O link de venda de produtos Stripe é gerado automaticamente e não pode ser editado." },
+          { error: "O link de venda é gerado automaticamente e não pode ser editado." },
           { status: 400 },
         );
       }
@@ -516,25 +380,16 @@ export async function PATCH(req: Request) {
         const p = body.priceOld ?? body.price_old;
         patch.price_old = p == null || p === "" ? null : Number.isFinite(Number(p)) ? Number(p) : null;
       }
-      if (
-        Object.prototype.hasOwnProperty.call(body ?? {}, "stripeSubid") ||
-        Object.prototype.hasOwnProperty.call(body ?? {}, "stripe_subid")
-      ) {
-        const newSubid = normalizeSubid(body?.stripeSubid ?? body?.stripe_subid);
-        if (!newSubid || newSubid.length < 2) {
+      if (Object.prototype.hasOwnProperty.call(body ?? {}, "subid")) {
+        const newSubid = normalizeSubid(body?.subid);
+        if (newSubid && (newSubid.length < 2 || !SUBID_REGEX.test(newSubid))) {
           return NextResponse.json(
-            { error: "SubId é obrigatório (mínimo 2 caracteres)." },
+            { error: "SubId: use 2+ caracteres com apenas letras, números, hífen, ponto e underscore." },
             { status: 400 },
           );
         }
-        if (!SUBID_REGEX.test(newSubid)) {
-          return NextResponse.json(
-            { error: "SubId: use apenas letras, números, hífen, ponto e underscore." },
-            { status: 400 },
-          );
-        }
-        if (newSubid !== currentRow.stripe_subid) {
-          patch.stripe_subid = newSubid;
+        if (newSubid !== currentRow.subid) {
+          patch.subid = newSubid || null;
         }
       }
 
@@ -547,33 +402,8 @@ export async function PATCH(req: Request) {
         patch.thank_you_message = trimmed || null;
       }
 
-      // Sincroniza name/description/image no Stripe (best-effort — mudanças cosméticas).
-      if ((newName !== null || newDescription !== undefined || newImageUrl !== undefined) && currentRow.stripe_product_id) {
-        const stripeKey = await getStripeKeyForUser(supabase, gate.userId);
-        if (stripeKey) {
-          try {
-            const stripe = new Stripe(stripeKey);
-            const updatePayload: Stripe.ProductUpdateParams = {};
-            if (newName !== null) updatePayload.name = newName;
-            if (newDescription !== undefined) {
-              // Regenera a descrição da Stripe preservando a linha CTA do WhatsApp (se houver).
-              const { data: profile } = await supabase
-                .from("profiles")
-                .select("shipping_sender_whatsapp")
-                .eq("id", gate.userId)
-                .single();
-              const waUrl = toWhatsAppUrl(
-                (profile as { shipping_sender_whatsapp?: string | null } | null)?.shipping_sender_whatsapp ?? null,
-              );
-              updatePayload.description = buildStripeProductDescription(newDescription ?? null, waUrl) ?? undefined;
-            }
-            if (newImageUrl !== undefined) updatePayload.images = newImageUrl ? [newImageUrl] : [];
-            await stripe.products.update(currentRow.stripe_product_id, updatePayload);
-          } catch {
-            // Falha silenciosa: produto local é atualizado mesmo que a sincronia com Stripe falhe.
-          }
-        }
-      }
+      // Mercado Pago não exige sincronizar produto/preço externo: o catálogo
+      // vive 100% no nosso banco e a Preference é criada por checkout.
     } else {
       if (typeof body?.link === "string") {
         const l = body.link.trim();
@@ -639,33 +469,9 @@ export async function DELETE(req: Request) {
     const id = url.searchParams.get("id")?.trim();
     if (!id) return NextResponse.json({ error: "id é obrigatório" }, { status: 400 });
 
-    const { data: current } = await supabase
-      .from("produtos_infoprodutor")
-      .select("id, provider, stripe_product_id, stripe_payment_link_id")
-      .eq("id", id)
-      .eq("user_id", gate.userId)
-      .maybeSingle();
-
-    // Arquiva no Stripe antes de apagar do banco (Stripe não permite deletar
-    // produtos com histórico, só arquivar).
-    if (current && (current as { provider?: string }).provider === "stripe") {
-      const stripeKey = await getStripeKeyForUser(supabase, gate.userId);
-      if (stripeKey) {
-        try {
-          const stripe = new Stripe(stripeKey);
-          const row = current as { stripe_product_id?: string | null; stripe_payment_link_id?: string | null };
-          if (row.stripe_payment_link_id) {
-            await stripe.paymentLinks.update(row.stripe_payment_link_id, { active: false });
-          }
-          if (row.stripe_product_id) {
-            await stripe.products.update(row.stripe_product_id, { active: false });
-          }
-        } catch {
-          // Falha silenciosa — o usuário removeu localmente; pode arquivar no painel da Stripe se necessário.
-        }
-      }
-    }
-
+    // Apaga só do nosso banco — pagamentos no Mercado Pago vivem na conta do
+    // vendedor independentes do produto local; histórico de vendas continua
+    // acessível pelo painel do MP.
     const { error } = await supabase
       .from("produtos_infoprodutor")
       .delete()

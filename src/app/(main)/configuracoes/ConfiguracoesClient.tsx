@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { IdCard, Megaphone, MessageCircle, ChevronRight, ShoppingBag, CreditCard } from "lucide-react";
+import { useEffect, useState } from "react";
+import { IdCard, Megaphone, MessageCircle, ChevronRight, ShoppingBag, Wallet } from "lucide-react";
 import ShopeeIntegrationCard from "./ShopeeIntegrationCard";
 import MetaIntegrationCard from "./MetaIntegrationCard";
 import MessagingChannelsCard from "./MessagingChannelsCard";
 import MercadoLivreIntegrationCard from "./MercadoLivreIntegrationCard";
-import StripeIntegrationCard from "./StripeIntegrationCard";
+import MercadoPagoIntegrationCard from "./MercadoPagoIntegrationCard";
 import ShippingProfileCard from "./ShippingProfileCard";
 import { MERCADOLIVRE_UX_COMING_SOON } from "@/lib/mercadolivre-ux-coming-soon";
 
-export type SectionKey = "shopee" | "mercadolivre" | "meta" | "evolution" | "stripe" | null;
+export type SectionKey = "shopee" | "mercadolivre" | "meta" | "evolution" | "mercadopago" | null;
 
 type ConfiguracoesClientProps = {
   initialAppId: string;
@@ -24,10 +24,6 @@ type ConfiguracoesClientProps = {
   initialMlSecretLast4?: string | null;
   metaHasToken: boolean;
   metaLast4: string | null;
-  stripeHasKey?: boolean;
-  stripeLast4?: string | null;
-  stripeHasPublishableKey?: boolean;
-  stripePublishableLast4?: string | null;
 };
 
 const CARDS: {
@@ -41,12 +37,12 @@ const CARDS: {
   {
     key: "shopee",
     title: "Integração Shopee",
-    description: "App ID e API Key para comissões e relatórios",
+    description: "API Shopee.",
     icon: IdCard,
   },
   {
     key: "mercadolivre",
-    title: "Mercado Livre Afiliados",
+    title: "Integração ML",
     description: "Etiqueta em uso e token da extensão",
     icon: ShoppingBag,
   },
@@ -58,15 +54,15 @@ const CARDS: {
   },
   {
     key: "evolution",
-    title: "Integração WhatsApp + Telegram",
+    title: "Integrações",
     description: "Instâncias WhatsApp e bots Telegram",
     icon: MessageCircle,
   },
   {
-    key: "stripe",
-    title: "Integração Stripe",
-    description: "Chave, endereço de remetente e etiquetas",
-    icon: CreditCard,
+    key: "mercadopago",
+    title: "Infoprodutor",
+    description: "Conecte suas formas de pagamento.",
+    icon: Wallet,
   },
 ];
 
@@ -89,15 +85,19 @@ export default function ConfiguracoesClient({
   initialMlSecretLast4 = null,
   metaHasToken,
   metaLast4,
-  stripeHasKey = false,
-  stripeLast4 = null,
-  stripeHasPublishableKey = false,
-  stripePublishableLast4 = null,
 }: ConfiguracoesClientProps) {
   const [openSection, setOpenSection] = useState<SectionKey>(
     MERCADOLIVRE_UX_COMING_SOON ? null : initialOpenMl ? "mercadolivre" : null,
   );
   const visibleCards = CARDS.filter((c) => !c.hidden);
+
+  // Se o usuário voltou do callback OAuth do Mercado Pago, abre o card MP
+  // automaticamente para mostrar o banner de sucesso/erro.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("mp")) setOpenSection("mercadopago");
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -183,14 +183,9 @@ export default function ConfiguracoesClient({
           <MessagingChannelsCard />
         </div>
       )}
-      {openSection === "stripe" && (
+      {openSection === "mercadopago" && (
         <div className="animate-in fade-in duration-200 space-y-4">
-          <StripeIntegrationCard
-            initialHasKey={stripeHasKey}
-            initialLast4={stripeLast4}
-            initialHasPublishableKey={stripeHasPublishableKey}
-            initialPublishableLast4={stripePublishableLast4}
-          />
+          <MercadoPagoIntegrationCard />
           <ShippingProfileCard />
         </div>
       )}

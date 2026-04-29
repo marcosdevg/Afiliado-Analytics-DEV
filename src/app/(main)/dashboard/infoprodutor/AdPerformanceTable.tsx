@@ -203,7 +203,7 @@ export default function AdPerformanceTable({ refreshSignal = 0 }: { refreshSigna
           <Megaphone className="w-10 h-10 text-[#686868]" />
           <p className="text-base font-semibold text-[#f0f0f2]">Nenhuma campanha marcada como InfoP</p>
           <p className="text-[13px] text-[#9a9aa2] max-w-md leading-relaxed">
-            Vá em <Link href="/dashboard/ati" className="underline text-[#a8a2ff]">ATI</Link>, ative o botão <strong>InfoP</strong> nas campanhas que vendem produtos Stripe e cole o mesmo SubId do produto no campo <strong>SubId InfoP</strong> de cada anúncio.
+            Vá em <Link href="/dashboard/ati" className="underline text-[#7cd0f7]">ATI</Link>, ative o botão <strong>InfoP</strong> nas campanhas que vendem seus produtos e cole o mesmo SubId do produto no campo <strong>SubId InfoP</strong> de cada anúncio.
           </p>
         </div>
       ) : null}
@@ -287,7 +287,7 @@ export default function AdPerformanceTable({ refreshSignal = 0 }: { refreshSigna
                               </div>
                             ) : (
                               <p className="text-[11px] text-amber-300/90 mt-1.5 max-w-[200px] leading-tight">
-                                SubId sem produto Stripe vinculado
+                                SubId sem produto vinculado
                               </p>
                             )}
                           </>
@@ -381,11 +381,11 @@ export default function AdPerformanceTable({ refreshSignal = 0 }: { refreshSigna
             )}
 
             <Link
-              href="https://dashboard.stripe.com/payments"
+              href="https://www.mercadopago.com.br/activities"
               target="_blank"
-              className="inline-flex items-center gap-1.5 hover:text-[#a8a2ff]"
+              className="inline-flex items-center gap-1.5 hover:text-[#7cd0f7]"
             >
-              Ver pagamentos na Stripe <ExternalLink className="w-3 h-3" />
+              Ver pagamentos no Mercado Pago <ExternalLink className="w-3 h-3" />
             </Link>
           </div>
         </div>
@@ -430,17 +430,17 @@ function KpiStrip({ data }: { data: Response }) {
           tip="Total gasto nos anúncios Meta das campanhas marcadas como InfoP no período."
         />
         <KpiCell
-          label="Receita Stripe"
+          label="Receita"
           value={formatBRL(totals.revenue)}
           accent="emerald"
-          tip="Soma das vendas concluídas na Stripe cujos produtos tenham SubId cruzado com algum ad InfoP."
+          tip="Soma das vendas Mercado Pago concluídas cujos produtos tenham SubId cruzado com algum ad InfoP."
         />
         <KpiCell
           label="Lucro"
           value={formatBRL(totals.profit)}
           sub={totals.revenue > 0 ? `Margem ${formatPct(margin)}` : undefined}
           accent={profitAccent}
-          tip="Receita Stripe menos o custo dos anúncios Meta. Verde = positivo, vermelho = prejuízo."
+          tip="Receita menos o custo dos anúncios Meta. Verde = positivo, vermelho = prejuízo."
         />
         <KpiCell
           label="ROAS"
@@ -452,7 +452,7 @@ function KpiStrip({ data }: { data: Response }) {
           label="Pedidos"
           value={formatInt(totals.orders)}
           sub={totals.orders > 0 ? `Ticket ${formatBRL(avgTicket)}` : undefined}
-          tip="Quantidade de vendas concluídas na Stripe nos produtos cruzados com ads InfoP."
+          tip="Quantidade de vendas concluídas nos produtos cruzados com ads InfoP."
         />
         <KpiCell
           label="Ticket Médio"

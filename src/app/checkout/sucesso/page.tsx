@@ -92,15 +92,16 @@ function buildMessage(info: OrderInfo): string {
 function CheckoutSuccessInner() {
   const params = useSearchParams();
   const slug = params?.get("slug") ?? "";
-  const pi = params?.get("payment_intent") ?? "";
-  const redirectStatus = params?.get("redirect_status") ?? "";
+  const mpPaymentId = params?.get("payment_id") ?? "";
+  // Mercado Pago manda `status=approved|pending|in_process` no back_url.
+  const mpStatus = params?.get("status") ?? "";
 
   const [info, setInfo] = useState<OrderInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!slug || !pi) {
+    if (!slug || !mpPaymentId) {
       setError("Link inválido");
       setLoading(false);
       return;
@@ -108,9 +109,8 @@ function CheckoutSuccessInner() {
     let alive = true;
     (async () => {
       try {
-        const res = await fetch(
-          `/api/checkout/sucesso/info?slug=${encodeURIComponent(slug)}&pi=${encodeURIComponent(pi)}`,
-        );
+        const qs = new URLSearchParams({ slug, payment_id: mpPaymentId });
+        const res = await fetch(`/api/checkout/sucesso/info?${qs.toString()}`);
         const json = await res.json();
         if (!alive) return;
         if (!res.ok) throw new Error(json?.error ?? "Erro ao buscar pedido");
@@ -125,7 +125,7 @@ function CheckoutSuccessInner() {
     return () => {
       alive = false;
     };
-  }, [slug, pi]);
+  }, [slug, mpPaymentId]);
 
   if (loading) {
     return (
@@ -135,16 +135,18 @@ function CheckoutSuccessInner() {
     );
   }
 
-  // PIX / Boleto: Stripe redireciona com redirect_status=processing antes do pagamento real
-  if (redirectStatus === "processing" || (info && !info.paid)) {
+  // PIX / Boleto: Mercado Pago manda status=pending/in_process antes da confirmação
+  // do banco. Webhook bate depois e atualiza.
+  const mpPending = mpStatus === "pending" || mpStatus === "in_process";
+  if (mpPending || (info && !info.paid)) {
     return (
       <div className="min-h-screen bg-[#18181b] text-[#f0f0f2] flex items-center justify-center px-4">
         <div className="max-w-md w-full rounded-xl border border-sky-500/30 bg-sky-500/5 p-8 text-center">
           <Clock className="w-12 h-12 text-sky-400 mx-auto mb-4" />
           <h1 className="text-lg font-bold">Aguardando pagamento</h1>
           <p className="mt-2 text-sm text-[#c8c8ce] leading-relaxed">
-            Recebemos seu pedido. Assim que a Stripe confirmar o pagamento (PIX ou boleto), o vendedor
-            entrará em contato via WhatsApp.
+            Recebemos seu pedido. Assim que o pagamento (PIX ou boleto) for confirmado pelo banco, o
+            vendedor entrará em contato via WhatsApp.
           </p>
         </div>
       </div>

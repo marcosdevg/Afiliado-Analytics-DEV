@@ -1,6 +1,7 @@
 /**
- * Dispara uma notificação de TESTE no webhook `STRIPE_WEBHOOK_NOTIFICACOES`
- * simulando um payload vindo do fluxo de venda Stripe. Destino é o próprio
+ * Dispara uma notificação de TESTE no webhook n8n
+ * (`INFOPROD_NOTIFICATIONS_WEBHOOK_URL`, ou legado `STRIPE_WEBHOOK_NOTIFICACOES`)
+ * simulando um payload vindo do fluxo de venda Mercado Pago. Destino é o próprio
  * WhatsApp da loja em ambos os casos (pra que o usuário valide em si mesmo).
  *
  *   POST /api/infoprodutor/test-notification
@@ -29,11 +30,14 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!process.env.STRIPE_WEBHOOK_NOTIFICACOES) {
+    if (
+      !process.env.INFOPROD_NOTIFICATIONS_WEBHOOK_URL &&
+      !process.env.STRIPE_WEBHOOK_NOTIFICACOES
+    ) {
       return NextResponse.json(
         {
           error:
-            "STRIPE_WEBHOOK_NOTIFICACOES não configurado no .env.local. Defina a URL do webhook n8n e reinicie o dev server.",
+            "INFOPROD_NOTIFICATIONS_WEBHOOK_URL não configurado no .env.local. Defina a URL do webhook n8n e reinicie o dev server.",
         },
         { status: 500 },
       );

@@ -1,5 +1,5 @@
 /**
- * Sub ID InfoP por anúncio (ATI × produtos Stripe).
+ * Sub ID InfoP por anúncio (ATI × produtos Mercado Pago).
  * Espelho do `ati_ad_shopee_sub` — padrão idêntico, sem tocar na tabela Shopee.
  * GET → { mappings: { adId, infopSubId }[] }
  * POST { adId, infopSubId } → salvar (trim, 2–64 chars)

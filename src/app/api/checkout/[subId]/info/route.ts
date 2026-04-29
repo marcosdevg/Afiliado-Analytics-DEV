@@ -12,7 +12,7 @@ type ProductRow = {
   price: number | string | null;
   price_old: number | string | null;
   provider: string | null;
-  stripe_subid: string | null;
+  subid: string | null;
   allow_shipping: boolean | null;
   allow_pickup: boolean | null;
   allow_digital: boolean | null;
@@ -33,7 +33,7 @@ type SenderRow = {
   shipping_sender_city: string | null;
   shipping_sender_uf: string | null;
   shipping_sender_cep: string | null;
-  stripe_publishable_key: string | null;
+  mp_public_key: string | null;
   checkout_theme_mode: string | null;
   checkout_header_image_url: string | null;
   checkout_footer_image_url: string | null;
@@ -87,10 +87,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ subId: string 
     const { data: produto, error } = await supabase
       .from("produtos_infoprodutor")
       .select(
-        "id, user_id, name, description, image_url, price, price_old, provider, stripe_subid, allow_shipping, allow_pickup, allow_digital, allow_local_delivery, shipping_cost, local_delivery_cost, peso_g, altura_cm, largura_cm, comprimento_cm",
+        "id, user_id, name, description, image_url, price, price_old, provider, subid, allow_shipping, allow_pickup, allow_digital, allow_local_delivery, shipping_cost, local_delivery_cost, peso_g, altura_cm, largura_cm, comprimento_cm",
       )
       .eq("public_slug", slug)
-      .eq("provider", "stripe")
+      .eq("provider", "mercadopago")
       .maybeSingle();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -101,14 +101,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ subId: string 
     const { data: profile } = await supabase
       .from("profiles")
       .select(
-        "shipping_sender_street, shipping_sender_number, shipping_sender_complement, shipping_sender_neighborhood, shipping_sender_city, shipping_sender_uf, shipping_sender_cep, stripe_publishable_key, checkout_theme_mode, checkout_header_image_url, checkout_footer_image_url, checkout_footer_image_size, checkout_method_card, checkout_method_pix, checkout_method_boleto, checkout_pay_button_color, checkout_pay_button_light_sweep, checkout_trigger_sale_notifications, checkout_trigger_countdown, checkout_countdown_minutes, checkout_countdown_message, checkout_countdown_expired_message, checkout_trigger_stock, checkout_stock_initial, checkout_trigger_viewers, checkout_viewers_min, checkout_viewers_max, checkout_trigger_guarantee, checkout_guarantee_text",
+        "shipping_sender_street, shipping_sender_number, shipping_sender_complement, shipping_sender_neighborhood, shipping_sender_city, shipping_sender_uf, shipping_sender_cep, mp_public_key, checkout_theme_mode, checkout_header_image_url, checkout_footer_image_url, checkout_footer_image_size, checkout_method_card, checkout_method_pix, checkout_method_boleto, checkout_pay_button_color, checkout_pay_button_light_sweep, checkout_trigger_sale_notifications, checkout_trigger_countdown, checkout_countdown_minutes, checkout_countdown_message, checkout_countdown_expired_message, checkout_trigger_stock, checkout_stock_initial, checkout_trigger_viewers, checkout_viewers_min, checkout_viewers_max, checkout_trigger_guarantee, checkout_guarantee_text",
       )
       .eq("id", row.user_id)
       .maybeSingle();
 
     const sender = (profile as SenderRow | null) ?? null;
     const pickupAddress = row.allow_pickup ? formatPickupAddress(sender) : null;
-    const publishableKey = sender?.stripe_publishable_key?.trim() ?? null;
+    const publishableKey = sender?.mp_public_key?.trim() ?? null;
     const themeMode = sender?.checkout_theme_mode === "light" ? "light" : "dark";
     const headerImageUrl = sender?.checkout_header_image_url?.trim() || null;
     const footerImageUrl = sender?.checkout_footer_image_url?.trim() || null;

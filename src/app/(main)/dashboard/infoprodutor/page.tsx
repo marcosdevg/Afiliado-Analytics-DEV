@@ -39,12 +39,12 @@ import FreteCalculator from "@/app/components/frete/FreteCalculator";
 import CustomCheckoutTab from "./CustomCheckoutTab";
 import MetaSearchablePicker from "@/app/components/meta/MetaSearchablePicker";
 import { GeradorPaginationBar } from "@/app/components/shopee/GeradorPaginationBar";
-import StripeSalesDashboard from "./StripeSalesDashboard";
-import StripeOrdersSection from "./StripeOrdersSection";
+import MpSalesDashboard from "./MpSalesDashboard";
+import MpOrdersSection from "./MpOrdersSection";
 import AdPerformanceTable from "./AdPerformanceTable";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-type ProductProvider = "manual" | "stripe";
+type ProductProvider = "manual" | "mercadopago";
 
 type Produto = {
   id: string;
@@ -55,7 +55,7 @@ type Produto = {
   price: number | null;
   priceOld: number | null;
   provider: ProductProvider;
-  stripeSubid: string | null;
+  subid: string | null;
   allowShipping: boolean;
   allowPickup: boolean;
   allowDigital: boolean;
@@ -67,7 +67,6 @@ type Produto = {
   alturaCm: number | null;
   larguraCm: number | null;
   comprimentoCm: number | null;
-  isOrphan?: boolean;
   createdAt: string;
 };
 
@@ -174,7 +173,7 @@ export default function InfoprodutorPage() {
   const [formLink, setFormLink] = useState("");
   const [formPrice, setFormPrice] = useState("");
   const [formPriceOld, setFormPriceOld] = useState("");
-  const [formStripeSubid, setFormStripeSubid] = useState("");
+  const [formSubid, setFormSubid] = useState("");
   const [formAllowShipping, setFormAllowShipping] = useState(true);
   const [formAllowPickup, setFormAllowPickup] = useState(false);
   const [formAllowDigital, setFormAllowDigital] = useState(false);
@@ -194,9 +193,9 @@ export default function InfoprodutorPage() {
   const [savingProduto, setSavingProduto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ─── Estado: status da conexão Stripe ──────────────────────────────────────
-  const [stripeConnected, setStripeConnected] = useState(false);
-  const [stripeLast4, setStripeLast4] = useState<string | null>(null);
+  // ─── Estado: status da conexão de pagamento ────────────────────────────────
+  const [mpConnected, setMpConnected] = useState(false);
+  const [mpLast4, setMpLast4] = useState<string | null>(null);
 
   // ─── Estado: listas ────────────────────────────────────────────────────────
   const [listas, setListas] = useState<Lista[]>([]);
@@ -279,32 +278,30 @@ export default function InfoprodutorPage() {
     }
   }, []);
 
-  const loadStripeStatus = useCallback(async () => {
+  const loadMpStatus = useCallback(async () => {
     try {
-      const res = await fetch("/api/settings/stripe");
+      const res = await fetch("/api/settings/mercadopago");
       if (!res.ok) return;
       const json = await res.json();
-      setStripeConnected(!!json?.has_key);
-      setStripeLast4(json?.last4 ?? null);
+      setMpConnected(!!json?.has_credentials);
+      setMpLast4(json?.secret_last4 ?? null);
     } catch {
-      /* ignore — Stripe é opcional */
+      /* ignore — Mercado Pago é opcional */
     }
   }, []);
 
   useEffect(() => {
     loadProdutos();
     loadListas();
-    loadStripeStatus();
-  }, [loadProdutos, loadListas, loadStripeStatus]);
+    loadMpStatus();
+  }, [loadProdutos, loadListas, loadMpStatus]);
 
   const handleRefreshCurrentTab = useCallback(async () => {
     if (refreshingTab) return;
     setRefreshingTab(true);
     try {
       if (activeTab === "produtos") {
-        // Produtos recarrega do banco + lista de listas + status da Stripe
-        await Promise.all([loadProdutos(), loadListas(), loadStripeStatus()]);
-        // Limpa estado de expansão das listas pra forçar re-fetch dos itens ao re-abrir
+        await Promise.all([loadProdutos(), loadListas(), loadMpStatus()]);
         setItemsByLista({});
         setExpandedListas(new Set());
       } else {
@@ -313,7 +310,7 @@ export default function InfoprodutorPage() {
     } finally {
       setRefreshingTab(false);
     }
-  }, [activeTab, refreshingTab, loadProdutos, loadListas, loadStripeStatus]);
+  }, [activeTab, refreshingTab, loadProdutos, loadListas, loadMpStatus]);
 
   const toggleLista = (listaId: string) => {
     setExpandedListas((prev) => {
@@ -412,7 +409,7 @@ export default function InfoprodutorPage() {
     setFormLink("");
     setFormPrice("");
     setFormPriceOld("");
-    setFormStripeSubid("");
+    setFormSubid("");
     setFormAllowShipping(true);
     setFormAllowPickup(false);
     setFormAllowDigital(false);
@@ -468,6 +465,11 @@ export default function InfoprodutorPage() {
     }
   };
 
+  // Provider que abre o checkout próprio (preço editável só em create, modos
+  // de entrega, SubId de rastreamento, etc.).
+  const isPaidProvider = formProvider === "mercadopago";
+  const isPaidEditReadOnly = isPaidProvider && formMode === "edit";
+
   const handleSubmitProduto = async () => {
     setError(null);
     if (!formName.trim()) {
@@ -475,24 +477,20 @@ export default function InfoprodutorPage() {
       return;
     }
 
-    const isStripeCreate = formMode === "create" && formProvider === "stripe";
+    const isMpCreate = formMode === "create" && formProvider === "mercadopago";
 
-    const normalizedSubid = formStripeSubid.trim();
-    if (isStripeCreate) {
-      if (!stripeConnected) {
-        setError("Conecte sua conta Stripe em Configurações antes de criar produtos na Stripe.");
+    const normalizedSubid = formSubid.trim();
+    if (isMpCreate) {
+      if (!mpConnected) {
+        setError("Conecte sua conta Mercado Pago em Configurações antes de criar produtos.");
         return;
       }
       if (!formPrice.trim()) {
-        setError("Preço é obrigatório para produtos criados na Stripe.");
+        setError("Preço é obrigatório para produtos pagos pelo Mercado Pago.");
         return;
       }
-      if (!normalizedSubid || normalizedSubid.length < 2) {
-        setError("SubId é obrigatório (ex.: suplementos, whey-protein).");
-        return;
-      }
-      if (!/^[a-zA-Z0-9_\-.]+$/.test(normalizedSubid)) {
-        setError("SubId: use apenas letras, números, hífen, ponto e underscore.");
+      if (normalizedSubid && (normalizedSubid.length < 2 || !/^[a-zA-Z0-9_\-.]+$/.test(normalizedSubid))) {
+        setError("SubId: use 2+ caracteres com apenas letras, números, hífen, ponto e underscore.");
         return;
       }
       if (!formAllowShipping && !formAllowPickup && !formAllowDigital && !formAllowLocalDelivery) {
@@ -505,15 +503,6 @@ export default function InfoprodutorPage() {
       }
       if (formAllowLocalDelivery && !formLocalDeliveryCost.trim()) {
         setError("Informe o valor da entrega em casa (use 0 para grátis).");
-        return;
-      }
-    } else if (formMode === "edit" && formProvider === "stripe") {
-      if (!normalizedSubid || normalizedSubid.length < 2) {
-        setError("SubId é obrigatório (ex.: suplementos, whey-protein).");
-        return;
-      }
-      if (!/^[a-zA-Z0-9_\-.]+$/.test(normalizedSubid)) {
-        setError("SubId: use apenas letras, números, hífen, ponto e underscore.");
         return;
       }
     } else if (formMode === "create" && !formLink.trim()) {
@@ -535,10 +524,10 @@ export default function InfoprodutorPage() {
         imageUrl,
       };
 
-      if (isStripeCreate) {
-        basePayload.provider = "stripe";
+      if (isMpCreate) {
+        basePayload.provider = "mercadopago";
         basePayload.price = priceNum;
-        basePayload.stripeSubid = normalizedSubid;
+        basePayload.subid = normalizedSubid;
         const effectiveLocalDelivery = !formAllowDigital && formAllowLocalDelivery;
         const effectiveShipping = !formAllowDigital && !effectiveLocalDelivery && formAllowShipping;
         basePayload.allowShipping = effectiveShipping;
@@ -559,14 +548,14 @@ export default function InfoprodutorPage() {
           basePayload.larguraCm = toNum(formLarguraCm);
           basePayload.comprimentoCm = toNum(formComprimentoCm);
         }
-        // link é gerado pela Stripe
+        // link é gerado pelo nosso checkout (Bricks Mercado Pago)
       } else if (formMode === "create") {
         basePayload.provider = "manual";
         basePayload.link = formLink.trim();
         basePayload.price = priceNum;
-      } else if (formProvider === "stripe") {
-        // edit em produto Stripe: apenas campos cosméticos + subId + mensagem de agradecimento
-        basePayload.stripeSubid = normalizedSubid;
+      } else if (formProvider === "mercadopago") {
+        // edit em produto Mercado Pago: subId + mensagem de agradecimento.
+        basePayload.subid = normalizedSubid;
         basePayload.thankYouMessage = formThankYouMessage.trim();
       } else {
         // edit em produto manual
@@ -582,8 +571,8 @@ export default function InfoprodutorPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Erro ao salvar produto");
 
-      const successMsg = isStripeCreate
-        ? "Produto criado na Stripe e adicionado ao catálogo."
+      const successMsg = isMpCreate
+        ? "Produto criado e adicionado ao catálogo. O link de checkout já está pronto."
         : formMode === "edit"
           ? "Produto atualizado."
           : "Produto adicionado ao catálogo.";
@@ -608,7 +597,7 @@ export default function InfoprodutorPage() {
     setFormLink(p.link);
     setFormPrice(p.price != null ? String(p.price) : "");
     setFormPriceOld(p.priceOld != null ? String(p.priceOld) : "");
-    setFormStripeSubid(p.stripeSubid ?? "");
+    setFormSubid(p.subid ?? "");
     setFormAllowShipping(p.allowShipping);
     setFormAllowPickup(p.allowPickup);
     setFormAllowDigital(p.allowDigital ?? false);
@@ -750,64 +739,7 @@ export default function InfoprodutorPage() {
     }
   };
 
-  // ─── Backfill: atualizar link de checkout de um produto Stripe ────────────
-  const [refreshingLinkId, setRefreshingLinkId] = useState<string | null>(null);
-  const handleRefreshCheckout = async (produtoId: string) => {
-    setError(null);
-    setRefreshingLinkId(produtoId);
-    try {
-      const res = await fetch("/api/infoprodutor/produtos/refresh-checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: produtoId }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Erro ao atualizar link");
-      setFeedback("Link de checkout atualizado — novos pedidos já virão com endereço e telefone.");
-      setTimeout(() => setFeedback(""), 5000);
-      await loadProdutos();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao atualizar link");
-    } finally {
-      setRefreshingLinkId(null);
-    }
-  };
-
-  // ─── Recriar produto órfão (criado em conta Stripe anterior) na conta atual ─
-  const [recreatingOrphanId, setRecreatingOrphanId] = useState<string | null>(null);
-  const handleRecreateOrphan = async (produtoId: string) => {
-    setError(null);
-    setRecreatingOrphanId(produtoId);
-    try {
-      const res = await fetch("/api/infoprodutor/produtos/recreate-orphan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: produtoId }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Erro ao recriar produto");
-      setFeedback("Produto recriado na conta Stripe atual. Novo link de checkout ativo.");
-      setTimeout(() => setFeedback(""), 6000);
-      await loadProdutos();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Erro ao recriar produto");
-    } finally {
-      setRecreatingOrphanId(null);
-    }
-  };
-
   // ─── Ações destrutivas ─────────────────────────────────────────────────────
-  const askRefreshCheckout = (produtoId: string) => {
-    setConfirmState({
-      type: "refreshCheckout",
-      title: "Atualizar link de checkout",
-      message:
-        "Atenção: Caso confirme a atualização do checkout, fique ciente que você perderá todos os dados de venda e trackeamento deste checkout. Caso não queira perder dados, aconselhamos que crie um novo produto!",
-      confirmLabel: "Atualizar!",
-      variant: "danger",
-      payload: { produtoId },
-    });
-  };
   const askDeleteProduto = (produtoId: string, nome: string) => {
     setConfirmState({
       type: "deleteProduto",
@@ -885,11 +817,6 @@ export default function InfoprodutorPage() {
           delete next[payload.listaId!];
           return next;
         });
-      } else if (type === "refreshCheckout" && payload.produtoId) {
-        // Fecha o modal antes — o feedback/loading fica no botão de refresh da linha.
-        setConfirmState(null);
-        await handleRefreshCheckout(payload.produtoId);
-        return;
       }
       setConfirmState(null);
     } catch (e) {
@@ -897,7 +824,7 @@ export default function InfoprodutorPage() {
     } finally {
       setConfirmLoading(false);
     }
-  }, [confirmState, handleRefreshCheckout]);
+  }, [confirmState]);
 
   const handleConfirmCancel = useCallback(() => {
     if (!confirmLoading) setConfirmState(null);
@@ -1162,7 +1089,7 @@ export default function InfoprodutorPage() {
                 </button>
               </div>
 
-              {/* Toggle: Manual × Stripe (apenas na criação; na edição o provider é fixo) */}
+              {/* Toggle: Manual × Mercado Pago (apenas na criação; na edição o provider é fixo) */}
               <div className="px-4 sm:px-5 pt-3">
                 <div
                   role="tablist"
@@ -1188,31 +1115,31 @@ export default function InfoprodutorPage() {
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={formProvider === "stripe"}
+                    aria-selected={formProvider === "mercadopago"}
                     disabled={formMode === "edit" || savingProduto || uploadingImage}
-                    onClick={() => setFormProvider("stripe")}
+                    onClick={() => setFormProvider("mercadopago")}
                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors disabled:cursor-not-allowed ${
-                      formProvider === "stripe"
-                        ? "bg-[#635bff] text-white"
+                      formProvider === "mercadopago"
+                        ? "bg-[#009ee3] text-white"
                         : "text-[#c8c8ce] hover:bg-[#2f2f34]"
                     }`}
                     title={formMode === "edit" ? "Não é possível trocar o tipo em modo de edição" : undefined}
                   >
                     <CreditCard className="w-3 h-3" />
-                    Stripe
+                    Mercado Pago
                   </button>
                 </div>
-                {formProvider === "stripe" && formMode === "create" ? (
-                  stripeConnected ? (
+                {formProvider === "mercadopago" && formMode === "create" ? (
+                  mpConnected ? (
                     <p className="mt-2 text-[10px] text-[#9a9aa2] flex items-center gap-1.5">
                       <Check className="w-3 h-3 text-emerald-400 max-md:hidden" />
-                      Conectado{stripeLast4 ? ` (…${stripeLast4})` : ""} — o link de checkout será gerado automaticamente.
+                      Conectado{mpLast4 ? ` (…${mpLast4})` : ""} — o link de checkout será gerado automaticamente.
                     </p>
                   ) : (
                     <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 flex items-start gap-2">
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
                       <p className="text-[10px] text-amber-200 leading-relaxed">
-                        Conta Stripe não conectada.{" "}
+                        Conta Mercado Pago não conectada.{" "}
                         <Link href="/configuracoes" className="underline font-semibold hover:text-amber-100">
                           Conectar em Configurações
                         </Link>
@@ -1221,9 +1148,9 @@ export default function InfoprodutorPage() {
                     </div>
                   )
                 ) : null}
-                {formProvider === "stripe" && formMode === "edit" ? (
+                {formProvider === "mercadopago" && formMode === "edit" ? (
                   <p className="mt-2 text-[10px] text-[#9a9aa2]">
-                    Produto vinculado à Stripe — preço e link de venda não são editáveis.
+                    Produto vinculado ao Mercado Pago — preço e link de venda não são editáveis.
                   </p>
                 ) : null}
               </div>
@@ -1314,7 +1241,7 @@ export default function InfoprodutorPage() {
                   </div>
 
                   <div className="space-y-3">
-                    {formProvider !== "stripe" ? (
+                    {!isPaidProvider ? (
                       <div>
                         <label className="block text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest mb-1.5">
                           <Link2 className="inline w-2.5 h-2.5 mr-1" /> Link de venda
@@ -1332,17 +1259,17 @@ export default function InfoprodutorPage() {
                       <div>
                         <label className="block text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest mb-1.5">
                           <Tag className="inline w-2.5 h-2.5 mr-1" />{" "}
-                          {formProvider === "stripe" ? "Preço atual (BRL) *" : "Preço atual (opcional)"}
+                          {isPaidProvider ? "Preço atual (BRL) *" : "Preço atual (opcional)"}
                         </label>
                         <input
                           type="text"
                           inputMode="decimal"
                           value={formPrice}
                           onChange={(e) => setFormPrice(e.target.value)}
-                          readOnly={formProvider === "stripe" && formMode === "edit"}
+                          readOnly={isPaidEditReadOnly}
                           placeholder="97,00"
                           className={`w-full bg-[#222228] border border-[#3e3e46] rounded-xl px-3 py-2.5 text-[11px] text-[#f0f0f2] placeholder:text-[#868686] focus:border-[#e24c30] outline-none transition ${
-                            formProvider === "stripe" && formMode === "edit" ? "opacity-60 cursor-not-allowed" : ""
+                            isPaidEditReadOnly ? "opacity-60 cursor-not-allowed" : ""
                           }`}
                         />
                       </div>
@@ -1362,29 +1289,29 @@ export default function InfoprodutorPage() {
                       </div>
                     </div>
 
-                    {formProvider === "stripe" ? (
+                    {isPaidProvider ? (
                       <div>
                         <label className="flex items-center gap-1.5 text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest mb-1.5">
-                          <CreditCard className="inline w-2.5 h-2.5 text-[#a8a2ff]" />
+                          <CreditCard className="inline w-2.5 h-2.5 text-[#009ee3]" />
                           <span>SubId InfoP</span>
-                          <span className="text-[#a8a2ff] normal-case tracking-normal">(obrigatório)</span>
+                          <span className="text-[#9a9aa2] normal-case tracking-normal">(opcional)</span>
                           <Toolist
                             variant="floating"
                             wide
-                            text="Usado em Trackeamento para cruzar vendas Stripe com anúncios Meta. Cole o mesmo valor no SubId InfoP do ad em ATI. Vários produtos podem compartilhar o mesmo SubId — as vendas são somadas no ad."
+                            text="Usado em Trackeamento para cruzar vendas com anúncios Meta. Cole o mesmo valor no SubId InfoP do ad em ATI. Vários produtos podem compartilhar o mesmo SubId — as vendas são somadas no ad."
                           />
                         </label>
                         <input
                           type="text"
-                          value={formStripeSubid}
-                          onChange={(e) => setFormStripeSubid(e.target.value)}
+                          value={formSubid}
+                          onChange={(e) => setFormSubid(e.target.value)}
                           placeholder="ex.: suplementos, whey-protein"
-                          className="w-full bg-[#222228] border border-[#635bff]/40 rounded-xl px-3 py-2.5 text-[11px] text-[#f0f0f2] placeholder:text-[#868686] focus:border-[#635bff] outline-none transition"
+                          className="w-full bg-[#222228] border border-[#009ee3]/40 rounded-xl px-3 py-2.5 text-[11px] text-[#f0f0f2] placeholder:text-[#868686] focus:border-[#009ee3] outline-none transition"
                         />
                       </div>
                     ) : null}
 
-                    {formProvider === "stripe" ? (
+                    {isPaidProvider ? (
                       <div className="space-y-2">
                         <button
                           type="button"
@@ -1618,16 +1545,16 @@ export default function InfoprodutorPage() {
                       </div>
                     ) : null}
 
-                    {formProvider === "stripe" ? (
+                    {isPaidProvider ? (
                       <div>
                         <label className="flex items-center gap-1.5 text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest mb-1.5">
                           <MessageCircle className="inline w-2.5 h-2.5 text-emerald-400" />
-                          <span>Mensagem que será enviada ao whtatsapp do comprador pós compra!</span>
+                          <span>Mensagem enviada ao WhatsApp do comprador após a compra</span>
                           <span className="text-[#9a9aa2] normal-case tracking-normal">(opcional)</span>
                           <Toolist
                             variant="floating"
                             wide
-                            text="Essa mensagem é enviada automaticamente no WhatsApp do comprador logo após a compra. Você pode incluir texto livre, emojis e links (WhatsApp torna URLs clicáveis). Deixe em branco pra usar o agradecimento padrão."
+                            text="Essa mensagem é enviada automaticamente no WhatsApp do comprador logo após a compra aprovada. Você pode incluir texto livre, emojis e links (WhatsApp torna URLs clicáveis). Deixe em branco pra usar o agradecimento padrão."
                           />
                         </label>
                         <textarea
@@ -1658,10 +1585,14 @@ export default function InfoprodutorPage() {
                 <button
                   type="button"
                   onClick={handleSubmitProduto}
-                  disabled={savingProduto || uploadingImage || (formProvider === "stripe" && formMode === "create" && !stripeConnected)}
+                  disabled={
+                    savingProduto ||
+                    uploadingImage ||
+                    (formProvider === "mercadopago" && formMode === "create" && !mpConnected)
+                  }
                   className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-white text-xs font-semibold disabled:opacity-60 ${
-                    formProvider === "stripe"
-                      ? "bg-[#635bff] hover:bg-[#5047e5]"
+                    formProvider === "mercadopago"
+                      ? "bg-[#009ee3] hover:bg-[#0084c2]"
                       : "bg-[#e24c30] hover:bg-[#c94028]"
                   }`}
                 >
@@ -1669,7 +1600,7 @@ export default function InfoprodutorPage() {
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : formMode === "edit" ? (
                     <Check className="w-3.5 h-3.5" />
-                  ) : formProvider === "stripe" ? (
+                  ) : formProvider === "mercadopago" ? (
                     <CreditCard className="w-3.5 h-3.5" />
                   ) : (
                     <PlusCircle className="w-3.5 h-3.5" />
@@ -1677,13 +1608,13 @@ export default function InfoprodutorPage() {
                   {uploadingImage
                     ? "Enviando imagem…"
                     : savingProduto
-                      ? formProvider === "stripe" && formMode === "create"
-                        ? "Criando na Stripe…"
+                      ? formProvider === "mercadopago" && formMode === "create"
+                        ? "Criando produto…"
                         : "Salvando…"
                       : formMode === "edit"
                         ? "Salvar alterações"
-                        : formProvider === "stripe"
-                          ? "Criar produto na Stripe"
+                        : formProvider === "mercadopago"
+                          ? "Criar produto"
                           : "Adicionar ao catálogo"}
                 </button>
               </div>
@@ -1822,30 +1753,21 @@ export default function InfoprodutorPage() {
                           <p className="text-[12px] font-semibold text-[#f0f0f2] leading-snug truncate">
                             {p.name}
                           </p>
-                          {p.provider === "stripe" ? (
+                          {p.provider === "mercadopago" ? (
                             <span
-                              title="Produto criado via Stripe"
-                              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-[#635bff]/40 bg-[#635bff]/10 text-[9px] font-bold uppercase tracking-wider text-[#a8a2ff]"
+                              title="Produto pago via Mercado Pago"
+                              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-[#009ee3]/40 bg-[#009ee3]/10 text-[9px] font-bold uppercase tracking-wider text-[#7cd0f7]"
                             >
                               <CreditCard className="w-2.5 h-2.5" />
-                              Stripe
+                              MP
                             </span>
                           ) : null}
-                          {p.provider === "stripe" && p.stripeSubid ? (
+                          {p.provider === "mercadopago" && p.subid ? (
                             <span
-                              title={`SubId InfoP: ${p.stripeSubid}`}
+                              title={`SubId InfoP: ${p.subid}`}
                               className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-full border border-[#3e3e46] bg-[#222228] text-[9px] font-semibold text-[#c8c8ce] font-mono"
                             >
-                              #{p.stripeSubid}
-                            </span>
-                          ) : null}
-                          {p.isOrphan ? (
-                            <span
-                              title="Produto criado em uma conta Stripe anterior — use 'Recriar nesta conta' pra migrar"
-                              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-amber-500/40 bg-amber-500/10 text-[9px] font-bold uppercase tracking-wider text-amber-300"
-                            >
-                              <AlertTriangle className="w-2.5 h-2.5" />
-                              Conta anterior
+                              #{p.subid}
                             </span>
                           ) : null}
                         </div>
@@ -1870,37 +1792,6 @@ export default function InfoprodutorPage() {
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
-                        {p.provider === "stripe" && p.isOrphan ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleRecreateOrphan(p.id)}
-                            disabled={recreatingOrphanId === p.id}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-amber-500/45 bg-amber-500/10 text-[10px] font-semibold text-amber-300 hover:bg-amber-500/20 disabled:opacity-60"
-                            title="Recriar este produto na conta Stripe atual (cria produto/preço/link novos; o antigo continua na conta anterior)"
-                          >
-                            {recreatingOrphanId === p.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-3 w-3" />
-                            )}
-                            <span className="hidden sm:inline">Recriar</span>
-                          </button>
-                        ) : null}
-                        {p.provider === "stripe" && !p.isOrphan ? (
-                          <button
-                            type="button"
-                            onClick={() => askRefreshCheckout(p.id)}
-                            disabled={refreshingLinkId === p.id}
-                            className="p-1.5 rounded-md border border-[#635bff]/40 bg-[#635bff]/10 text-[#a8a2ff] hover:bg-[#635bff]/20 disabled:opacity-60"
-                            title="Atualizar link de checkout (ativa coleta de endereço/telefone)"
-                          >
-                            {refreshingLinkId === p.id ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-3 w-3" />
-                            )}
-                          </button>
-                        ) : null}
                         <button
                           type="button"
                           onClick={() => handleEditProduto(p)}
@@ -2198,17 +2089,17 @@ export default function InfoprodutorPage() {
 
         {activeTab === "vendas" ? (
           <>
-            {/* ═══════════════ DASHBOARD DE VENDAS (STRIPE) ═══════════════ */}
-            <StripeSalesDashboard stripeConnected={stripeConnected} refreshSignal={refreshSignal} />
+            {/* ═══════════════ DASHBOARD DE VENDAS (Mercado Pago) ═══════════════ */}
+            <MpSalesDashboard mpConnected={mpConnected} refreshSignal={refreshSignal} />
 
-            {/* ═══════════════ PEDIDOS STRIPE ═══════════════ */}
-            <StripeOrdersSection stripeConnected={stripeConnected} refreshSignal={refreshSignal} />
+            {/* ═══════════════ PEDIDOS Mercado Pago ═══════════════ */}
+            <MpOrdersSection mpConnected={mpConnected} refreshSignal={refreshSignal} />
           </>
         ) : null}
 
         {activeTab === "trackeamento" ? (
           <>
-            {/* ═══════════════ PERFORMANCE POR AD (ATI × STRIPE) ═══════════════ */}
+            {/* ═══════════════ PERFORMANCE POR AD (ATI × Mercado Pago) ═══════════════ */}
             <AdPerformanceTable refreshSignal={refreshSignal} />
           </>
         ) : null}

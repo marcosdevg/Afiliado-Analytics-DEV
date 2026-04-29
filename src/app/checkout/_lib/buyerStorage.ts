@@ -1,6 +1,5 @@
 /** Dados do comprador persistidos localmente pra agilizar checkouts subsequentes.
- * Escopo: mesmo navegador/device. Cross-device é responsabilidade do Stripe Link
- * (que já é ativado pelo <LinkAuthenticationElement /> no checkout).
+ * Escopo: mesmo navegador/device.
  */
 
 export type BuyerAddress = {
@@ -18,7 +17,7 @@ export type BuyerData = {
    * WhatsAppInputBR formata direto pra (XX) XXXXX-XXXX. */
   whatsapp?: string
   name?: string
-  /** Telefone coletado pelo AddressElement da Stripe (formato variado). */
+  /** Telefone coletado no checkout (formato variado). */
   phone?: string
   address?: BuyerAddress
 }

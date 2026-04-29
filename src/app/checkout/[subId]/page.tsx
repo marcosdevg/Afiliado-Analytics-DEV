@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useState } from "react";
 import {
   Loader2,
   Truck,
@@ -10,26 +10,15 @@ import {
   Settings2,
   Mail,
   Home,
-  ShoppingCart,
 } from "lucide-react";
-import { loadStripe } from "@stripe/stripe-js";
-import {
-  Elements,
-  PaymentElement,
-  AddressElement,
-  LinkAuthenticationElement,
-  useStripe,
-  useElements,
-} from "@stripe/react-stripe-js";
 import WhatsAppInputBR from "@/app/components/ui/WhatsAppInputBR";
+import MercadoPagoCheckoutSection from "./MercadoPagoCheckoutSection";
 import { loadBuyerData, saveBuyerData, type BuyerData } from "../_lib/buyerStorage";
 import {
   SaleNotificationsToast,
   CountdownBar,
   StockCounter,
   ViewersBadge,
-  GuaranteeBadge,
-  PayButton,
   type TriggerConfig,
   type TriggerPalette,
 } from "./sales-triggers";
@@ -151,8 +140,7 @@ export default function CheckoutPage({ params }: { params: Promise<{ subId: stri
   const [selection, setSelection] = useState<Selection>(null);
   const [buyerWhatsapp, setBuyerWhatsapp] = useState("");
   const [buyerEmail, setBuyerEmail] = useState("");
-  /** Dados do comprador carregados do localStorage na montagem. Passados como
-   * `defaultValues` no AddressElement/LinkAuthenticationElement da Stripe. */
+  /** Dados do comprador carregados do localStorage na montagem. */
   const [savedBuyer, setSavedBuyer] = useState<BuyerData>({});
 
   // Hidrata campos custom (email + WhatsApp) a partir do localStorage uma vez.
@@ -251,7 +239,7 @@ export default function CheckoutPage({ params }: { params: Promise<{ subId: stri
   const footerImageUrl = info.theme?.footerImageUrl ?? null;
   const footerImageSize = info.theme?.footerImageSize ?? "full";
 
-  // Fallback — vendedor ainda não configurou a Publishable Key da Stripe.
+  // Fallback — vendedor ainda não conectou a conta Mercado Pago (sem public key).
   if (!publishableKey) {
     return (
       <div className="min-h-screen bg-[#18181b] flex items-center justify-center px-4">
@@ -588,9 +576,6 @@ export default function CheckoutPage({ params }: { params: Promise<{ subId: stri
             setBuyerWhatsapp={setBuyerWhatsapp}
             buyerEmail={buyerEmail}
             setBuyerEmail={setBuyerEmail}
-            savedBuyer={savedBuyer}
-            triggers={triggers}
-            triggerPalette={triggerPalette}
           />
         ) : (
           <div
@@ -626,7 +611,7 @@ export default function CheckoutPage({ params }: { params: Promise<{ subId: stri
   );
 }
 
-// ─── Pagamento (Stripe Elements) ───────────────────────────────────────────────
+// ─── Pagamento (Mercado Pago Bricks) ──────────────────────────────────────────
 
 function PaymentSection({
   slug,
@@ -638,9 +623,6 @@ function PaymentSection({
   setBuyerWhatsapp,
   buyerEmail,
   setBuyerEmail,
-  savedBuyer,
-  triggers,
-  triggerPalette,
 }: {
   slug: string;
   produto: Produto;
@@ -651,14 +633,7 @@ function PaymentSection({
   setBuyerWhatsapp: (v: string) => void;
   buyerEmail: string;
   setBuyerEmail: (v: string) => void;
-  savedBuyer: BuyerData;
-  triggers: TriggerConfig;
-  triggerPalette: TriggerPalette;
 }) {
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   const frete =
     selection.type === "shipping"
       ? selection.option.price
@@ -669,64 +644,11 @@ function PaymentSection({
   const isDigital = selection.type === "digital";
   const isPickup = selection.type === "pickup";
 
-  const stripePromise = useMemo(() => loadStripe(publishableKey), [publishableKey]);
-
   const waDigits = buyerWhatsapp.replace(/\D/g, "");
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail.trim());
   const digitalReady = !isDigital || (waDigits.length >= 10 && emailValid);
   const pickupReady = !isPickup || waDigits.length >= 10;
   const ready = digitalReady && pickupReady;
-
-  useEffect(() => {
-    if (!ready) {
-      setClientSecret(null);
-      setError(null);
-      setCreating(false);
-      return;
-    }
-    let alive = true;
-    setClientSecret(null);
-    setError(null);
-    setCreating(true);
-    (async () => {
-      try {
-        const waE164 = `55${buyerWhatsapp.replace(/\D/g, "")}`;
-        const payload =
-          selection.type === "pickup"
-            ? { mode: "pickup", buyerWhatsapp: waE164 }
-            : selection.type === "digital"
-              ? {
-                  mode: "digital",
-                  buyerWhatsapp: waE164,
-                  buyerEmail: buyerEmail.trim(),
-                }
-              : selection.type === "local_delivery"
-                ? { mode: "local_delivery" }
-                : {
-                    mode: "shipping",
-                    shippingPrice: selection.option.price,
-                    shippingName: selection.option.name,
-                  };
-        const res = await fetch(`/api/checkout/${encodeURIComponent(slug)}/payment-intent`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        const json = await res.json();
-        if (!alive) return;
-        if (!res.ok) throw new Error(json?.error ?? "Erro ao iniciar pagamento");
-        setClientSecret(json.clientSecret as string);
-      } catch (e) {
-        if (!alive) return;
-        setError(e instanceof Error ? e.message : "Erro");
-      } finally {
-        if (alive) setCreating(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [slug, selection, ready, buyerWhatsapp, buyerEmail]);
 
   const digitalForm = isDigital ? (
     <div
@@ -799,244 +721,32 @@ function PaymentSection({
     </div>
   ) : null;
 
-  if (!ready) {
-    return (
-      <>
-        {digitalForm}
-        {pickupForm}
-      </>
-    );
-  }
-
-  if (creating) {
-    return (
-      <>
-        {digitalForm}
-        {pickupForm}
-        <div
-          className="rounded-xl border p-8 flex items-center justify-center"
-          style={{ background: palette.cardBg, borderColor: palette.cardBorder }}
-        >
-          <Loader2 className="w-6 h-6 animate-spin" style={{ color: palette.accent }} />
-        </div>
-      </>
-    );
-  }
-
-  if (error) {
-    return (
-      <>
-        {digitalForm}
-        {pickupForm}
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
-          <p className="text-[12px] text-red-300">{error}</p>
-        </div>
-      </>
-    );
-  }
-
-  if (!clientSecret) return null;
-
   return (
     <>
       {digitalForm}
       {pickupForm}
-      <Elements
-        stripe={stripePromise}
-        options={{
-          clientSecret,
-          appearance: {
-            theme: palette.mode === "light" ? "stripe" : "night",
-            variables: {
-              colorPrimary: palette.accent,
-              colorBackground: palette.inputBg,
-              colorText: palette.text,
-              colorDanger: "#ef4444",
-              fontFamily: "Inter, system-ui, sans-serif",
-              borderRadius: "10px",
-            },
-          },
-          loader: "auto",
+      <MercadoPagoCheckoutSection
+        publicKey={publishableKey}
+        slug={slug}
+        total={total}
+        productPrice={produto.price}
+        frete={frete}
+        selection={selection}
+        buyerWhatsapp={buyerWhatsapp}
+        buyerEmail={buyerEmail}
+        ready={ready}
+        palette={{
+          mode: palette.mode,
+          cardBg: palette.cardBg,
+          cardBorder: palette.cardBorder,
+          text: palette.text,
+          textMuted: palette.textMuted,
+          textFaint: palette.textFaint,
+          accent: palette.accent,
+          emerald: palette.emerald,
         }}
-      >
-        <CheckoutForm
-          total={total}
-          productPrice={produto.price}
-          frete={frete}
-          showShippingAddress={selection.type === "shipping" || selection.type === "local_delivery"}
-          digitalEmail={isDigital ? buyerEmail.trim() : ""}
-          savedBuyer={savedBuyer}
-          slug={slug}
-          palette={palette}
-          triggers={triggers}
-          triggerPalette={triggerPalette}
-        />
-      </Elements>
+      />
     </>
-  );
-}
-
-function CheckoutForm({
-  total,
-  productPrice,
-  frete,
-  showShippingAddress,
-  digitalEmail,
-  savedBuyer,
-  slug: slugForReturn,
-  palette,
-  triggers,
-  triggerPalette,
-}: {
-  total: number;
-  productPrice: number;
-  frete: number;
-  showShippingAddress: boolean;
-  digitalEmail: string;
-  savedBuyer: BuyerData;
-  slug: string;
-  palette: ThemePalette;
-  triggers: TriggerConfig;
-  triggerPalette: TriggerPalette;
-}) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [submitting, setSubmitting] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!stripe || !elements) return;
-    setSubmitting(true);
-    setErr(null);
-    const { error } = await stripe.confirmPayment({
-      elements,
-      confirmParams: {
-        return_url: `${window.location.origin}/checkout/sucesso?slug=${encodeURIComponent(slugForReturn)}`,
-      },
-    });
-    if (error) {
-      setErr(error.message ?? "Erro no pagamento");
-      setSubmitting(false);
-    }
-  }
-
-  const cardStyle = { background: palette.cardBg, borderColor: palette.cardBorder };
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="rounded-xl border p-5 space-y-4" style={cardStyle}>
-        <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: palette.textMuted }}>
-          Seus dados
-        </h2>
-        <LinkAuthenticationElement
-          options={{
-            defaultValues: { email: digitalEmail || savedBuyer.email || "" },
-          }}
-          onChange={(event) => {
-            const email = event.value?.email?.trim();
-            if (email) saveBuyerData({ email });
-          }}
-        />
-        {showShippingAddress ? (
-          <AddressElement
-            options={{
-              mode: "shipping",
-              allowedCountries: ["BR"],
-              fields: { phone: "always" },
-              validation: { phone: { required: "always" } },
-              defaultValues: {
-                name: savedBuyer.name ?? undefined,
-                phone: savedBuyer.phone ?? undefined,
-                address: savedBuyer.address
-                  ? {
-                      line1: savedBuyer.address.line1 ?? "",
-                      line2: savedBuyer.address.line2 ?? "",
-                      city: savedBuyer.address.city ?? "",
-                      state: savedBuyer.address.state ?? "",
-                      postal_code: savedBuyer.address.postal_code ?? "",
-                      country: savedBuyer.address.country ?? "BR",
-                    }
-                  : undefined,
-              },
-            }}
-            onChange={(event) => {
-              if (!event.complete || !event.value) return;
-              const v = event.value;
-              saveBuyerData({
-                name: v.name ?? undefined,
-                phone: v.phone ?? undefined,
-                address: v.address
-                  ? {
-                      line1: v.address.line1 ?? null,
-                      line2: v.address.line2 ?? null,
-                      city: v.address.city ?? null,
-                      state: v.address.state ?? null,
-                      postal_code: v.address.postal_code ?? null,
-                      country: v.address.country ?? null,
-                    }
-                  : undefined,
-              });
-            }}
-          />
-        ) : null}
-      </div>
-
-      <div className="rounded-xl border p-5 space-y-3" style={cardStyle}>
-        <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: palette.textMuted }}>
-          Pagamento
-        </h2>
-        <PaymentElement options={{ layout: "tabs" }} />
-      </div>
-
-      <div className="rounded-xl border p-5 space-y-3" style={cardStyle}>
-        <div
-          className="flex items-center justify-between text-[12px]"
-          style={{ color: palette.textMuted }}
-        >
-          <span>Produto</span>
-          <span className="font-mono tabular-nums">{formatBRL(productPrice)}</span>
-        </div>
-        <div
-          className="flex items-center justify-between text-[12px]"
-          style={{ color: palette.textMuted }}
-        >
-          <span>Entrega</span>
-          <span className="font-mono tabular-nums">{frete > 0 ? formatBRL(frete) : "Grátis"}</span>
-        </div>
-        <div className="h-px" style={{ background: palette.cardBorder }} />
-        <div className="flex items-center justify-between">
-          <span className="text-[14px] font-bold" style={{ color: palette.text }}>
-            Total
-          </span>
-          <span
-            className="text-[18px] font-mono font-bold tabular-nums"
-            style={{ color: palette.emerald }}
-          >
-            {formatBRL(total)}
-          </span>
-        </div>
-
-        {err ? (
-          <p className="text-[11px] text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{err}</p>
-        ) : null}
-
-        <PayButton
-          color={triggers.payButton.color}
-          lightSweep={triggers.payButton.lightSweep}
-          loading={submitting}
-          disabled={!stripe || !elements || submitting}
-        >
-          {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShoppingCart className="w-5 h-5" />}
-          {submitting ? "Processando..." : `Pagar ${formatBRL(total)}`}
-        </PayButton>
-        {triggers.guarantee.enabled ? (
-          <GuaranteeBadge text={triggers.guarantee.text} palette={triggerPalette} />
-        ) : null}
-        <p className="text-[10px] text-center" style={{ color: palette.textFaint }}>
-          Pagamento processado pela Stripe. Seus dados de cartão não passam pelo nosso servidor.
-        </p>
-      </div>
-    </form>
   );
 }
 

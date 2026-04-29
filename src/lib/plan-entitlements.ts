@@ -49,7 +49,7 @@ export type PlanEntitlements = {
   videoEditorCopyPerDay: number;
   espelhamentogrupos: boolean;
   especialistagenerate: boolean;
-  /** Infoprodutor: catálogo Stripe + checkout dinâmico (frete) — liberado pra padrao/pro/staff, bloqueado em trial. */
+  /** Infoprodutor: catálogo Mercado Pago + checkout dinâmico (frete) — liberado pra padrao/pro/staff, bloqueado em trial. */
   infoprodutor: boolean;
 };
 

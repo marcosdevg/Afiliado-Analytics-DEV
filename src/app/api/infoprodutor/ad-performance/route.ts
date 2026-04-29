@@ -1,20 +1,22 @@
 /**
- * Performance por ad no cruzamento ATI × Stripe (Trackeamento InfoP).
+ * Performance por ad no cruzamento ATI × Mercado Pago (Trackeamento InfoP).
  *
  *   1. Filtra campanhas com a tag "Tráfego para InfoP".
  *   2. Busca insights do Meta para o período (spend, clicks, impressions por ad).
  *   3. Lê mapeamento `ad_id → infop_sub_id` em `ati_ad_infop_sub`.
- *   4. Lê mapeamento `infop_sub_id → produto Stripe` em `produtos_infoprodutor`.
- *   5. Lista sessions concluídas da Stripe no período, agrupadas por produto (por payment_link).
+ *   4. Lê mapeamento `infop_sub_id → produto` em `produtos_infoprodutor`
+ *      (`provider = 'mercadopago'` + coluna `subid`).
+ *   5. Soma vendas no período via `searchMpPayments` filtrando
+ *      `external_reference = "infoprod:{uuid}"`.
  *   6. Combina: cada ad → produto (via subId) → receita/pedidos + spend Meta → ROAS/CPA/CPC/Lucro.
  *
  * Retorna uma linha por ad que tenha SubId InfoP (mesmo sem venda, pra mostrar custo).
  */
 
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
 import { createClient } from "@/lib/supabase-server";
 import { gateInfoprodutor } from "@/lib/require-entitlements";
+import { searchMpPayments } from "@/lib/mercadopago/api";
 
 export const dynamic = "force-dynamic";
 
@@ -106,14 +108,18 @@ export async function GET(req: Request) {
       subIdByAd.set(String(r.ad_id), String(r.infop_sub_id));
     }
 
-    // 4) produtos Stripe com subId
+    // 4) produtos Mercado Pago com subId
     const { data: produtos } = await supabase
       .from("produtos_infoprodutor")
-      .select("id, name, image_url, stripe_subid, stripe_payment_link_id")
+      .select("id, name, image_url, subid")
       .eq("user_id", gate.userId)
-      .eq("provider", "stripe")
-      .not("stripe_subid", "is", null);
-    type ProdInfo = { id: string; name: string; imageUrl: string | null; paymentLinkId: string | null };
+      .eq("provider", "mercadopago")
+      .not("subid", "is", null);
+    type ProdInfo = {
+      id: string;
+      name: string;
+      imageUrl: string | null;
+    };
     // Vários produtos podem compartilhar o mesmo subId — agregamos tudo no cruzamento.
     const produtosPorSubId = new Map<string, ProdInfo[]>();
     const produtoPorId = new Map<string, ProdInfo>();
@@ -122,93 +128,67 @@ export async function GET(req: Request) {
         id: string;
         name: string;
         image_url: string | null;
-        stripe_subid: string | null;
-        stripe_payment_link_id: string | null;
+        subid: string | null;
       };
       const info: ProdInfo = {
         id: row.id,
         name: row.name,
         imageUrl: row.image_url,
-        paymentLinkId: row.stripe_payment_link_id,
       };
-      if (row.stripe_subid) {
-        const bucket = produtosPorSubId.get(row.stripe_subid) ?? [];
+      if (row.subid) {
+        const bucket = produtosPorSubId.get(row.subid) ?? [];
         bucket.push(info);
-        produtosPorSubId.set(row.stripe_subid, bucket);
+        produtosPorSubId.set(row.subid, bucket);
       }
       produtoPorId.set(row.id, info);
     }
 
-    // 5) Revenue + pedidos por produto via Stripe (só se tivermos chave)
+    // 5) Revenue + pedidos por produto via Mercado Pago.
     const { data: profile } = await supabase
       .from("profiles")
-      .select("stripe_secret_key")
+      .select("mp_access_token")
       .eq("id", gate.userId)
       .single();
-    const stripeKey = (profile as { stripe_secret_key?: string | null } | null)?.stripe_secret_key ?? "";
+    const mpAccessToken =
+      (profile as { mp_access_token?: string | null } | null)?.mp_access_token ?? "";
 
     type ProdSalesAgg = { revenueCents: number; orders: number };
     const salesByProduct = new Map<string, ProdSalesAgg>();
 
-    if (stripeKey.trim() && produtoPorId.size > 0) {
-      const stripe = new Stripe(stripeKey);
-      // Monta o inverso: payment_link → produtoId para agrupar
-      const produtoByPaymentLink = new Map<string, string>();
-      for (const [pid, info] of produtoPorId.entries()) {
-        if (info.paymentLinkId) produtoByPaymentLink.set(info.paymentLinkId, pid);
-      }
-
-      // Rastreia PIs já contabilizados via Checkout Sessions (pra não dobrar)
-      const countedPIs = new Set<string>();
-
-      let startingAfter: string | undefined;
-      for (let guard = 0; guard < 50; guard++) {
-        const params: Stripe.Checkout.SessionListParams = {
-          limit: 100,
-          ...(gteUnix != null ? { created: { gte: gteUnix } } : {}),
-          ...(startingAfter ? { starting_after: startingAfter } : {}),
-        };
-        const page = await stripe.checkout.sessions.list(params);
-        for (const s of page.data) {
-          if (s.status !== "complete") continue;
-          if (s.payment_status !== "paid" && s.payment_status !== "no_payment_required") continue;
-          const plink = typeof s.payment_link === "string" ? s.payment_link : s.payment_link?.id;
-          if (!plink) continue;
-          const pid = produtoByPaymentLink.get(plink);
-          if (!pid) continue;
-          const agg = salesByProduct.get(pid) ?? { revenueCents: 0, orders: 0 };
-          agg.revenueCents += s.amount_total ?? 0;
-          agg.orders += 1;
-          salesByProduct.set(pid, agg);
-          const piId = typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id;
-          if (piId) countedPIs.add(piId);
+    if (mpAccessToken.trim() && produtoPorId.size > 0) {
+      const beginDate =
+        gteUnix != null ? new Date(gteUnix * 1000).toISOString() : undefined;
+      let offset = 0;
+      const PAGE_SIZE = 100;
+      const MAX_PAGES = 50;
+      for (let i = 0; i < MAX_PAGES; i++) {
+        try {
+          const page = await searchMpPayments(
+            { begin_date: beginDate, status: "approved", limit: PAGE_SIZE, offset },
+            mpAccessToken.trim(),
+          );
+          const results = page.results ?? [];
+          for (const p of results) {
+            const ref = String(p.external_reference ?? "");
+            const m = /^infoprod:([0-9a-f-]{36})$/i.exec(ref);
+            if (!m) continue;
+            const pid = m[1];
+            if (!produtoPorId.has(pid)) continue;
+            const amount =
+              typeof p.transaction_amount === "number" ? p.transaction_amount : 0;
+            const agg = salesByProduct.get(pid) ?? { revenueCents: 0, orders: 0 };
+            agg.revenueCents += Math.round(amount * 100);
+            agg.orders += 1;
+            salesByProduct.set(pid, agg);
+          }
+          if (results.length < PAGE_SIZE) break;
+          offset += PAGE_SIZE;
+          if (offset >= (page.paging?.total ?? Infinity)) break;
+        } catch (mpErr) {
+          // Não derruba a tabela inteira se MP falhar — log e continua sem vendas.
+          console.error("[ad-performance] MP search falhou:", mpErr);
+          break;
         }
-        if (!page.has_more) break;
-        startingAfter = page.data[page.data.length - 1]?.id;
-        if (!startingAfter) break;
-      }
-
-      // Também agrega vendas via PaymentIntent (checkout inline novo)
-      let piAfter: string | undefined;
-      for (let guard = 0; guard < 50; guard++) {
-        const page = await stripe.paymentIntents.list({
-          limit: 100,
-          ...(gteUnix != null ? { created: { gte: gteUnix } } : {}),
-          ...(piAfter ? { starting_after: piAfter } : {}),
-        });
-        for (const pi of page.data) {
-          if (pi.status !== "succeeded") continue;
-          if (countedPIs.has(pi.id)) continue;
-          const pid = typeof pi.metadata?.produto_id === "string" ? pi.metadata.produto_id : "";
-          if (!pid || !produtoPorId.has(pid)) continue;
-          const agg = salesByProduct.get(pid) ?? { revenueCents: 0, orders: 0 };
-          agg.revenueCents += pi.amount_received ?? pi.amount ?? 0;
-          agg.orders += 1;
-          salesByProduct.set(pid, agg);
-        }
-        if (!page.has_more) break;
-        piAfter = page.data[page.data.length - 1]?.id;
-        if (!piAfter) break;
       }
     }
 
