@@ -474,12 +474,36 @@ export default function MinhaListaOfertasPage() {
                                 ) : (
                                   <ChevronRight className="h-5 w-5 text-[#a0a0a0] shrink-0" />
                                 )}
-                                <div className="w-8 h-8 rounded-lg border border-[#e24c30]/35 bg-[#e24c30]/10 flex items-center justify-center shrink-0">
-                                  <ShoppingBag className="h-4 w-4 text-[#e24c30]" />
-                                </div>
-                                <span className="text-sm font-bold uppercase tracking-wide text-[#f0f0f2] truncate">
-                                  {lista.nome}
-                                </span>
+                                {/* Listas criadas pelo wizard Sho.IA têm prefixo "🤖 Sho.IA · ".
+                                    Detectamos e trocamos por imagem do mascote +
+                                    nome amigável (sem o prefixo). */}
+                                {(() => {
+                                  const SHOIA_PREFIX = "🤖 Sho.IA · ";
+                                  const isShoia = lista.nome.startsWith(SHOIA_PREFIX);
+                                  const displayName = isShoia
+                                    ? lista.nome.slice(SHOIA_PREFIX.length)
+                                    : lista.nome;
+                                  return (
+                                    <>
+                                      {isShoia ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                          src="/tendencias/cabecasho.png"
+                                          alt=""
+                                          aria-hidden
+                                          className="w-8 h-8 shrink-0 object-contain"
+                                        />
+                                      ) : (
+                                        <div className="w-8 h-8 rounded-lg border border-[#e24c30]/35 bg-[#e24c30]/10 flex items-center justify-center shrink-0">
+                                          <ShoppingBag className="h-4 w-4 text-[#e24c30]" />
+                                        </div>
+                                      )}
+                                      <span className="text-sm font-bold uppercase tracking-wide text-[#f0f0f2] truncate">
+                                        {displayName}
+                                      </span>
+                                    </>
+                                  );
+                                })()}
                                 <span className="text-sm text-[#9a9aa2] shrink-0">
                                   ({lista.totalItens ?? 0} itens)
                                 </span>

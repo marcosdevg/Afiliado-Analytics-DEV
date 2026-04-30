@@ -215,11 +215,6 @@ export type ShopeeCategoryDirectoryEntry = {
 
 type ShopGqlNode = {
   offerType?: number | null;
-  shopId?: number | string | null;
-  shopName?: string | null;
-  imageUrl?: string | null;
-  ratingStar?: number | string | null;
-  // Campos extras pra extrair categorias do mesmo node quando offerType for 2.
   categoryId?: number | string | null;
   offerName?: string | null;
 };
@@ -230,15 +225,17 @@ type ShopGqlResponse = {
 };
 
 /**
- * Busca o diretório de lojas (e tenta extrair categorias do mesmo endpoint
- * pra reaproveitar a chamada). O `shopeeOfferV2` retorna ofertas mistas (Mall,
- * categoria, loja) — separamos pelos campos preenchidos no node:
- *   - `shopId` + `shopName` + `imageUrl`  → vai pro directory de lojas
- *   - `categoryId` + `offerName`           → vai pro directory de categorias
+ * Busca o diretório de categorias via `shopeeOfferV2`. O schema dessa query
+ * NÃO tem `shopId` (descoberto via erro: "Cannot query field shopId on type
+ * ShopeeOfferV2"), então não tentamos extrair lojas aqui — só categorias.
+ *
+ * O retorno mantém `shops: []` por compatibilidade com callers que esperam
+ * a forma `{ shops, categories }`. A tabela `shopee_shop_directory` continua
+ * funcional pra entries antigas, mas não recebe mais inserts por essa rota.
  *
  * Pra nomes de categorias mais ricos (taxonomia completa, com IDs que casam
  * com `productCatIds` dos produtos), use `fetchCategoryList()` em paralelo —
- * essa query devolve a árvore canônica.
+ * essa query devolve a árvore canônica quando suportada pela conta de afiliado.
  */
 export async function fetchShopeeDirectories(
   appId: string,
@@ -249,10 +246,6 @@ export async function fetchShopeeDirectories(
       shopeeOfferV2(sortType: 1, page: 0, limit: 200) {
         nodes {
           offerType
-          shopId
-          shopName
-          imageUrl
-          ratingStar
           categoryId
           offerName
         }
@@ -272,25 +265,10 @@ export async function fetchShopeeDirectories(
   }
   const nodes = json.data?.shopeeOfferV2?.nodes ?? [];
 
-  const shops: ShopeeShopDirectoryEntry[] = [];
-  const seenShop = new Set<number>();
   const categories: ShopeeCategoryDirectoryEntry[] = [];
   const seenCategory = new Set<number>();
 
   for (const n of nodes) {
-    // Loja
-    const shopId = num(n.shopId);
-    const shopName = n.shopName?.trim();
-    if (shopId && shopName && !seenShop.has(shopId)) {
-      seenShop.add(shopId);
-      shops.push({
-        shopId,
-        shopName,
-        imageUrl: n.imageUrl?.trim() || null,
-        ratingStar: num(n.ratingStar),
-      });
-    }
-    // Categoria
     const categoryId = num(n.categoryId);
     const categoryName = n.offerName?.trim();
     if (categoryId && categoryName && !seenCategory.has(categoryId)) {
@@ -299,7 +277,7 @@ export async function fetchShopeeDirectories(
     }
   }
 
-  return { shops, categories };
+  return { shops: [], categories };
 }
 
 /**

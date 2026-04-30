@@ -10,7 +10,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { ArrowRight, Copy, ListPlus, Sparkles, Star } from "lucide-react";
+import { ArrowRight, Copy, ExternalLink, ListPlus, Sparkles, Star } from "lucide-react";
 import Toolist from "@/app/components/ui/Toolist";
 
 /** Aceita qualquer shape com os campos que usamos. Permite passar o
@@ -26,6 +26,9 @@ type ProductRow = {
   ratingStar: number | null;
   score: number;
   isViral: boolean;
+  productLink?: string | null;
+  sales?: number | null;
+  salesDelta24h?: number | null;
 };
 
 function formatBRL(v: number | null | undefined): string {
@@ -38,24 +41,29 @@ function formatBRL(v: number | null | undefined): string {
 }
 
 /**
- * Critério de "escalável": score alto + comissão acima da mediana + rating
- * decente. Não é o top de vendas — é o top de potencial de margem real.
+ * "Os mais vendidos da Shopee agora" — critério direto: ranqueia pelo delta
+ * de vendas das últimas 24h (`salesDelta24h`, calculado no servidor a partir
+ * do histórico de observations). Quando ainda não há histórico (cron rodou
+ * pouca vezes), cai pra `sales` cumulativo absoluto. Filtra só produtos com
+ * rating ≥ 4.0 pra evitar lixões.
  */
 function pickScalableProducts<T extends ProductRow>(products: T[], target = 6): T[] {
   if (products.length === 0) return [];
-  const commRates = products.map((p) => p.commissionRate ?? 0).sort((a, b) => a - b);
-  const medianComm = commRates[Math.floor(commRates.length / 2)] ?? 0;
-  return products
-    .filter((p) => {
-      const comm = p.commissionRate ?? 0;
-      const rating = p.ratingStar ?? 0;
-      return p.score >= 60 && comm >= Math.max(medianComm, 0.1) && rating >= 4.3;
-    })
+  const filtered = products.filter((p) => (p.ratingStar ?? 0) >= 4.0);
+  const hasDeltaData = filtered.some((p) => (p.salesDelta24h ?? 0) > 0);
+
+  return filtered
     .sort((a, b) => {
-      // Score-weighted commission: privilegia produtos que vendem E pagam bem.
-      const aRank = a.score * (1 + (a.commissionRate ?? 0));
-      const bRank = b.score * (1 + (b.commissionRate ?? 0));
-      return bRank - aRank;
+      // Modo dinâmico: usa delta diário quando há histórico
+      if (hasDeltaData) {
+        const aDelta = a.salesDelta24h ?? 0;
+        const bDelta = b.salesDelta24h ?? 0;
+        if (bDelta !== aDelta) return bDelta - aDelta;
+        // tiebreaker pra produtos com mesmo delta: vendas absolutas
+        return (b.sales ?? 0) - (a.sales ?? 0);
+      }
+      // Fallback (primeiras horas após primeiro cron): vendas absolutas
+      return (b.sales ?? 0) - (a.sales ?? 0);
     })
     .slice(0, target);
 }
@@ -104,7 +112,7 @@ export function EscalaveisHero<T extends ProductRow>({
             />
           </div>
           <h2 className="text-[14px] sm:text-base font-bold text-text-primary light:text-zinc-900 leading-snug">
-            Oi, <span className="text-[#ee4d2d]">{username}</span>!
+            Oi, <span className="text-[#ee4d2d]">{username}</span>! Veja o que está vendendo MUITO agora na Shopee:
           </h2>
         </div>
       </div>
@@ -149,8 +157,10 @@ export function EscalaveisHero<T extends ProductRow>({
                       ) : (
                         <div className="w-9 h-9 rounded-md bg-[#222228] light:bg-zinc-100 border border-[#2c2c32] light:border-zinc-200 shrink-0" />
                       )}
+                      {/* Nome do produto só em desktop — mobile fica com a
+                          imagem como identidade visual. */}
                       <span
-                        className="text-[11px] font-semibold text-text-primary light:text-zinc-900 line-clamp-2 leading-snug"
+                        className="hidden sm:inline text-[11px] font-semibold text-text-primary light:text-zinc-900 line-clamp-2 leading-snug"
                         title={p.productName}
                       >
                         {p.productName}
@@ -159,7 +169,7 @@ export function EscalaveisHero<T extends ProductRow>({
                   </td>
                   <td className="px-3 py-2 text-center">
                     {commValue != null ? (
-                      <span className="text-emerald-400 light:text-emerald-700 font-bold tabular-nums text-[11px]">
+                      <span className="text-emerald-400 light:text-emerald-700 font-bold tabular-nums text-[9px] sm:text-[11px]">
                         {formatBRL(commValue)}
                       </span>
                     ) : (
@@ -168,7 +178,7 @@ export function EscalaveisHero<T extends ProductRow>({
                   </td>
                   <td className="px-3 py-2 text-center">
                     <span
-                      className={`inline-flex items-center justify-center min-w-[34px] px-1.5 py-0.5 rounded-md font-black tabular-nums text-[10px] ${
+                      className={`inline-flex items-center justify-center min-w-[28px] sm:min-w-[34px] px-1 sm:px-1.5 py-0.5 rounded-md font-black tabular-nums text-[8px] sm:text-[10px] ${
                         p.score >= 75
                           ? "bg-[#ee4d2d] text-white"
                           : p.score >= 50
@@ -191,6 +201,17 @@ export function EscalaveisHero<T extends ProductRow>({
                   </td>
                   <td className="px-3 py-2 text-right">
                     <div className="inline-flex gap-1 justify-end">
+                      {p.productLink ? (
+                        <a
+                          href={p.productLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Abrir na Shopee"
+                          className="inline-flex items-center justify-center w-7 h-7 rounded-md border border-[#3e3e46] light:border-zinc-300 bg-[#222228] light:bg-white text-[#c8c8ce] light:text-zinc-700 hover:bg-[#2f2f34] light:hover:bg-zinc-100"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => onAddToList(p)}
@@ -218,14 +239,17 @@ export function EscalaveisHero<T extends ProductRow>({
 
       {/* Footer com link pra gerador (ponte natural) */}
       <div className="px-3 sm:px-4 py-2.5 border-t border-[#2c2c32] light:border-zinc-200 flex items-center justify-between gap-2">
-        <span className="text-[10px] text-[#7a7a80] light:text-zinc-500">
-          Critério: score ≥ 60 · comissão acima da mediana · rating ≥ 4.3
+        <span className="hidden sm:inline text-[10px] text-[#7a7a80] light:text-zinc-500">
+          Ranking: vendas das últimas 24h (com fallback nas mais vendidas absolutas)
         </span>
         <Link
           href="/dashboard/gerador-links-shopee"
-          className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#7cd0f7] light:text-cyan-700 hover:underline"
+          className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#7cd0f7] light:text-cyan-700 hover:underline ml-auto"
+          title="Buscar mais produtos no Gerador"
         >
-          Buscar mais produtos no Gerador <ArrowRight className="w-3 h-3" />
+          <span className="hidden sm:inline">Buscar mais produtos no </span>
+          Gerador
+          <ArrowRight className="w-3 h-3" />
         </Link>
       </div>
     </div>

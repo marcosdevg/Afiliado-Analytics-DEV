@@ -98,11 +98,13 @@ export function ShoiaListsSection({ refreshSignal }: { refreshSignal: number }) 
               key={l.id}
               className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#222228]/50 light:hover:bg-zinc-50 transition-colors"
             >
-              <span
-                className="inline-flex items-center justify-center w-7 h-7 rounded-lg shrink-0 bg-[#ee4d2d]/15 border border-[#ee4d2d]/30 text-[#ee4d2d] text-[10px] font-bold"
-              >
-                IA
-              </span>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/tendencias/cabecasho.png"
+                alt=""
+                aria-hidden
+                className="w-8 h-8 shrink-0 object-contain"
+              />
               <div className="flex-1 min-w-0">
                 <p className="text-[12px] font-semibold text-text-primary light:text-zinc-900 truncate">
                   {friendlyName}
