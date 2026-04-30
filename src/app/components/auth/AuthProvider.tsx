@@ -54,9 +54,10 @@ export default function SupabaseProvider({
   )
 }
 
-export const useSupabase = () => {
+export const useSupabase = (): SupabaseContextType => {
   const context = useContext(SupabaseContext)
-  if (context === undefined) {
+  // O default do createContext é `null` — checar só `undefined` deixa o tipo como `| null`.
+  if (context == null) {
     throw new Error('useSupabase must be used within a SupabaseProvider')
   }
   return context

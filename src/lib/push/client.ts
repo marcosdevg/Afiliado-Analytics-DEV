@@ -93,9 +93,11 @@ export async function ensureSubscribed(
     if (!sub) {
       const publicKey = await fetchVapidPublicKey();
       if (!publicKey) return false;
+      const vapidKey = urlBase64ToUint8Array(publicKey);
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
+        // Cast: TS 5.5+ lib.dom vs `Uint8Array<ArrayBufferLike>` (Push API aceita).
+        applicationServerKey: vapidKey as BufferSource,
       });
     }
 
