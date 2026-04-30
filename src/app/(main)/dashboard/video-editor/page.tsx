@@ -28,7 +28,12 @@ import { RENDER_PUBLISH_BLOB_MAX_BYTES } from "../../../../lib/remotion/render-l
 import ProFeatureGate from "../ProFeatureGate";
 import { usePlanEntitlements } from "../PlanEntitlementsContext";
 import AfiliadoCoinsHeader from "@/app/components/afiliado/AfiliadoCoinsHeader";
-import { AFILIADO_COINS_VIDEO_EDITOR_COST } from "@/lib/afiliado-coins";
+import {
+  AFILIADO_COINS_VIDEO_EDITOR_COPY_COST,
+  AFILIADO_COINS_VIDEO_EDITOR_EXPORT_COST,
+  AFILIADO_COINS_VIDEO_EDITOR_VOICE_FULL_COST,
+  normalizeAfiliadoCoins,
+} from "@/lib/afiliado-coins";
 
 type Voice = { voice_id: string; name: string; preview_url: string | null; labels: Record<string, string> };
 type MusicTrack = { id: string; name: string; artist: string; duration: number; audioUrl: string; downloadUrl: string; coverUrl: string };
@@ -56,7 +61,7 @@ const selectCls = inputCls;
 const btnPrimary = "inline-flex items-center justify-center gap-2 rounded-xl bg-shopee-orange px-5 py-2.5 text-sm font-semibold text-white hover:bg-shopee-orange/90 active:scale-[0.98] disabled:opacity-40 transition-all shadow-[0_4px_16px_rgba(238,77,45,0.3)]";
 const btnSecondary = "inline-flex items-center gap-1.5 rounded-xl border border-dark-border px-4 py-2.5 text-sm font-medium text-text-secondary hover:bg-white/5 hover:border-dark-border/80 active:scale-[0.98] transition-all";
 const DAILY_LIMIT_TOOLTIP =
-  `Prezado usuário, seu limite diário do Gerador de Criativos foi atingido. Lembre-se: no momento (caso você seja Pro) só é possível gerar dois áudios + legenda e exportar dois vídeos completos por dia. Mas não se preocupe — você ainda pode exportar vídeos usando Afiliado Coins (${AFILIADO_COINS_VIDEO_EDITOR_COST} coins por vídeo). Agradecemos sua compreensão!`;
+  `Prezado usuário, seu limite diário do Gerador de Criativos foi atingido (áudios + legendas e exports grátis). Depois da quota, com Afiliado Coins: gerar copy com IA custa ${AFILIADO_COINS_VIDEO_EDITOR_COPY_COST} coins, voz + legendas ${AFILIADO_COINS_VIDEO_EDITOR_VOICE_FULL_COST} coins e exportar MP4 ${AFILIADO_COINS_VIDEO_EDITOR_EXPORT_COST} coins. Agradecemos sua compreensão!`;
 
 // ─── Tooltip (estilo do app: portal, bg #111, ícone Info) ─────────────────────
 function Tooltip({ text, wide }: { text: string; wide?: boolean }) {
@@ -182,12 +187,19 @@ export default function VideoEditorPageWrapper() {
 }
 
 function VideoEditorPageInner() {
-  const { usage, loading: planCtxLoading, refresh: refreshPlanUsage } =
-    usePlanEntitlements();
-  const coinsBalance =
-    typeof usage?.afiliadoCoins === "number" ? usage.afiliadoCoins : null;
-  const canPayWithCoins =
-    coinsBalance !== null && coinsBalance >= AFILIADO_COINS_VIDEO_EDITOR_COST;
+  const {
+    usage,
+    entitlements,
+    loading: planCtxLoading,
+    refresh: refreshPlanUsage,
+  } = usePlanEntitlements();
+  const coinsBalance = normalizeAfiliadoCoins(usage?.afiliadoCoins);
+  const canPayCopyCoins =
+    coinsBalance !== null && coinsBalance >= AFILIADO_COINS_VIDEO_EDITOR_COPY_COST;
+  const canPayVoiceCoins =
+    coinsBalance !== null && coinsBalance >= AFILIADO_COINS_VIDEO_EDITOR_VOICE_FULL_COST;
+  const canPayExportCoins =
+    coinsBalance !== null && coinsBalance >= AFILIADO_COINS_VIDEO_EDITOR_EXPORT_COST;
 
   const [step, setStep] = useState(1);
 
@@ -195,6 +207,8 @@ function VideoEditorPageInner() {
   const [shopeeUrl, setShopeeUrl] = useState("");
   const [searching, setSearching] = useState(false);
   const [productName, setProductName] = useState("");
+  /** Cartão com nome do produto no início do vídeo (só estilos com IntroTitleCard). */
+  const [showProductNameIntro, setShowProductNameIntro] = useState(false);
   const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
   const [selectedMedia, setSelectedMedia] = useState<Set<number>>(new Set());
   const [uploadedFiles, setUploadedFiles] = useState<MediaAsset[]>([]);
@@ -213,6 +227,8 @@ function VideoEditorPageInner() {
   const [voiceFinalFingerprint, setVoiceFinalFingerprint] = useState<string | null>(null);
   const [voiceFullUsedToday, setVoiceFullUsedToday] = useState(0);
   const [voiceFullLimitPerDay, setVoiceFullLimitPerDay] = useState(2);
+  const [copyUsedToday, setCopyUsedToday] = useState(0);
+  const [copyLimitPerDay, setCopyLimitPerDay] = useState(2);
   const [videoExportsUsedToday, setVideoExportsUsedToday] = useState(0);
   const [videoExportsLimitPerDay, setVideoExportsLimitPerDay] = useState<number | null>(2);
   const [voiceAudioDuration, setVoiceAudioDuration] = useState(0);
@@ -301,17 +317,40 @@ function VideoEditorPageInner() {
     setSelectedMediaPage((p) => Math.min(p, totalPages - 1));
   }, [selectedAssets.length]);
 
-  const isVoiceDailyLimitReached = voiceFullUsedToday >= voiceFullLimitPerDay;
   const isVideoDailyLimitReached =
     videoExportsLimitPerDay !== null && videoExportsUsedToday >= videoExportsLimitPerDay;
 
   const voiceFingerprint = useMemo(() => `${voiceId}|${copyText}`, [voiceId, copyText]);
   const canRunFull =
     voicePreviewFingerprint === voiceFingerprint && voicePreviewUrl !== null;
-  const editorDailyHardBlocked = isVideoDailyLimitReached && !canPayWithCoins;
-  const voiceFullLimitBlocked =
-    canRunFull && voiceFullUsedToday >= voiceFullLimitPerDay;
-  const blockedByDailyLimit = voiceFullLimitBlocked || isVoiceDailyLimitReached || editorDailyHardBlocked;
+  /** Limite de copy: plano (fonte de verdade) com fallback ao GET do editor. */
+  const copyLimitEffective =
+    typeof entitlements?.videoEditorCopyPerDay === "number"
+      ? entitlements.videoEditorCopyPerDay
+      : copyLimitPerDay > 0
+        ? copyLimitPerDay
+        : 2;
+  /** Com limite 0 no plano, não há quota grátis: sempre rota paga (coins). */
+  const copyAtDailyLimit =
+    copyLimitEffective > 0
+      ? copyUsedToday >= copyLimitEffective
+      : true;
+  const showCopyGold = copyAtDailyLimit && canPayCopyCoins;
+  const copyWithIaBlockedByQuota = copyAtDailyLimit && !canPayCopyCoins;
+
+  const voiceLimitEffective =
+    typeof entitlements?.voicegenerate === "number"
+      ? entitlements.voicegenerate
+      : voiceFullLimitPerDay > 0
+        ? voiceFullLimitPerDay
+        : 2;
+  const voiceAtDailyLimit =
+    voiceLimitEffective > 0
+      ? voiceFullUsedToday >= voiceLimitEffective
+      : true;
+  const showVoiceGold = canRunFull && voiceAtDailyLimit && canPayVoiceCoins;
+  /** Export diário esgotado e saldo abaixo do mínimo para usar o gerador com coins (alinhado às APIs). */
+  const editorDailyHardBlocked = isVideoDailyLimitReached && !canPayCopyCoins;
 
   useEffect(() => {
     if (voicePreviewFingerprint !== null && voiceFingerprint !== voicePreviewFingerprint) {
@@ -352,6 +391,7 @@ function VideoEditorPageInner() {
     captions,
     subtitleTheme,
     productName,
+    showProductNameIntro,
     price,
     ctaText,
     fps,
@@ -368,6 +408,7 @@ function VideoEditorPageInner() {
     captions,
     subtitleTheme,
     productName,
+    showProductNameIntro,
     price,
     ctaText,
     dimensions,
@@ -507,23 +548,43 @@ function VideoEditorPageInner() {
 
   // ── Generate copy ──
   const handleGenerateCopy = useCallback(async () => {
-    if (blockedByDailyLimit) return;
+    if (copyWithIaBlockedByQuota) return;
     if (!productName.trim()) return;
+    const willPayCopyCoins = copyAtDailyLimit && canPayCopyCoins;
     setGeneratingCopy(true); setError(null);
     try {
       const res = await fetch("/api/video-editor/generate-copy", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productName, style: copyStyle, videoDuration: totalDurationSec - 3 }),
+        body: JSON.stringify({
+          productName,
+          style: copyStyle,
+          videoDuration: totalDurationSec - 3,
+          ...(willPayCopyCoins ? { useCoins: true } : {}),
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Erro ao gerar copy");
       setCopyText(json.copy ?? "");
+      if (json?.paidWithAfiliadoCoins === true) {
+        void refreshPlanUsage();
+      }
+      if (typeof json.copyGenerationsUsedToday === "number") {
+        setCopyUsedToday(json.copyGenerationsUsedToday);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro");
     } finally {
       setGeneratingCopy(false);
     }
-  }, [blockedByDailyLimit, productName, copyStyle, totalDurationSec]);
+  }, [
+    copyAtDailyLimit,
+    copyWithIaBlockedByQuota,
+    canPayCopyCoins,
+    productName,
+    copyStyle,
+    totalDurationSec,
+    refreshPlanUsage,
+  ]);
 
   // ── Load voices ──
   useEffect(() => {
@@ -538,13 +599,20 @@ function VideoEditorPageInner() {
   // ── Limites diários (GET no mount) ──
   useEffect(() => {
     let alive = true;
-    Promise.all([fetch("/api/video-editor/elevenlabs-tts"), fetch("/api/me/entitlements")])
-      .then(async ([rTts, rEnt]) => {
+    Promise.all([
+      fetch("/api/video-editor/elevenlabs-tts"),
+      fetch("/api/video-editor/generate-copy"),
+      fetch("/api/me/entitlements"),
+    ])
+      .then(async ([rTts, rCopy, rEnt]) => {
         if (!alive) return;
         const tts = rTts.ok ? await rTts.json().catch(() => ({})) : {};
+        const copy = rCopy.ok ? await rCopy.json().catch(() => ({})) : {};
         const ent = rEnt.ok ? await rEnt.json().catch(() => ({})) : {};
         if (typeof tts.fullGenerationsUsedToday === "number") setVoiceFullUsedToday(tts.fullGenerationsUsedToday);
         if (typeof tts.fullGenerationsLimit === "number") setVoiceFullLimitPerDay(tts.fullGenerationsLimit);
+        if (typeof copy.copyGenerationsUsedToday === "number") setCopyUsedToday(copy.copyGenerationsUsedToday);
+        if (typeof copy.copyGenerationsLimit === "number") setCopyLimitPerDay(copy.copyGenerationsLimit);
         if (typeof ent?.usage?.videoExportsToday === "number") {
           setVideoExportsUsedToday(ent.usage.videoExportsToday);
         }
@@ -579,9 +647,12 @@ function VideoEditorPageInner() {
     setError(null);
 
     const runFull = canRunFull;
-    if (runFull && voiceFullUsedToday >= voiceFullLimitPerDay) {
+    const atVoiceFullLimit = voiceAtDailyLimit;
+    const willPayVoiceCoins =
+      runFull && atVoiceFullLimit && canPayVoiceCoins;
+    if (runFull && atVoiceFullLimit && !willPayVoiceCoins) {
       setError(
-        `Limite diário: ${voiceFullLimitPerDay} gerações de voz + legendas. Volte amanhã ou ajuste a copy e ouça nova prévia.`
+        `Limite diário: ${voiceLimitEffective} gerações de voz + legendas. Volte amanhã, use Afiliado Coins (${AFILIADO_COINS_VIDEO_EDITOR_VOICE_FULL_COST}) ou ajuste a copy e ouça nova prévia.`
       );
       return;
     }
@@ -605,10 +676,15 @@ function VideoEditorPageInner() {
           text: copyText,
           voiceId,
           mode: runFull ? "full" : "preview",
+          ...(willPayVoiceCoins ? { useCoins: true } : {}),
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Erro ao gerar voz");
+
+      if (json?.paidWithAfiliadoCoins === true) {
+        void refreshPlanUsage();
+      }
 
       if (typeof json.fullGenerationsUsedToday === "number") {
         setVoiceFullUsedToday(json.fullGenerationsUsedToday);
@@ -674,8 +750,11 @@ function VideoEditorPageInner() {
     canRunFull,
     voiceFingerprint,
     voiceFullUsedToday,
-    voiceFullLimitPerDay,
+    voiceAtDailyLimit,
+    voiceLimitEffective,
     totalDurationSec,
+    canPayVoiceCoins,
+    refreshPlanUsage,
   ]);
 
   // ── Music upload ──
@@ -1284,9 +1363,35 @@ function VideoEditorPageInner() {
 
             <div className="p-5 flex flex-col gap-4 flex-1">
               <div>
-                <FieldLabel hint="Usado pela IA para gerar o roteiro. Pode ser o nome que veio da Shopee ou um título que você preferir.">Nome do produto</FieldLabel>
-                <input type="text" value={productName} onChange={(e) => setProductName(e.target.value)}
-                  placeholder="Ex: Camiseta Oversized Anime" className={inputCls} />
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+                  <div className="flex-1 min-w-0">
+                    <FieldLabel hint="Usado pela IA para gerar o roteiro. Pode ser o nome que veio da Shopee ou um título que você preferir.">Nome do produto</FieldLabel>
+                    <input type="text" value={productName} onChange={(e) => setProductName(e.target.value)}
+                      placeholder="Ex: Camiseta Oversized Anime" className={inputCls} />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-dark-border/80 bg-dark-bg/50 px-3 py-2 shrink-0 sm:max-w-[220px] sm:flex-col sm:items-stretch sm:py-2.5">
+                    <span className="text-[11px] font-semibold text-text-secondary/75 leading-tight">
+                      Nome no início do vídeo
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={showProductNameIntro}
+                      aria-label="Mostrar nome do produto no início do vídeo"
+                      title="Só aplica em estilos com cartão de abertura (ex.: Master Director, Film Arc)"
+                      onClick={() => setShowProductNameIntro((v) => !v)}
+                      className={`relative h-8 w-[3.25rem] shrink-0 self-end rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-shopee-orange/50 ${
+                        showProductNameIntro ? "bg-shopee-orange" : "bg-dark-border/90"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-1 left-1 h-6 w-6 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                          showProductNameIntro ? "translate-x-[1.35rem]" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
             </div>
 
               {/* Style cards */}
@@ -1321,28 +1426,45 @@ function VideoEditorPageInner() {
                 </div>
               </div>
 
+              <p className="text-[10px] text-text-secondary/45">
+                Gerações <span className="text-text-secondary/70 font-semibold">copy com IA</span> hoje:{" "}
+                <span className="font-mono text-text-secondary/80">{copyUsedToday}/{copyLimitEffective}</span>
+                {showCopyGold ? (
+                  <>
+                    {" "}
+                    <span className="font-semibold text-amber-400/95">(Com Coins)</span>
+                  </>
+                ) : null}
+              </p>
+
               <button
                 type="button"
                 onClick={handleGenerateCopy}
-                disabled={generatingCopy || !productName.trim() || blockedByDailyLimit}
+                disabled={generatingCopy || !productName.trim() || copyWithIaBlockedByQuota}
                 className={
-                  blockedByDailyLimit
+                  copyWithIaBlockedByQuota
                     ? "w-full inline-flex items-center justify-center gap-2 rounded-xl border border-dark-border/80 bg-dark-bg/70 py-3 text-xs font-bold tracking-wide text-text-secondary/45 cursor-not-allowed shadow-inner"
-                    : btnPrimary
+                    : showCopyGold
+                      ? "w-full inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500 py-3 text-sm font-bold text-white bg-gradient-to-r from-amber-500 to-amber-600 hover:opacity-95 transition-all shadow-[0_4px_16px_rgba(245,158,11,0.35)]"
+                      : btnPrimary
                 }
               >
                 {generatingCopy ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
-                ) : blockedByDailyLimit ? (
+                ) : copyWithIaBlockedByQuota ? (
                   <LimitAlertTooltipIcon iconClassName="h-4 w-4 shrink-0 opacity-70" />
+                ) : showCopyGold ? (
+                  <Zap className="h-4 w-4" />
                 ) : (
                   <Sparkles className="h-4 w-4" />
                 )}
                 {generatingCopy
                   ? "Gerando copy…"
-                  : blockedByDailyLimit
+                  : copyWithIaBlockedByQuota
                     ? "LIMITE DIÁRIO EXCEDIDO"
-                    : "Gerar Copy com IA"}
+                    : showCopyGold
+                      ? `Gerar Copy com IA (${AFILIADO_COINS_VIDEO_EDITOR_COPY_COST} Coins)`
+                      : "Gerar Copy com IA"}
               </button>
 
               <div className="flex-1 flex flex-col">
@@ -1397,8 +1519,14 @@ function VideoEditorPageInner() {
 
               <p className="text-[10px] text-text-secondary/45">
                 Gerações <span className="text-text-secondary/70 font-semibold">voz + legendas</span> hoje:{" "}
-                <span className="font-mono text-text-secondary/80">{voiceFullUsedToday}/{voiceFullLimitPerDay}</span>
+                <span className="font-mono text-text-secondary/80">{voiceFullUsedToday}/{voiceLimitEffective}</span>
                 <span className="text-text-secondary/35"> · prévia não conta</span>
+                {voiceAtDailyLimit && canPayVoiceCoins ? (
+                  <>
+                    {" "}
+                    <span className="font-semibold text-amber-400/95">(Com Coins)</span>
+                  </>
+                ) : null}
               </p>
 
               <button
@@ -1408,12 +1536,15 @@ function VideoEditorPageInner() {
                   voiceActionLoading !== null
                   || !copyText.trim()
                   || !voiceId
-                  || blockedByDailyLimit
+                  || editorDailyHardBlocked
+                  || (canRunFull && voiceAtDailyLimit && !canPayVoiceCoins)
                 }
                 className={
-                  blockedByDailyLimit
+                  canRunFull && voiceAtDailyLimit && !canPayVoiceCoins
                     ? "w-full inline-flex items-center justify-center gap-2 rounded-xl border border-dark-border/80 bg-dark-bg/70 py-3 text-xs font-bold tracking-wide text-text-secondary/45 cursor-not-allowed shadow-inner"
-                    : `${btnPrimary} py-3 w-full`
+                    : showVoiceGold
+                      ? "w-full inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500 py-3 text-sm font-bold text-white bg-gradient-to-r from-amber-500 to-amber-600 hover:opacity-95 transition-all shadow-[0_4px_16px_rgba(245,158,11,0.35)]"
+                      : `${btnPrimary} py-3 w-full`
                 }
               >
                 {voiceActionLoading ? (
@@ -1421,14 +1552,17 @@ function VideoEditorPageInner() {
                     <Loader2 className="h-4 w-4 animate-spin" />
                     {voiceActionLoading === "preview" ? "Gerando prévia…" : "Gerando voz e legendas…"}
                   </>
-                ) : blockedByDailyLimit ? (
+                ) : canRunFull && voiceAtDailyLimit && !canPayVoiceCoins ? (
                   <>
                     <LimitAlertTooltipIcon iconClassName="h-4 w-4 shrink-0 opacity-70" />
                     LIMITE DIÁRIO EXCEDIDO
                   </>
                 ) : canRunFull ? (
                   <>
-                    <Volume2 className="h-4 w-4" /> Gerar Voz + Legendas
+                    {showVoiceGold ? <Zap className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+                    {showVoiceGold
+                      ? `Gerar Voz + Legendas (${AFILIADO_COINS_VIDEO_EDITOR_VOICE_FULL_COST} Coins)`
+                      : "Gerar Voz + Legendas"}
                   </>
                 ) : (
                   <>
@@ -1480,10 +1614,16 @@ function VideoEditorPageInner() {
                 <p className="text-[11px] text-text-secondary/50 flex items-start gap-1.5">
                   <Star className="h-3 w-3 text-amber-400/70 shrink-0 mt-0.5" />
                   {canRunFull ? (
-                    blockedByDailyLimit ? (
+                    voiceAtDailyLimit && !canPayVoiceCoins ? (
                       <>
                         Limite de <strong className="text-text-secondary/70">voz + legendas</strong> atingido hoje.
-                        Pode ouvir novas prévias; amanhã volta o botão de gerar.
+                        Pode ouvir novas prévias; amanhã volta o botão de gerar ou use Afiliado Coins.
+                      </>
+                    ) : voiceAtDailyLimit && canPayVoiceCoins ? (
+                      <>
+                        Limite diário chegou — pode gerar com{" "}
+                        <strong className="text-amber-400/90">{AFILIADO_COINS_VIDEO_EDITOR_VOICE_FULL_COST} Afiliado Coins</strong>
+                        {" "}(export MP4 pago custa {AFILIADO_COINS_VIDEO_EDITOR_EXPORT_COST}).
                       </>
                     ) : (
                       <>
@@ -1972,7 +2112,7 @@ function VideoEditorPageInner() {
                         exportPrep
                         || remotionExport.state.status === "invoking"
                         || selectedAssets.length === 0
-                        || !canPayWithCoins
+                        || !canPayExportCoins
                       }
                       onClick={() => {
                         void (async () => {
@@ -1994,7 +2134,7 @@ function VideoEditorPageInner() {
                         exportPrep
                         || remotionExport.state.status === "invoking"
                         || selectedAssets.length === 0
-                        || !canPayWithCoins
+                        || !canPayExportCoins
                           ? "bg-gradient-to-r from-amber-500/30 to-amber-500/10 border-amber-500/30 text-amber-400/50 cursor-not-allowed"
                           : "bg-gradient-to-r from-amber-500 to-amber-600 border-amber-500 text-white hover:opacity-95 cursor-pointer"
                       }`}
@@ -2008,11 +2148,11 @@ function VideoEditorPageInner() {
                         ? "Preparando mídias..."
                         : remotionExport.state.status === "invoking"
                           ? "Gerando vídeo..."
-                          : `Exportar com ${AFILIADO_COINS_VIDEO_EDITOR_COST} Coins`}
+                          : `Exportar com ${AFILIADO_COINS_VIDEO_EDITOR_EXPORT_COST} Coins`}
                     </button>
-                    {!canPayWithCoins && (
+                    {!canPayExportCoins && (
                       <p className="text-[10px] text-text-secondary/60 text-center leading-relaxed">
-                        Você precisa de pelo menos {AFILIADO_COINS_VIDEO_EDITOR_COST} Afiliado Coins.
+                        Você precisa de pelo menos {AFILIADO_COINS_VIDEO_EDITOR_EXPORT_COST} Afiliado Coins.
                         Clique no <strong className="text-shopee-orange">+</strong> acima para comprar.
                       </p>
                     )}

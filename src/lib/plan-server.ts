@@ -10,6 +10,7 @@ import {
   type PlanTier,
 } from "./plan-entitlements";
 import { ensureAfiliadoMonthlyProCoins } from "./afiliado-coins-server";
+import { normalizeAfiliadoCoins } from "./afiliado-coins";
 
 export type PlanUsageSnapshot = {
   evolutionInstances: number;
@@ -146,7 +147,8 @@ export async function getUsageSnapshot(
       .select("afiliado_coins")
       .eq("id", userId)
       .maybeSingle();
-    afiliadoCoins = typeof prof?.afiliado_coins === "number" ? prof.afiliado_coins : 0;
+    const parsed = normalizeAfiliadoCoins(prof?.afiliado_coins);
+    afiliadoCoins = parsed !== null ? parsed : 0;
   } catch (e) {
     console.warn("[plan-server] afiliadoCoins snapshot:", e);
   }

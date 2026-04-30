@@ -45,8 +45,12 @@ export type PlanEntitlements = {
   videoExportsPerDay: number | null;
   /** Limite diário de gerações "voz + legendas" (ElevenLabs with-timestamps). */
   voicegenerate: number | null;
+  /** Limite diário de «Gerar copy com IA» (Grok) antes de cobrar coins. */
+  videoEditorCopyPerDay: number;
   espelhamentogrupos: boolean;
   especialistagenerate: boolean;
+  /** Infoprodutor: catálogo Mercado Pago + checkout dinâmico (frete) — liberado pra padrao/pro/staff, bloqueado em trial. */
+  infoprodutor: boolean;
 };
 
 
@@ -63,18 +67,20 @@ const PADRAO_LIMITS = {
   },
   geradorLinksShopee: true,
   gruposVenda: {
-    maxActiveCampaigns: 1,
-    maxLists: 1,
-    maxGroupsTotal: 1,
+    maxActiveCampaigns: 5,
+    maxLists: null,
+    maxGroupsTotal: 5,
   },
-  evolutionInstances: 1,
+  evolutionInstances: 2,
   ati: false,
   criarCampanhaMeta: false,
   geradorCriativos: false,
   videoExportsPerDay: null,
   voicegenerate: 0,
+  videoEditorCopyPerDay: 0,
   espelhamentogrupos: false,
   especialistagenerate: false,
+  infoprodutor: true,
 } as const satisfies PlanEntitlements;
 
 /** Trial por cupom: só comissões, cliques, redirecionador, gerador Shopee e 1 captura. */
@@ -91,7 +97,7 @@ const TRIAL_LIMITS = {
   geradorLinksShopee: true,
   gruposVenda: {
     maxActiveCampaigns: 0,
-    maxLists: 0,
+    maxLists: null,
     maxGroupsTotal: 0,
   },
   evolutionInstances: 0,
@@ -100,8 +106,10 @@ const TRIAL_LIMITS = {
   geradorCriativos: false,
   videoExportsPerDay: null,
   voicegenerate: 0,
+  videoEditorCopyPerDay: 0,
   espelhamentogrupos: false,
   especialistagenerate: false,
+  infoprodutor: false,
 } as const satisfies PlanEntitlements;
 
 const PRO_LIMITS = {
@@ -116,18 +124,20 @@ const PRO_LIMITS = {
   },
   geradorLinksShopee: true,
   gruposVenda: {
-    maxActiveCampaigns: 10,
+    maxActiveCampaigns: 200,
     maxLists: null,
-    maxGroupsTotal: 10,
+    maxGroupsTotal: 200,
   },
-  evolutionInstances: 2,
+  evolutionInstances: 5,
   ati: true,
   criarCampanhaMeta: true,
   geradorCriativos: true,
   videoExportsPerDay: 2,
   voicegenerate: 2,
+  videoEditorCopyPerDay: 2,
   espelhamentogrupos: true,
   especialistagenerate: true,
+  infoprodutor: true,
 } as const satisfies PlanEntitlements;
 
 
@@ -154,8 +164,10 @@ const STAFF_LIMITS = {
   geradorCriativos: true,
   videoExportsPerDay: 2,
   voicegenerate: 2,
+  videoEditorCopyPerDay: 2,
   espelhamentogrupos: true,
   especialistagenerate: true,
+  infoprodutor: true,
 } as const satisfies PlanEntitlements;
 
 /** Mesma referência para legacy e padrao — alterar um não altera o outro em runtime se você clonar; aqui são iguais por definição. */

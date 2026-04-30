@@ -192,7 +192,7 @@ export default function LoginModal({ onClose, initialMode = 'login' }: LoginModa
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       // Ajuste leve no bg do input para contrastar com o novo fundo do modal
-                      className="block w-full rounded-[12px] border border-white/10 bg-black/20 px-4 py-3 font-['Inter'] text-[14px] text-white placeholder-white/30 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
+                      className="block w-full rounded-[12px] border border-white/10 bg-black/20 light:border-zinc-200 light:bg-zinc-50 px-4 py-3 font-['Inter'] text-[14px] text-white light:text-zinc-900 placeholder-white/30 light:placeholder-zinc-400 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 light:focus:border-shopee-orange/60 light:focus:bg-white focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
                       disabled={submitting}
                       placeholder="seu@email.com"
                     />
@@ -246,7 +246,7 @@ export default function LoginModal({ onClose, initialMode = 'login' }: LoginModa
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="block w-full rounded-[12px] border border-white/10 bg-black/20 px-4 py-3 font-['Inter'] text-[14px] text-white placeholder-white/30 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
+                      className="block w-full rounded-[12px] border border-white/10 bg-black/20 light:border-zinc-200 light:bg-zinc-50 px-4 py-3 font-['Inter'] text-[14px] text-white light:text-zinc-900 placeholder-white/30 light:placeholder-zinc-400 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 light:focus:border-shopee-orange/60 light:focus:bg-white focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
                       disabled={submitting}
                       placeholder="seu@email.com"
                     />
@@ -266,7 +266,7 @@ export default function LoginModal({ onClose, initialMode = 'login' }: LoginModa
                         minLength={6}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="block w-full rounded-[12px] border border-white/10 bg-black/20 px-4 py-3 pr-12 font-['Inter'] text-[14px] text-white placeholder-white/30 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
+                        className="block w-full rounded-[12px] border border-white/10 bg-black/20 light:border-zinc-200 light:bg-zinc-50 px-4 py-3 pr-12 font-['Inter'] text-[14px] text-white light:text-zinc-900 placeholder-white/30 light:placeholder-zinc-400 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 light:focus:border-shopee-orange/60 light:focus:bg-white focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
                         disabled={submitting}
                         placeholder="mín. 6 caracteres"
                       />
@@ -294,7 +294,7 @@ export default function LoginModal({ onClose, initialMode = 'login' }: LoginModa
                       required
                       value={whatsapp}
                       onChange={(e) => setWhatsapp(e.target.value)}
-                      className="block w-full rounded-[12px] border border-white/10 bg-black/20 px-4 py-3 font-['Inter'] text-[14px] text-white placeholder-white/30 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
+                      className="block w-full rounded-[12px] border border-white/10 bg-black/20 light:border-zinc-200 light:bg-zinc-50 px-4 py-3 font-['Inter'] text-[14px] text-white light:text-zinc-900 placeholder-white/30 light:placeholder-zinc-400 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 light:focus:border-shopee-orange/60 light:focus:bg-white focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
                       disabled={submitting}
                       placeholder="79999999999"
                     />
@@ -312,7 +312,7 @@ export default function LoginModal({ onClose, initialMode = 'login' }: LoginModa
                       required
                       value={coupon}
                       onChange={(e) => setCoupon(e.target.value.toUpperCase())}
-                      className="block w-full rounded-[12px] border border-white/10 bg-black/20 px-4 py-3 font-['Inter'] text-[14px] text-white placeholder-white/30 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
+                      className="block w-full rounded-[12px] border border-white/10 bg-black/20 light:border-zinc-200 light:bg-zinc-50 px-4 py-3 font-['Inter'] text-[14px] text-white light:text-zinc-900 placeholder-white/30 light:placeholder-zinc-400 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 light:focus:border-shopee-orange/60 light:focus:bg-white focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
                       disabled={submitting}
                       placeholder="1DAYFREE"
                     />
@@ -370,7 +370,7 @@ export default function LoginModal({ onClose, initialMode = 'login' }: LoginModa
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       // Ajuste leve no bg do input
-                      className="block w-full rounded-[12px] border border-white/10 bg-black/20 px-4 py-3 font-['Inter'] text-[14px] text-white placeholder-white/30 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
+                      className="block w-full rounded-[12px] border border-white/10 bg-black/20 light:border-zinc-200 light:bg-zinc-50 px-4 py-3 font-['Inter'] text-[14px] text-white light:text-zinc-900 placeholder-white/30 light:placeholder-zinc-400 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 light:focus:border-shopee-orange/60 light:focus:bg-white focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
                       disabled={submitting}
                       placeholder="seu@email.com"
                     />
@@ -393,7 +393,7 @@ export default function LoginModal({ onClose, initialMode = 'login' }: LoginModa
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         // Ajuste leve no bg do input
-                        className="block w-full rounded-[12px] border border-white/10 bg-black/20 px-4 py-3 pr-12 font-['Inter'] text-[14px] text-white placeholder-white/30 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
+                        className="block w-full rounded-[12px] border border-white/10 bg-black/20 light:border-zinc-200 light:bg-zinc-50 px-4 py-3 pr-12 font-['Inter'] text-[14px] text-white light:text-zinc-900 placeholder-white/30 light:placeholder-zinc-400 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 light:focus:border-shopee-orange/60 light:focus:bg-white focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
                         disabled={submitting}
                         placeholder="••••••••"
                       />
@@ -438,7 +438,7 @@ export default function LoginModal({ onClose, initialMode = 'login' }: LoginModa
                       type="button"
                       onClick={handleDownloadApp}
                       disabled={submitting}
-                      className="flex w-full items-center justify-center gap-2 rounded-[12px] border border-white/15 bg-white/5 px-4 py-[14px] font-['Inter'] text-[15px] font-semibold text-white/90 transition-all hover:border-white/25 hover:bg-white/10 disabled:opacity-50"
+                      className="flex w-full items-center justify-center gap-2 rounded-[12px] border border-white/15 bg-white/5 light:border-zinc-200 light:bg-zinc-50 px-4 py-[14px] font-['Inter'] text-[15px] font-semibold text-white/90 light:text-zinc-800 transition-all hover:border-white/25 hover:bg-white/10 light:hover:border-zinc-300 light:hover:bg-zinc-100 disabled:opacity-50"
                     >
                       <Download className="h-[18px] w-[18px] shrink-0" aria-hidden />
                       Download do app

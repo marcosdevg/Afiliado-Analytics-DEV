@@ -13,6 +13,7 @@ import {
   type ExpertVideoBuildInput,
 } from "@/lib/expert-generator/build-prompt";
 import { veoPredictLongRunning } from "@/lib/vertex/veo-long-running";
+import { humanizeVertexUserFacingMessage } from "@/lib/expert-generator/humanize-vertex-user-message";
 
 export const maxDuration = 60;
 
@@ -162,6 +163,29 @@ export async function POST(req: Request) {
       resizeMode: "pad",
     });
 
+    const { error: holdErr } = await supabase.from("expert_veo_coin_holds").insert({
+      operation_name: name,
+      user_id: gate.userId,
+      coins: AFILIADO_COINS_VIDEO_COST,
+      status: "pending",
+    });
+    if (holdErr) {
+      console.error("expert_veo_coin_holds insert:", holdErr.message);
+      await refundAfiliadoCoins(
+        supabase,
+        gate.userId,
+        AFILIADO_COINS_VIDEO_COST,
+        "refund_expert_video_hold_insert_failed",
+      );
+      return NextResponse.json(
+        {
+          error:
+            "Não foi possível registar o pedido de vídeo; as coins foram devolvidas. Tente novamente.",
+        },
+        { status: 500 },
+      );
+    }
+
     return NextResponse.json({
       operationName: name,
       modelId: process.env.VERTEX_VEO_MODEL ?? "veo-3.1-fast-generate-001",
@@ -173,10 +197,11 @@ export async function POST(req: Request) {
       AFILIADO_COINS_VIDEO_COST,
       "refund_expert_video_failed"
     );
-    const msg = e instanceof Error ? e.message : "Erro Vertex Veo";
+    const raw = e instanceof Error ? e.message : "Erro Vertex Veo";
+    const msg = humanizeVertexUserFacingMessage(raw);
     console.error("expert-generator/veo-start", e);
-    if (msg.includes("VERTEX_") || msg.includes("não configurado")) {
-      return NextResponse.json({ error: msg }, { status: 503 });
+    if (raw.includes("VERTEX_") || raw.includes("não configurado")) {
+      return NextResponse.json({ error: raw }, { status: 503 });
     }
     return NextResponse.json({ error: msg }, { status: 502 });
   }

@@ -51,6 +51,8 @@ export type VideoInputProps = {
   captions: CaptionWord[];
   subtitleTheme: SubtitleTheme;
   productName: string;
+  /** Se true, mostra cartão com o nome do produto no início (estilos masterDirector / filmArc). */
+  showProductNameIntro?: boolean;
   price: string;
   ctaText: string;
   fps: number;

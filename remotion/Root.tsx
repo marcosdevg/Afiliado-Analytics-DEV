@@ -14,6 +14,7 @@ const defaultProps: VideoInputProps = {
   captions: [],
   subtitleTheme: SUBTITLE_THEMES.tiktokBold,
   productName: "",
+  showProductNameIntro: false,
   price: "",
   ctaText: "Link na bio",
   fps: 30,

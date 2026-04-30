@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useId } from "react";
+import { useState, useEffect, useCallback, useMemo, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { GeradorPaginationBar } from "@/app/components/shopee/GeradorPaginationBar";
@@ -20,12 +20,17 @@ import {
   Check,
   Copy,
   ImageIcon,
+  GripVertical,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
+import { Reorder } from "framer-motion";
 import { cn, IconBtn } from "@/app/components/gerador/gerador-ui-primitives";
 import ConfirmModal from "@/app/components/ui/ConfirmModal";
 import { effectiveListaOfferPromoPrice } from "@/lib/lista-ofertas-effective-promo";
 import { buildMlListaAutomationText } from "@/lib/mercadolivre/ml-lista-automation-text";
 import { useMlAffiliateLocalSettings } from "@/lib/mercadolivre/use-ml-affiliate-local-settings";
+
 const ML_LISTA_REFRESH_CHUNK = 120;
 const ITEMS_PER_PAGE = 4;
 const LISTAS_PER_PAGE = 4;
@@ -133,6 +138,8 @@ export function MinhaListaOfertasMlListsPanel({ className }: { className?: strin
     discountRate: "",
   });
   const [savingEditItem, setSavingEditItem] = useState(false);
+  const saveTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const [isSyncingOrder, setIsSyncingOrder] = useState(false);
   const editItemTitleId = useId();
 
   const totalListasPages = Math.max(1, Math.ceil(listas.length / LISTAS_PER_PAGE));
@@ -353,14 +360,89 @@ export function MinhaListaOfertasMlListsPanel({ className }: { className?: strin
       () => {},
     );
   };
-
   const toggleLista = (listaId: string) => {
     setExpandedListas((prev) => {
       const next = new Set(prev);
       if (next.has(listaId)) next.delete(listaId);
-      else next.add(listaId);
+      else {
+        next.add(listaId);
+        if (!itemsByLista[listaId]) void loadItems(listaId);
+      }
       return next;
     });
+  };
+
+  const handleReorder = (listaId: string, newOrder: Item[]) => {
+    setItemsByLista((prev) => {
+      const allItems = [...(prev[listaId] ?? [])];
+      const filter = (filterByLista[listaId] ?? "").trim().toLowerCase();
+      const page = pageByLista[listaId] ?? 1;
+
+      if (filter) {
+        const filteredIndices = allItems
+          .map((item, idx) => ((item.productName || "").toLowerCase().includes(filter) ? idx : -1))
+          .filter((idx) => idx !== -1);
+        
+        const from = (page - 1) * ITEMS_PER_PAGE;
+        const to = from + ITEMS_PER_PAGE;
+        const pageIndices = filteredIndices.slice(from, to);
+
+        pageIndices.forEach((originalIdx, i) => {
+          if (newOrder[i]) {
+            allItems[originalIdx] = newOrder[i];
+          }
+        });
+      } else {
+        const from = (page - 1) * ITEMS_PER_PAGE;
+        allItems.splice(from, newOrder.length, ...newOrder);
+      }
+
+      return { ...prev, [listaId]: allItems };
+    });
+  };
+
+  const saveNewOrder = async (listaId: string) => {
+    // Cancela qualquer salvamento pendente para esta lista
+    if (saveTimeoutRef.current[listaId]) {
+      clearTimeout(saveTimeoutRef.current[listaId]);
+    }
+
+    // Agenda o salvamento para 500ms a partir de agora
+    saveTimeoutRef.current[listaId] = setTimeout(async () => {
+      const items = itemsByLista[listaId] || [];
+      if (items.length === 0) return;
+
+      setIsSyncingOrder(true);
+      try {
+        const res = await fetch("/api/mercadolivre/minha-lista-ofertas", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            listaId,
+            itemIds: items.map((i) => i.id),
+          }),
+        });
+
+        if (!res.ok) throw new Error("Erro ao salvar ordem");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Erro ao salvar nova ordem");
+      } finally {
+        setIsSyncingOrder(false);
+        delete saveTimeoutRef.current[listaId];
+      }
+    }, 500);
+  };
+
+  const moveItem = (listaId: string, index: number, direction: "up" | "down") => {
+    const items = [...(itemsByLista[listaId] ?? [])];
+    const newIndex = direction === "up" ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= items.length) return;
+
+    const [removed] = items.splice(index, 1);
+    items.splice(newIndex, 0, removed);
+    
+    setItemsByLista((prev) => ({ ...prev, [listaId]: items }));
+    void saveNewOrder(listaId);
   };
 
   const getFilteredAndPaginatedItems = (listaId: string) => {
@@ -513,53 +595,25 @@ export function MinhaListaOfertasMlListsPanel({ className }: { className?: strin
                         <span className="text-lg font-semibold text-text-primary truncate">{lista.nome}</span>
                         <span className="text-sm text-text-secondary shrink-0">({lista.totalItens ?? 0} itens)</span>
                       </span>
-                      <span
-                        className="flex items-center gap-2 shrink-0 flex-wrap justify-end"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {mlHasIncomplete && !isExpanded ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              void handleRefreshLista(lista.id);
-                            }}
-                            disabled={refreshTarget !== null}
-                            className="flex items-center gap-1 px-2 py-1.5 rounded-md border border-shopee-orange bg-shopee-orange/15 text-shopee-orange text-xs font-medium hover:bg-shopee-orange/25 disabled:opacity-50"
-                          >
-                            {refreshTarget === `lista:${lista.id}` ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-3.5 w-3.5" />
-                            )}
-                            Atualizar erros
-                          </button>
-                        ) : null}
+                      <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleEmptyListClick(lista.id);
-                          }}
+                          onClick={(e) => { e.stopPropagation(); handleEmptyListClick(lista.id); }}
                           disabled={(itemsByLista[lista.id]?.length ?? 0) === 0}
                           className="flex items-center gap-1 px-2 py-1.5 rounded-md border border-dark-border text-text-secondary text-xs hover:bg-shopee-orange/10 hover:text-shopee-orange disabled:opacity-40"
+                          title="Esvaziar lista"
                         >
                           <FolderMinus className="h-3.5 w-3.5" /> Esvaziar
                         </button>
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleDeleteListClick(lista.id);
-                          }}
+                          onClick={(e) => { e.stopPropagation(); handleDeleteListClick(lista.id); }}
                           className="flex items-center gap-1 px-2 py-1.5 rounded-md border border-dark-border text-text-secondary text-xs hover:bg-red-500/10 hover:text-red-400"
+                          title="Apagar lista"
                         >
                           <Trash2 className="h-3.5 w-3.5" /> Apagar
                         </button>
-                      </span>
+                      </div>
                     </button>
                     {isExpanded && (
                       <div className="border-t border-dark-border p-4">
@@ -581,7 +635,7 @@ export function MinhaListaOfertasMlListsPanel({ className }: { className?: strin
                                   setPageByLista((prev) => ({ ...prev, [lista.id]: 1 }));
                                 }}
                                 placeholder="Filtrar por nome…"
-                                className="flex-1 min-w-[140px] px-3 py-2 rounded-lg border border-dark-border bg-dark-bg text-text-primary text-sm"
+                                className="flex-1 px-3 py-2 rounded-lg border border-[#2c2c32] bg-[#222228] text-[#f0f0f2] text-sm placeholder:text-[#6b6b72]"
                               />
                               <button
                                 type="button"
@@ -602,109 +656,129 @@ export function MinhaListaOfertasMlListsPanel({ className }: { className?: strin
                                 {mlHasIncomplete ? "Atualizar erros" : "Atualizar preços"}
                               </button>
                             </div>
-                            <ul className="space-y-4">
-                              {slice.map((item) => {
-                                return (
-                                <li
+
+                            <Reorder.Group
+                              axis="y"
+                              values={slice}
+                              onReorder={(newOrder) => handleReorder(lista.id, newOrder)}
+                              className="space-y-4"
+                            >
+                              {slice.map((item, idx) => (
+                                <Reorder.Item
                                   key={item.id}
-                                  className="flex gap-4 p-3 rounded-xl border border-[#2c2c32] bg-[#222228]"
+                                  value={item}
+                                  onDragEnd={() => saveNewOrder(lista.id)}
+                                  whileDrag={{ 
+                                    scale: 1.02, 
+                                    boxShadow: "0px 10px 30px rgba(0,0,0,0.5)",
+                                    zIndex: 50 
+                                  }}
+                                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                  className="flex gap-4 p-3 rounded-xl border border-[#2c2c32] bg-[#222228] relative group hover:border-[#3e3e46] transition-colors touch-none"
                                 >
-                                  {item.imageUrl ? (
-                                    <img
-                                      src={item.imageUrl}
-                                      alt=""
-                                      className="w-20 h-20 object-contain rounded-lg bg-white shrink-0 border border-[#2c2c32]"
-                                    />
-                                  ) : (
-                                    <div className="w-20 h-20 rounded-lg bg-[#1c1c1f] shrink-0 flex items-center justify-center border border-[#2c2c32]">
-                                      <ImageIcon className="w-6 h-6 text-[#686868]" />
-                                    </div>
-                                  )}
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium text-text-primary leading-snug">
-                                      ✨ {item.productName || "Produto"}
-                                    </p>
-                                    <p className="text-sm text-text-secondary mt-1">
-                                      💰 Preço:{" "}
-                                      {item.discountRate != null && item.discountRate > 0 && (
-                                        <span className="text-red-400 font-medium">-{Math.round(item.discountRate)}% </span>
-                                      )}
-                                      <span className="text-text-secondary">🔴</span>{" "}
-                                      <span className="line-through">
-                                        {item.priceOriginal != null ? formatCurrency(item.priceOriginal) : "—"}
-                                      </span>
-                                      {" por "}
-                                      <span className="text-emerald-400 font-medium">✅ {displayPrecoPorLista(item)}</span>
-                                    </p>
-                                    <p className="text-sm font-medium text-text-primary mt-1">🏷️ PROMOÇÃO - CLIQUE NO LINK 👇</p>
-                                    <button
-                                      type="button"
-                                      onClick={() => copyItemLink(item.id, item.converterLink)}
-                                      className="text-sm text-emerald-400 hover:underline break-all text-left mt-0.5"
-                                    >
-                                      {item.converterLink}
-                                    </button>
-                                    <div className="flex flex-wrap items-center gap-1 mt-2">
-                                      <IconBtn
-                                        title={copiedItemId === item.id ? "Copiado!" : "Copiar link"}
-                                        active={copiedItemId === item.id}
-                                        onClick={() => copyItemLink(item.id, item.converterLink)}
-                                      >
-                                        {copiedItemId === item.id ? (
-                                          <Check className="w-3.5 h-3.5" />
-                                        ) : (
-                                          <Copy className="w-3.5 h-3.5" />
+                                  <div className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[#3e3e46] group-hover:text-[#6b6b72] cursor-grab active:cursor-grabbing p-1">
+                                    <GripVertical className="h-4 w-4" />
+                                  </div>
+
+                                  <div className="pl-6 flex gap-4 w-full">
+                                    {item.imageUrl ? (
+                                      <img
+                                        src={item.imageUrl}
+                                        alt=""
+                                        className="w-20 h-20 object-contain rounded-lg bg-white shrink-0 border border-[#2c2c32]"
+                                      />
+                                    ) : (
+                                      <div className="w-20 h-20 rounded-lg bg-[#1c1c1f] shrink-0 flex items-center justify-center border border-[#2c2c32]">
+                                        <ImageIcon className="w-6 h-6 text-[#686868]" />
+                                      </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <p className="text-sm font-medium text-text-primary leading-snug">
+                                          ✨ {item.productName || "Produto"}
+                                        </p>
+                                        <div className="flex flex-col gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={() => moveItem(lista.id, idx, "up")}
+                                            disabled={idx === 0}
+                                            className="p-1 rounded bg-[#2c2c32] text-[#a0a0a0] hover:text-white disabled:opacity-30 transition-colors"
+                                            title="Mover para cima"
+                                          >
+                                            <ArrowUp className="h-3 w-3" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => moveItem(lista.id, idx, "down")}
+                                            disabled={idx === (itemsByLista[lista.id]?.length ?? 0) - 1}
+                                            className="p-1 rounded bg-[#2c2c32] text-[#a0a0a0] hover:text-white disabled:opacity-30 transition-colors"
+                                            title="Mover para baixo"
+                                          >
+                                            <ArrowDown className="h-3 w-3" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <p className="text-sm text-text-secondary mt-1">
+                                        💰 Preço:{" "}
+                                        {item.discountRate != null && item.discountRate > 0 && (
+                                          <span className="text-red-400 font-medium">-{Math.round(item.discountRate)}% </span>
                                         )}
-                                      </IconBtn>
-                                      <button
-                                        type="button"
-                                        onClick={() => copyItemAutomation(item)}
-                                        className="text-[10px] font-semibold px-2 py-1 rounded-md border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/10 transition"
-                                      >
-                                        Copiar texto grupo
-                                      </button>
-                                      <IconBtn
-                                        title="Abrir"
-                                        onClick={() => window.open(item.converterLink, "_blank", "noopener,noreferrer")}
-                                      >
-                                        <ExternalLink className="w-3.5 h-3.5" />
-                                      </IconBtn>
-                                      <button
-                                        type="button"
-                                        onClick={() => void handleRefreshItem(item.id, lista.id)}
-                                        disabled={refreshTarget !== null}
-                                        className={cn(
-                                          "text-[11px] flex items-center gap-1 disabled:opacity-50 ml-1 px-2 py-1 rounded-md border",
-                                          mlItemLooksIncomplete(item)
-                                            ? "border-[#e24c30]/40 text-[#e24c30] bg-[#e24c30]/10"
-                                            : "border-[#2c2c32] text-[#a0a0a0] hover:text-[#e24c30]",
-                                        )}
-                                      >
-                                        {refreshTarget === `item:${item.id}` ? (
-                                          <Loader2 className="h-3 w-3 animate-spin shrink-0" />
-                                        ) : (
-                                          <RefreshCw className="h-3 w-3 shrink-0" />
-                                        )}
-                                        {mlItemLooksIncomplete(item) ? "Atualizar erro" : "Atualizar"}
-                                      </button>
-                                      <span className="ml-auto flex items-center gap-0.5 shrink-0">
-                                        <IconBtn title="Editar" onClick={() => openEditItemModal(item, lista.id)}>
-                                          <Pencil className="w-3.5 h-3.5" />
-                                        </IconBtn>
+                                        <span className="text-emerald-400 font-medium">✅ {displayPrecoPorLista(item)}</span>
+                                      </p>
+                                      <div className="flex flex-wrap items-center gap-1 mt-2">
                                         <IconBtn
-                                          title="Remover"
-                                          danger
-                                          onClick={() => handleDeleteItemClick(item.id, lista.id)}
+                                          title={copiedItemId === item.id ? "Copiado!" : "Copiar link"}
+                                          active={copiedItemId === item.id}
+                                          onClick={() => copyItemLink(item.id, item.converterLink)}
                                         >
-                                          <Trash2 className="w-3.5 h-3.5" />
+                                          {copiedItemId === item.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                                         </IconBtn>
-                                      </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => copyItemAutomation(item)}
+                                          className="text-[10px] font-semibold px-2 py-1 rounded-md border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/10 transition"
+                                        >
+                                          Copiar texto grupo
+                                        </button>
+                                        <IconBtn
+                                          title="Abrir"
+                                          onClick={() => window.open(item.converterLink, "_blank", "noopener,noreferrer")}
+                                        >
+                                          <ExternalLink className="w-3.5 h-3.5" />
+                                        </IconBtn>
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleRefreshItem(item.id, lista.id)}
+                                          disabled={refreshTarget !== null}
+                                          className={cn(
+                                            "text-[11px] flex items-center gap-1 disabled:opacity-50 ml-1 px-2 py-1 rounded-md border",
+                                            mlItemLooksIncomplete(item)
+                                              ? "border-[#e24c30]/40 text-[#e24c30] bg-[#e24c30]/10"
+                                              : "border-[#2c2c32] text-[#a0a0a0] hover:text-[#e24c30]",
+                                          )}
+                                        >
+                                          {refreshTarget === `item:${item.id}` ? (
+                                            <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                                          ) : (
+                                            <RefreshCw className="h-3 w-3 shrink-0" />
+                                          )}
+                                          {mlItemLooksIncomplete(item) ? "Atualizar erro" : "Atualizar"}
+                                        </button>
+                                        <span className="ml-auto flex items-center gap-0.5 shrink-0">
+                                          <IconBtn title="Editar" onClick={() => openEditItemModal(item, lista.id)}>
+                                            <Pencil className="w-3.5 h-3.5" />
+                                          </IconBtn>
+                                          <IconBtn title="Remover" danger onClick={() => handleDeleteItemClick(item.id, lista.id)}>
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </IconBtn>
+                                        </span>
+                                      </div>
                                     </div>
                                   </div>
-                                </li>
-                              );
-                              })}
-                            </ul>
+                                </Reorder.Item>
+                              ))}
+                            </Reorder.Group>
+
                             {totalPages > 1 && (
                               <GeradorPaginationBar
                                 className="mt-4 border-t border-dark-border pt-3"

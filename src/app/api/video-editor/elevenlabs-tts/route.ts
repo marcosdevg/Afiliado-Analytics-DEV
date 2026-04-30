@@ -4,13 +4,19 @@
  * - mode "full": with-timestamps + legendas; limite diário por plano (UTC).
  *
  * GET → { fullGenerationsUsedToday, fullGenerationsLimit }
- * POST { text, voiceId, mode?: "preview" | "full" }
+ * POST { text, voiceId, mode?: "preview" | "full", useCoins?: boolean }
+ * — useCoins: com limite diário de "full" esgotado, debita Afiliado Coins (15).
  */
 
 import { assertVideoEditorPro } from "@/lib/gate-video-editor-request";
 import { requireElevenLabsApiKey } from "@/lib/elevenlabs-api-key";
 import { getEntitlementsForUser, getUsageSnapshot } from "@/lib/plan-server";
 import { createClient } from "@/lib/supabase-server";
+import { consumeAfiliadoCoins, refundAfiliadoCoins } from "@/lib/afiliado-coins-server";
+import {
+  AFILIADO_COINS_VIDEO_EDITOR_GATE_MIN,
+  AFILIADO_COINS_VIDEO_EDITOR_VOICE_FULL_COST,
+} from "@/lib/afiliado-coins";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -113,19 +119,22 @@ export async function POST(req: Request) {
     const voiceFullDailyLimit = ent.voicegenerate ?? 0;
     const usage = await getUsageSnapshot(supabase, gate.userId);
     if (ent.videoExportsPerDay !== null && usage.videoExportsToday >= ent.videoExportsPerDay) {
-      return NextResponse.json(
-        {
-          error: `Limite diário de ${ent.videoExportsPerDay} vídeo(s) exportado(s) atingido.`,
-          videoLimitReached: true,
-        },
-        { status: 403 }
-      );
+      if (usage.afiliadoCoins < AFILIADO_COINS_VIDEO_EDITOR_GATE_MIN) {
+        return NextResponse.json(
+          {
+            error: `Limite diário de ${ent.videoExportsPerDay} vídeo(s) exportado(s) atingido. Precisa de pelo menos ${AFILIADO_COINS_VIDEO_EDITOR_GATE_MIN} Afiliado Coins para usar o gerador fora da quota.`,
+            videoLimitReached: true,
+          },
+          { status: 403 },
+        );
+      }
     }
 
     const body = await req.json().catch(() => ({}));
     const text = String(body?.text ?? "").trim();
     const voiceId = String(body?.voiceId ?? "").trim();
     const mode = body?.mode === "full" ? "full" : "preview";
+    const useCoins = body?.useCoins === true;
 
     if (!text) return NextResponse.json({ error: "text é obrigatório" }, { status: 400 });
     if (!voiceId) return NextResponse.json({ error: "voiceId é obrigatório" }, { status: 400 });
@@ -183,16 +192,39 @@ export async function POST(req: Request) {
     }
 
     const n = usedCount ?? 0;
+    let paidWithAfiliadoCoins = false;
     if (n >= voiceFullDailyLimit) {
-      return NextResponse.json(
-        {
-          error: `Limite diário atingido: ${voiceFullDailyLimit} gerações de voz + legendas por dia. Volte amanhã ou use só a prévia (Ouvir voz).`,
-          limitReached: true,
-          fullGenerationsUsedToday: n,
-          fullGenerationsLimit: voiceFullDailyLimit,
-        },
-        { status: 429 }
-      );
+      if (useCoins) {
+        const spend = await consumeAfiliadoCoins(
+          supabase,
+          gate.userId,
+          AFILIADO_COINS_VIDEO_EDITOR_VOICE_FULL_COST,
+          "video_editor_voice_full_coins",
+        );
+        if (!spend.ok) {
+          return NextResponse.json(
+            {
+              error: `Afiliado Coins insuficientes (necessário: ${AFILIADO_COINS_VIDEO_EDITOR_VOICE_FULL_COST}) para gerar voz + legendas fora do limite diário.`,
+              limitReached: true,
+              fullGenerationsUsedToday: n,
+              fullGenerationsLimit: voiceFullDailyLimit,
+              code: "INSUFFICIENT_COINS",
+            },
+            { status: 402 },
+          );
+        }
+        paidWithAfiliadoCoins = true;
+      } else {
+        return NextResponse.json(
+          {
+            error: `Limite diário atingido: ${voiceFullDailyLimit} gerações de voz + legendas por dia. Volte amanhã ou use só a prévia (Ouvir voz).`,
+            limitReached: true,
+            fullGenerationsUsedToday: n,
+            fullGenerationsLimit: voiceFullDailyLimit,
+          },
+          { status: 429 },
+        );
+      }
     }
 
     const res = await fetch(
@@ -209,6 +241,14 @@ export async function POST(req: Request) {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
+      if (paidWithAfiliadoCoins) {
+        await refundAfiliadoCoins(
+          supabase,
+          gate.userId,
+          AFILIADO_COINS_VIDEO_EDITOR_VOICE_FULL_COST,
+          "refund_video_editor_voice_full_coins",
+        );
+      }
       return NextResponse.json(
         { error: `ElevenLabs ${res.status}: ${errText.slice(0, 300)}` },
         { status: 502 }
@@ -225,21 +265,24 @@ export async function POST(req: Request) {
       captions = charsToWords(alignment);
     }
 
-    const { error: insErr } = await supabase.from("video_editor_voice_full_usage").insert({
-      user_id: gate.userId,
-      usage_day: today,
-    });
+    if (!paidWithAfiliadoCoins) {
+      const { error: insErr } = await supabase.from("video_editor_voice_full_usage").insert({
+        user_id: gate.userId,
+        usage_day: today,
+      });
 
-    if (insErr) {
-      return NextResponse.json({ error: insErr.message }, { status: 500 });
+      if (insErr) {
+        return NextResponse.json({ error: insErr.message }, { status: 500 });
+      }
     }
 
     return NextResponse.json({
       mode: "full",
       audioBase64,
       captions,
-      fullGenerationsUsedToday: n + 1,
+      fullGenerationsUsedToday: paidWithAfiliadoCoins ? n : n + 1,
       fullGenerationsLimit: voiceFullDailyLimit,
+      paidWithAfiliadoCoins,
     });
   } catch (e) {
     return NextResponse.json(

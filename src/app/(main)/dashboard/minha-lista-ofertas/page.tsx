@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { MinhaListaOfertasMlListsPanel } from "@/app/components/minha-lista-ofertas/MinhaListaOfertasMlListsPanel";
 import { GeradorPaginationBar } from "@/app/components/shopee/GeradorPaginationBar";
@@ -16,7 +16,12 @@ import {
   ChevronRight,
   Search,
   X,
+  GripVertical,
+  ArrowUp,
+  ArrowDown,
+  Check,
 } from "lucide-react";
+import { Reorder } from "framer-motion";
 import ConfirmModal from "@/app/components/ui/ConfirmModal";
 import { effectiveListaOfferPromoPrice } from "@/lib/lista-ofertas-effective-promo";
 import { MERCADOLIVRE_UX_COMING_SOON } from "@/lib/mercadolivre-ux-coming-soon";
@@ -67,6 +72,7 @@ export default function MinhaListaOfertasPage() {
   const [expandedListas, setExpandedListas] = useState<Set<string>>(new Set());
   const [filterByLista, setFilterByLista] = useState<Record<string, string>>({});
   const [pageByLista, setPageByLista] = useState<Record<string, number>>({});
+  const [confirmLoading, setConfirmLoading] = useState(false);
   const [confirmState, setConfirmState] = useState<{
     type: "deleteItem" | "emptyList" | "deleteList";
     title: string;
@@ -75,10 +81,11 @@ export default function MinhaListaOfertasPage() {
     variant: "danger" | "default";
     payload: { itemId?: string; listaId: string };
   } | null>(null);
-  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [isSyncingOrder, setIsSyncingOrder] = useState(false);
   const ITEMS_PER_PAGE = 5;
   const LISTAS_PER_PAGE = 4;
   const [listasPage, setListasPage] = useState(1);
+  const saveTimeoutRef = useRef<Record<string, NodeJS.Timeout>>({});
 
   const totalListasPages = Math.max(1, Math.ceil(listas.length / LISTAS_PER_PAGE));
   const pagedListas = useMemo(() => {
@@ -212,6 +219,87 @@ export default function MinhaListaOfertasPage() {
       if (next.has(listaId)) next.delete(listaId);
       else next.add(listaId);
       return next;
+    });
+  };
+
+  const handleReorder = (listaId: string, newOrder: Item[]) => {
+    setItemsByLista((prev) => {
+      const allItems = [...(prev[listaId] ?? [])];
+      const filter = (filterByLista[listaId] ?? "").trim().toLowerCase();
+      const page = pageByLista[listaId] ?? 1;
+
+      if (filter) {
+        const filteredIndices = allItems
+          .map((item, idx) => ((item.productName || "").toLowerCase().includes(filter) ? idx : -1))
+          .filter((idx) => idx !== -1);
+        
+        const from = (page - 1) * ITEMS_PER_PAGE;
+        const to = from + ITEMS_PER_PAGE;
+        const pageIndices = filteredIndices.slice(from, to);
+
+        pageIndices.forEach((originalIdx, i) => {
+          if (newOrder[i]) {
+            allItems[originalIdx] = newOrder[i];
+          }
+        });
+      } else {
+        const from = (page - 1) * ITEMS_PER_PAGE;
+        allItems.splice(from, newOrder.length, ...newOrder);
+      }
+
+      return { ...prev, [listaId]: allItems };
+    });
+  };
+
+  const saveNewOrder = async (listaId: string) => {
+    // Cancela qualquer salvamento pendente para esta lista
+    if (saveTimeoutRef.current[listaId]) {
+      clearTimeout(saveTimeoutRef.current[listaId]);
+    }
+
+    // Agenda o salvamento para 500ms a partir de agora
+    saveTimeoutRef.current[listaId] = setTimeout(async () => {
+      const items = itemsByLista[listaId] || [];
+      if (items.length === 0) return;
+
+      setIsSyncingOrder(true);
+      try {
+        const res = await fetch("/api/shopee/minha-lista-ofertas", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            listaId,
+            itemIds: items.map((i) => i.id),
+          }),
+        });
+
+        if (!res.ok) throw new Error("Erro ao salvar ordem");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Erro ao salvar nova ordem");
+      } finally {
+        setIsSyncingOrder(false);
+        delete saveTimeoutRef.current[listaId];
+      }
+    }, 500);
+  };
+
+  const moveItem = (listaId: string, index: number, direction: "up" | "down") => {
+    const items = [...(itemsByLista[listaId] ?? [])];
+    const newIndex = direction === "up" ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= items.length) return;
+
+    const [removed] = items.splice(index, 1);
+    items.splice(newIndex, 0, removed);
+    
+    setItemsByLista((prev) => ({ ...prev, [listaId]: items }));
+    // Auto-save for simple arrow moves
+    fetch("/api/shopee/minha-lista-ofertas", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        listaId,
+        itemIds: items.map((i) => i.id),
+      }),
     });
   };
 
@@ -386,12 +474,36 @@ export default function MinhaListaOfertasPage() {
                                 ) : (
                                   <ChevronRight className="h-5 w-5 text-[#a0a0a0] shrink-0" />
                                 )}
-                                <div className="w-8 h-8 rounded-lg border border-[#e24c30]/35 bg-[#e24c30]/10 flex items-center justify-center shrink-0">
-                                  <ShoppingBag className="h-4 w-4 text-[#e24c30]" />
-                                </div>
-                                <span className="text-sm font-bold uppercase tracking-wide text-[#f0f0f2] truncate">
-                                  {lista.nome}
-                                </span>
+                                {/* Listas criadas pelo wizard Sho.IA têm prefixo "🤖 Sho.IA · ".
+                                    Detectamos e trocamos por imagem do mascote +
+                                    nome amigável (sem o prefixo). */}
+                                {(() => {
+                                  const SHOIA_PREFIX = "🤖 Sho.IA · ";
+                                  const isShoia = lista.nome.startsWith(SHOIA_PREFIX);
+                                  const displayName = isShoia
+                                    ? lista.nome.slice(SHOIA_PREFIX.length)
+                                    : lista.nome;
+                                  return (
+                                    <>
+                                      {isShoia ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                          src="/tendencias/cabecasho.png"
+                                          alt=""
+                                          aria-hidden
+                                          className="w-8 h-8 shrink-0 object-contain"
+                                        />
+                                      ) : (
+                                        <div className="w-8 h-8 rounded-lg border border-[#e24c30]/35 bg-[#e24c30]/10 flex items-center justify-center shrink-0">
+                                          <ShoppingBag className="h-4 w-4 text-[#e24c30]" />
+                                        </div>
+                                      )}
+                                      <span className="text-sm font-bold uppercase tracking-wide text-[#f0f0f2] truncate">
+                                        {displayName}
+                                      </span>
+                                    </>
+                                  );
+                                })()}
                                 <span className="text-sm text-[#9a9aa2] shrink-0">
                                   ({lista.totalItens ?? 0} itens)
                                 </span>
@@ -429,25 +541,44 @@ export default function MinhaListaOfertasPage() {
                                 </p>
                               ) : (
                                 <>
-                                  <div className="mb-3 flex items-center gap-2">
-                                    <Search className="h-4 w-4 text-[#a0a0a0] shrink-0" />
-                                    <input
-                                      type="text"
-                                      value={filterByLista[lista.id] ?? ""}
-                                      onChange={(e) => {
-                                        setFilterByLista((prev) => ({ ...prev, [lista.id]: e.target.value }));
-                                        setPageByLista((prev) => ({ ...prev, [lista.id]: 1 }));
+                                    <div className="mb-3 flex items-center gap-2">
+                                      <Search className="h-4 w-4 text-[#a0a0a0] shrink-0" />
+                                      <input
+                                        type="text"
+                                        value={filterByLista[lista.id] ?? ""}
+                                        onChange={(e) => {
+                                          setFilterByLista((prev) => ({ ...prev, [lista.id]: e.target.value }));
+                                          setPageByLista((prev) => ({ ...prev, [lista.id]: 1 }));
+                                        }}
+                                        placeholder="Filtrar por nome do produto..."
+                                        className="flex-1 px-3 py-2 rounded-lg border border-[#2c2c32] bg-[#222228] text-[#f0f0f2] text-sm placeholder:text-[#6b6b72]"
+                                      />
+                                    </div>
+
+                                <Reorder.Group
+                                  axis="y"
+                                  values={slice}
+                                  onReorder={(newOrder) => handleReorder(lista.id, newOrder)}
+                                  className="space-y-4"
+                                >
+                                  {slice.map((item, idx) => (
+                                    <Reorder.Item
+                                      key={item.id}
+                                      value={item}
+                                      onDragEnd={() => saveNewOrder(lista.id)}
+                                      whileDrag={{ 
+                                        scale: 1.02, 
+                                        boxShadow: "0px 10px 30px rgba(0,0,0,0.5)",
+                                        zIndex: 50 
                                       }}
-                                      placeholder="Filtrar por nome do produto..."
-                                      className="flex-1 px-3 py-2 rounded-lg border border-[#2c2c32] bg-[#222228] text-[#f0f0f2] text-sm placeholder:text-[#6b6b72]"
-                                    />
-                                  </div>
-                                  <ul className="space-y-4">
-                                    {slice.map((item) => (
-                                      <li
-                                        key={item.id}
-                                        className="flex gap-4 p-3 rounded-xl border border-[#2c2c32] bg-[#222228]"
-                                      >
+                                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                      className="flex gap-4 p-3 rounded-xl border border-[#2c2c32] bg-[#222228] relative group hover:border-[#3e3e46] transition-colors touch-none"
+                                    >
+                                      <div className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[#3e3e46] group-hover:text-[#6b6b72] cursor-grab active:cursor-grabbing p-1">
+                                        <GripVertical className="h-4 w-4" />
+                                      </div>
+
+                                      <div className="pl-6 flex gap-4 w-full">
                                         {item.imageUrl ? (
                                           <img
                                             src={item.imageUrl}
@@ -460,56 +591,81 @@ export default function MinhaListaOfertasPage() {
                                           </div>
                                         )}
                                         <div className="flex-1 min-w-0">
-                                          <p className="text-sm font-medium text-[#f0f0f2] leading-snug">
-                                            ✨ {item.productName || "Produto"}
-                                          </p>
+                                          <div className="flex items-start justify-between gap-2">
+                                            <p className="text-sm font-medium text-[#f0f0f2] leading-snug">
+                                              ✨ {item.productName || "Produto"}
+                                            </p>
+                                            
+                                            <div className="flex flex-col gap-1">
+                                              <button
+                                                type="button"
+                                                onClick={() => moveItem(lista.id, idx, "up")}
+                                                disabled={idx === 0}
+                                                className="p-1 rounded bg-[#2c2c32] text-[#a0a0a0] hover:text-white disabled:opacity-30 transition-colors"
+                                                title="Mover para cima"
+                                              >
+                                                <ArrowUp className="h-3 w-3" />
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => moveItem(lista.id, idx, "down")}
+                                                disabled={idx === (itemsByLista[lista.id]?.length ?? 0) - 1}
+                                                className="p-1 rounded bg-[#2c2c32] text-[#a0a0a0] hover:text-white disabled:opacity-30 transition-colors"
+                                                title="Mover para baixo"
+                                              >
+                                                <ArrowDown className="h-3 w-3" />
+                                              </button>
+                                            </div>
+                                          </div>
                                           <p className="text-sm text-[#9a9aa2] mt-1">
                                             💰 Preço:{" "}
                                             {item.discountRate != null && item.discountRate > 0 && (
                                               <span className="text-red-400 font-medium">
-                                                -{Math.round(item.discountRate)}%{" "}
+                                                  -{Math.round(item.discountRate)}%{" "}
+                                                </span>
+                                              )}
+                                              <span className="text-[#9a9aa2]">🔴</span>{" "}
+                                              <span className="line-through">
+                                                {item.priceOriginal != null ? formatCurrency(item.priceOriginal) : "—"}
                                               </span>
-                                            )}
-                                            <span className="text-[#9a9aa2]">🔴</span>{" "}
-                                            <span className="line-through">
-                                              {item.priceOriginal != null ? formatCurrency(item.priceOriginal) : "—"}
-                                            </span>
-                                            {" por "}
-                                            <span className="text-emerald-400 font-medium">
-                                              ✅ {displayPrecoPorLista(item)}
-                                            </span>
-                                          </p>
-                                          <p className="text-sm font-medium text-[#f0f0f2] mt-1">
-                                            🏷️ PROMOÇÃO - CLIQUE NO LINK 👇
-                                          </p>
-                                          <button
-                                            type="button"
-                                            onClick={() => copyLink(item.converterLink)}
-                                            className="text-sm text-emerald-400 hover:underline break-all text-left"
-                                          >
-                                            {item.converterLink}
-                                          </button>
-                                          <div className="flex items-center gap-2 mt-2">
-                                            <a
-                                              href={item.converterLink}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="text-xs text-[#e24c30] hover:underline flex items-center gap-1"
-                                            >
-                                              <ExternalLink className="h-3 w-3" /> Abrir link
-                                            </a>
+                                              {" por "}
+                                              <span className="text-emerald-400 font-medium">
+                                                ✅ {displayPrecoPorLista(item)}
+                                              </span>
+                                            </p>
+                                            <p className="text-sm font-medium text-[#f0f0f2] mt-1">
+                                              🏷️ PROMOÇÃO - CLIQUE NO LINK 👇
+                                            </p>
                                             <button
                                               type="button"
-                                              onClick={() => handleDeleteItemClick(item.id, lista.id)}
-                                              className="text-xs text-red-400 hover:underline flex items-center gap-1 ml-auto"
+                                              onClick={() => copyLink(item.converterLink)}
+                                              className="text-sm text-emerald-400 hover:underline break-all text-left"
                                             >
-                                              <Trash2 className="h-3 w-3" /> Remover
+                                              {item.converterLink}
                                             </button>
+                                            <div className="flex items-center gap-2 mt-2">
+                                              <a
+                                                href={item.converterLink}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-xs text-[#e24c30] hover:underline flex items-center gap-1"
+                                              >
+                                                <ExternalLink className="h-3 w-3" /> Abrir link
+                                              </a>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleDeleteItemClick(item.id, lista.id)}
+                                                className="text-xs text-red-400 hover:underline flex items-center gap-1 ml-auto"
+                                              >
+                                                <Trash2 className="h-3 w-3" /> Remover
+                                              </button>
+                                            </div>
                                           </div>
                                         </div>
-                                      </li>
+                                      </Reorder.Item>
                                     ))}
-                                  </ul>
+                                  </Reorder.Group>
+
                                   {totalPages > 1 && (
                                     <GeradorPaginationBar
                                       className="mt-4 border-t border-[#2c2c32] pt-3"

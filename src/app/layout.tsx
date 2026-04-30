@@ -71,7 +71,24 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR" suppressHydrationWarning className={spaceGrotesk.variable}>
-      <body className={`${inter.className} bg-slate-900`}>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function () {
+                try {
+                  var t = localStorage.getItem('aa-theme');
+                  var cls = t === 'light' ? 'light' : 'dark';
+                  document.documentElement.classList.add(cls);
+                } catch (e) {
+                  document.documentElement.classList.add('dark');
+                }
+              })();
+            `,
+          }}
+        />
+      </head>
+      <body className={`${inter.className} bg-dark-bg`}>
         <Providers>
           <SupabaseProvider>
             <SessionLogic />

@@ -38,7 +38,7 @@ export async function GET(req: Request) {
         .select("id, lista_id, image_url, product_name, price_original, price_promo, discount_rate, converter_link, created_at")
         .eq("user_id", user.id)
         .eq("lista_id", listaId)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ data: (rows ?? []).map(mapItem) });
@@ -48,7 +48,7 @@ export async function GET(req: Request) {
       .from("minha_lista_ofertas")
       .select("id, lista_id, image_url, product_name, price_original, price_promo, discount_rate, converter_link, created_at")
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: true });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -135,6 +135,46 @@ export async function DELETE(req: Request) {
       .eq("user_id", user.id);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Erro" }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+
+    const body = await req.json().catch(() => ({}));
+    const listaId = body?.listaId || body?.lista_id;
+    const itemIds = body?.itemIds || body?.item_ids;
+
+    if (!listaId || !Array.isArray(itemIds)) {
+      return NextResponse.json({ error: "listaId e itemIds (array) são obrigatórios" }, { status: 400 });
+    }
+
+    // Para reordenar usando created_at DESC (padrão atual),
+    // o primeiro item deve ter o timestamp mais recente.
+    // Vamos atualizar um por um para garantir a ordem, ou usar um offset.
+    const now = new Date();
+    // Invertemos a lógica: o primeiro item do array (topo da UI) deve ser o "mais antigo"
+    // para que automações que leem por data ASC (mais comum) o enviem primeiro.
+    for (let i = 0; i < itemIds.length; i++) {
+      const id = itemIds[i];
+      // O primeiro item (i=0) terá a data mais antiga (now - total_items segundos)
+      // O último item terá a data mais recente (now)
+      const newDate = new Date(now.getTime() - (itemIds.length - i) * 1000);
+      
+      await supabase
+        .from("minha_lista_ofertas")
+        .update({ created_at: newDate.toISOString() })
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .eq("lista_id", listaId);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {

@@ -10,7 +10,7 @@ import { getEntitlementsForUser } from "./plan-server";
 type GateResult = { allowed: true; userId: string } | { allowed: false; response: NextResponse };
 
 async function gateFeature(
-  featureKey: "ati" | "criarCampanhaMeta" | "geradorCriativos" | "espelhamentogrupos" | "especialistagenerate"
+  featureKey: "ati" | "criarCampanhaMeta" | "geradorCriativos" | "espelhamentogrupos" | "especialistagenerate" | "infoprodutor"
 ): Promise<GateResult> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -48,4 +48,8 @@ export async function gateEspelhamentoGrupos(): Promise<GateResult> {
 
 export async function gateEspecialistaGenerate(): Promise<GateResult> {
   return gateFeature("especialistagenerate");
+}
+
+export async function gateInfoprodutor(): Promise<GateResult> {
+  return gateFeature("infoprodutor");
 }

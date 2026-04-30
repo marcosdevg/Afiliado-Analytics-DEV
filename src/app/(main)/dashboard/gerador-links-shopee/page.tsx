@@ -7,7 +7,7 @@ import {
 import { createPortal } from "react-dom";
 import {
   Link as LinkIcon, Search, TrendingUp, MousePointer2,
-  Copy, ExternalLink, Trash2, ChevronLeft, ChevronRight,
+  Copy, ExternalLink, Trash2, ChevronRight,
   CheckCircle2, X, Hash, Zap, ListPlus,
   Plus, Info, Loader2, AlertCircle, ImageIcon, Check,
 } from "lucide-react";
@@ -49,7 +49,7 @@ function extractSlugFromUrl(url: string): string {
     const parts = withoutQuery.split(/[.-]i\.\d+\.\d+/);
     return (parts[0] || path || "").replace(/^-+|-+$/g, "");
   } catch { return ""; }
-  }
+}
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 }).format(value);
 }
@@ -137,7 +137,7 @@ function IconBtn({ children, onClick, title, danger, active }: {
       className={cn("w-6 h-6 rounded-md bg-[#222228] border flex items-center justify-center transition shrink-0",
         active ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10 hover:text-emerald-300 hover:border-emerald-400/40"
           : danger ? "text-[#a0a0a0] border-[#2c2c32] hover:text-red-400 hover:border-red-400/25"
-          : "text-[#a0a0a0] border-[#2c2c32] hover:text-[#f0f0f2] hover:border-[#4c4c52]")}>
+            : "text-[#a0a0a0] border-[#2c2c32] hover:text-[#f0f0f2] hover:border-[#4c4c52]")}>
       {children}
     </button>
   );
@@ -190,8 +190,19 @@ function MostSoldCard({ product, onClick, compact = false, selected = false }: {
             {((product.commissionRate ?? 0) * 100).toFixed(1)}% comissão
           </p>
         </div>
-        <ExternalLink className={cn("text-[#e24c30] shrink-0 opacity-100 min-[420px]:opacity-50 min-[420px]:group-hover:opacity-100 transition-opacity mt-0.5 min-[420px]:mt-0",
-          compact ? "w-3 h-3" : "w-3.5 h-3.5")} />
+        <span
+          onClick={(e) => {
+            e.stopPropagation();
+            window.open(product.productLink || product.offerLink, "_blank", "noopener,noreferrer");
+          }}
+          title="Ver na Shopee"
+          className="shrink-0 cursor-pointer group/link"
+        >
+          <ExternalLink
+            className={cn("text-[#e24c30] transition-colors mt-0.5 min-[420px]:mt-0 group-hover/link:text-white",
+              compact ? "w-[15px] h-[15px]" : "w-[18px] h-[18px]")}
+          />
+        </span>
       </div>
     </button>
   );
@@ -218,12 +229,12 @@ function HistoryActions({ inList, copiedId, onCopy, onOpen, onAddToList, onDelet
 // ─── ListModal ──────────────────────────────────────────────────────────────────
 function ListModal({ open, onClose, lists, newListName, setNewListName, activeListId, setActiveListId,
   onCreate, onConfirm, canConfirm, pendingCount, loading }: {
-  open: boolean; onClose: () => void;
-  lists: { id: string; nome: string; totalItens: number }[];
-  newListName: string; setNewListName: Dispatch<SetStateAction<string>>;
-  activeListId: string | null; setActiveListId: Dispatch<SetStateAction<string | null>>;
-  onCreate: () => void; onConfirm: () => void; canConfirm: boolean; pendingCount: number; loading?: boolean;
-}) {
+    open: boolean; onClose: () => void;
+    lists: { id: string; nome: string; totalItens: number }[];
+    newListName: string; setNewListName: Dispatch<SetStateAction<string>>;
+    activeListId: string | null; setActiveListId: Dispatch<SetStateAction<string | null>>;
+    onCreate: () => void; onConfirm: () => void; canConfirm: boolean; pendingCount: number; loading?: boolean;
+  }) {
   if (!open) return null;
   const hasTypedName = newListName.trim().length > 0;
   const selectedList = lists.find((l) => l.id === activeListId);
@@ -331,7 +342,6 @@ export default function GeradorLinksShopeePage() {
   const [subId3, setSubId3] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
   const [lastGeneratedLink, setLastGeneratedLink] = useState("");
-  const [linkCopied, setLinkCopied] = useState(false);
   const [convertLoading, setConvertLoading] = useState(false);
   const [products, setProducts] = useState<ProductOffer[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<ProductOffer | null>(null);
@@ -358,6 +368,8 @@ export default function GeradorLinksShopeePage() {
   const [novaListaNome, setNovaListaNome] = useState("");
   const [selectedListaId, setSelectedListaId] = useState<string | null>(null);
   const [addToListLoading, setAddToListLoading] = useState(false);
+  /** Carrega do servidor todos os itens selecionados (várias páginas do histórico) antes de abrir o modal. */
+  const [historyBulkSelectionLoading, setHistoryBulkSelectionLoading] = useState(false);
   const [hasApiKeys, setHasApiKeys] = useState<boolean | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>("config");
   /** Busca automática (debounce/blur) só a partir de lg — no mobile só via botão Buscar */
@@ -456,11 +468,29 @@ export default function GeradorLinksShopeePage() {
   const handleSearch = useCallback(async (term?: string) => {
     const trimmed = (term ?? inputValue).trim();
     if (!trimmed || !hasApiKeys) return;
-    if (isShopeeShortLinkInput(trimmed)) return;
     setError(null); setSearchLoading(true);
     setProducts([]); setSelectedProduct(null); setGoldenProducts([]); setBestSellers([]);
     try {
-      const itemId = extractItemIdFromUrl(trimmed);
+      let effective = trimmed;
+      let itemId = extractItemIdFromUrl(effective);
+      if (!Number.isFinite(itemId) && isShopeeShortLinkInput(effective)) {
+        const resolveRes = await fetch(
+          `/api/shopee/resolve-short-link?url=${encodeURIComponent(effective)}`,
+        );
+        const resolveData = await resolveRes.json().catch(() => ({}));
+        if (!resolveRes.ok) {
+          throw new Error(
+            resolveData?.error ??
+            "Não foi possível abrir o link curto da Shopee. Abra no navegador e cole o link do topo.",
+          );
+        }
+        if (resolveData?.finalUrl) effective = String(resolveData.finalUrl);
+        if (Number.isFinite(Number(resolveData?.itemId))) {
+          itemId = Number(resolveData.itemId);
+        } else {
+          itemId = extractItemIdFromUrl(effective);
+        }
+      }
       if (Number.isFinite(itemId)) {
         const res = await fetch(`/api/shopee/product-search?itemId=${itemId}&limit=1`);
         const data = await res.json();
@@ -505,6 +535,7 @@ export default function GeradorLinksShopeePage() {
     setTimeout(() => { selectingProductRef.current = false; }, 200);
     setSelectedProduct(product); setProducts([]);
     setMobileTab("produto");
+    window.scrollTo({ top: 0, behavior: "instant" });
     const name = product.productName?.split(/\s+/).slice(0, 4).join(" ") || "";
     setGoldenProducts([]);
     if (name) {
@@ -546,7 +577,7 @@ export default function GeradorLinksShopeePage() {
       });
       if (!postRes.ok) { const err = await postRes.json().catch(() => ({})); throw new Error(err?.error ?? "Erro ao salvar no histórico"); }
       setLastGeneratedLink(shortLink);
-      setMobileTab("produto");
+      setMobileTab("historico");
       await loadHistory(1, historySearchDebounced);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Erro ao converter";
@@ -582,10 +613,10 @@ export default function GeradorLinksShopeePage() {
   }, [hasApiKeys, bestSellerKeyword]);
 
   const handleDeleteHistory = useCallback(async (id: string) => {
-      try {
-        const res = await fetch(`/api/shopee/link-history?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-        if (!res.ok) throw new Error("Erro ao excluir");
-        await loadHistory(historyPage, historySearchDebounced);
+    try {
+      const res = await fetch(`/api/shopee/link-history?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Erro ao excluir");
+      await loadHistory(historyPage, historySearchDebounced);
     } catch { /**/ }
   }, [historyPage, historySearchDebounced, loadHistory]);
 
@@ -594,6 +625,37 @@ export default function GeradorLinksShopeePage() {
     setAddToListModal({ open: true, entries: entriesToAdd });
     setSelectedListaId(null); setNovaListaNome("");
   }, []);
+
+  const openAddToListModalFromHistorySelection = useCallback(async () => {
+    const ids = Array.from(selectedHistoryIds);
+    if (ids.length === 0) return;
+    setHistoryBulkSelectionLoading(true);
+    setAddToListFeedback(null);
+    try {
+      const params = new URLSearchParams({ ids: ids.join(",") });
+      const res = await fetch(`/api/shopee/link-history?${params}`);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error ?? "Erro ao carregar itens selecionados");
+      const list = (json?.data ?? []) as HistoryEntry[];
+      if (list.length === 0) {
+        setAddToListFeedback("Nenhum item encontrado para a seleção.");
+        setTimeout(() => setAddToListFeedback(null), 3500);
+        return;
+      }
+      if (list.length < ids.length) {
+        setAddToListFeedback(
+          `${list.length} de ${ids.length} encontrados (alguns podem ter sido excluídos).`,
+        );
+        setTimeout(() => setAddToListFeedback(null), 4000);
+      }
+      openAddToListModal(list);
+    } catch (e) {
+      setAddToListFeedback(e instanceof Error ? e.message : "Erro ao carregar seleção");
+      setTimeout(() => setAddToListFeedback(null), 4000);
+    } finally {
+      setHistoryBulkSelectionLoading(false);
+    }
+  }, [selectedHistoryIds, openAddToListModal]);
 
   const toggleHistorySelect = useCallback((id: string) => {
     setSelectedHistoryIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -687,7 +749,7 @@ export default function GeradorLinksShopeePage() {
         <div className={cn("flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full border text-[9px] sm:text-[10px] font-bold shrink-0",
           hasApiKeys ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/25"
             : hasApiKeys === false ? "text-amber-400 bg-amber-500/10 border-amber-500/25"
-            : "text-[#a0a0a0] bg-[#222228] border-[#2c2c32]")}>
+              : "text-[#a0a0a0] bg-[#222228] border-[#2c2c32]")}>
           <CheckCircle2 className="w-3 h-3" />
           <span className="hidden min-[360px]:inline">{hasApiKeys ? "API conectada" : hasApiKeys === false ? "API não config." : "Verificando..."}</span>
           <span className="min-[360px]:hidden">API</span>
@@ -695,20 +757,20 @@ export default function GeradorLinksShopeePage() {
       </header>
 
       {/* Avisos */}
-        {hasApiKeys === false && (
+      {hasApiKeys === false && (
         <div className="px-3 sm:px-5 py-2.5 border-b border-[#2c2c32] bg-amber-500/5 flex items-center gap-3">
           <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
           <p className="text-[11px] text-amber-300 flex-1">API da Shopee não configurada.</p>
           <Link href="/configuracoes" className="text-[10px] font-semibold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg hover:bg-amber-500/20 transition shrink-0">Configurar →</Link>
-            </div>
+        </div>
       )}
       {error && (
         <div className="px-3 sm:px-5 py-2.5 border-b border-[#2c2c32] bg-red-500/5 flex items-center gap-2">
           <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
           <p className="text-[11px] text-red-400 flex-1 truncate">{error}</p>
           <button onClick={() => setError(null)} className="text-[#a0a0a0] hover:text-white shrink-0"><X className="w-3 h-3" /></button>
-          </div>
-        )}
+        </div>
+      )}
 
       {/* Mobile: stepper no topo (estilo Meta — sem barra fixa no rodapé) */}
       <nav
@@ -753,16 +815,30 @@ export default function GeradorLinksShopeePage() {
         <aside ref={configCardRef}
           className={cn("w-full lg:w-60 lg:shrink-0 border-r border-[#2c2c32] bg-[#27272a] lg:flex flex-col min-w-0",
             mobileTab === "config" ? "flex" : "hidden")}>
-          <ColHeader step={1} active label="Configurar Link" tooltip="Painel principal de configuração. Informe o produto e os Sub IDs para que o sistema gere seu link de afiliado rastreável." />
+          <ColHeader
+            step={1}
+            active
+            label="Configurar Link"
+            tooltip="Painel principal de configuração. Informe o produto e os Sub IDs para que o sistema gere seu link de afiliado rastreável."
+            right={
+              <button
+                onClick={() => setMobileTab("historico")}
+                className="lg:hidden flex items-center gap-1.5 px-3 py-1.5 bg-[#e24c30] text-white text-[10px] font-black rounded-lg shadow-md shadow-[#e24c30]/20 active:translate-y-0.5 transition-all"
+              >
+                MEUS LINKS
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            }
+          />
           <div className="p-4 flex flex-col gap-4">
             <FieldGroup label="Link ou nome do produto" tooltip="Cole o link direto de um produto da Shopee ou digite o nome para busca.">
               <div className="relative">
                 <input value={inputValue} onChange={(e) => setInputValue(e.target.value)}
-                onBlur={(e) => {
+                  onBlur={(e) => {
                     if (!isLgDesktop) return;
                     if (selectingProductRef.current) return;
-                  const next = e.relatedTarget;
-                  const card = configCardRef.current;
+                    const next = e.relatedTarget;
+                    const card = configCardRef.current;
                     const mainEl = mainContentRef.current;
                     if (!card) { runSearchNow(); return; }
                     try {
@@ -770,8 +846,8 @@ export default function GeradorLinksShopeePage() {
                       const insideMain = mainEl?.contains(next as Node) ?? false;
                       if (next == null || (!insideConfig && !insideMain)) runSearchNow();
                     } catch { runSearchNow(); }
-                }}
-                onKeyDown={(e) => {
+                  }}
+                  onKeyDown={(e) => {
                     if (e.key !== "Enter") return;
                     e.preventDefault();
                     runSearchNow();
@@ -781,17 +857,9 @@ export default function GeradorLinksShopeePage() {
                 {searchLoading
                   ? <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-[#e24c30]" />
                   : inputValue
-                  ? <button onClick={() => setInputValue("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#a0a0a0] hover:text-[#f0f0f2] transition w-7 h-7 flex items-center justify-center"><X className="w-3 h-3" /></button>
-                  : null}
-            </div>
-            {isShopeeShortLinkInput(inputValue) && (
-              <div className="mt-2 flex items-start gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2.5">
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" aria-hidden />
-                <p className="text-[11px] leading-snug text-amber-200">
-                  Por favor, abra o link convertido, copie o link do topo e cole aqui novamente!
-                </p>
+                    ? <button onClick={() => setInputValue("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#a0a0a0] hover:text-[#f0f0f2] transition w-7 h-7 flex items-center justify-center"><X className="w-3 h-3" /></button>
+                    : null}
               </div>
-            )}
             </FieldGroup>
 
             <FieldGroup label="Sub IDs" icon={<Hash className="w-2.5 h-2.5" />} tooltip="Identificadores de rastreamento para saber de qual canal vieram seus cliques e vendas.">
@@ -801,27 +869,23 @@ export default function GeradorLinksShopeePage() {
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[8px] font-bold text-[#e24c30]/70 pointer-events-none">{i + 1}</span>
                     <input value={s.val} onChange={(e) => s.set(e.target.value)} placeholder={s.ph}
                       className="w-full bg-[#1c1c1f] border border-[#3e3e3e] rounded-lg pl-5 pr-3 py-2 text-[11px] text-[#f0f0f2] placeholder:text-[#868686] focus:border-[#e24c30]/50 outline-none transition" />
-                    </div>
+                  </div>
                 ))}
               </div>
             </FieldGroup>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
-              <button onClick={runSearchNow} disabled={searchLoading || !inputValue.trim() || !hasApiKeys || isShopeeShortLinkInput(inputValue)}
-                className="flex w-full items-center justify-center gap-1.5 bg-[#1c1c1f] border border-[#3e3e3e] text-[#d2d2d2] rounded-xl py-2.5 text-[11px] font-semibold hover:text-[#f0f0f2] hover:border-[#585858] disabled:opacity-40 transition min-h-[42px]">
-                {searchLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />} Buscar
+            <div className="grid grid-cols-1 gap-2">
+              <button onClick={runSearchNow} disabled={searchLoading || !inputValue.trim() || !hasApiKeys}
+                className="flex w-full items-center justify-center gap-1.5 bg-transparent border border-[#e24c30] text-[#e24c30] rounded-xl py-2.5 text-[11px] font-semibold hover:text-[#e24c30] hover:border-[#e24c30]/70 hover:bg-[#e24c30]/5 disabled:opacity-40 transition min-h-[42px]">
+                {searchLoading ? <Loader2 className="w-3 h-3 animate-spin text-[#e24c30]" /> : <Search className="w-3 h-3 text-[#e24c30]" />} Buscar
               </button>
-              <button type="button" onClick={handleConvertLink} disabled={!canConvert}
-                className="hidden lg:flex items-center justify-center gap-1.5 bg-[#e24c30] text-white rounded-xl py-2.5 text-[11px] font-semibold hover:bg-[#c94028] disabled:opacity-40 transition shadow-lg shadow-[#e24c30]/20 min-h-[42px]">
-                {convertLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />} Converter
-              </button>
-              </div>
+            </div>
 
             <div className="flex items-center gap-2">
               <div className="flex-1 h-px bg-[#2c2c32]" />
               <span className="text-[9px] text-[#888888] uppercase tracking-widest font-medium whitespace-nowrap">ou explore</span>
               <div className="flex-1 h-px bg-[#2c2c32]" />
-              </div>
+            </div>
 
             <FieldGroup label="Produtos mais vendidos" icon={<TrendingUp className="w-2.5 h-2.5" />} tooltip="Pesquise e liste os produtos com maior volume de vendas na Shopee.">
               <div className="flex flex-col gap-2">
@@ -835,7 +899,7 @@ export default function GeradorLinksShopeePage() {
                 </button>
               </div>
             </FieldGroup>
-            </div>
+          </div>
         </aside>
 
         {/* Main: Produto / Mais vendidos */}
@@ -848,17 +912,17 @@ export default function GeradorLinksShopeePage() {
               right={panelState !== "empty" ? (
                 <IconBtn onClick={() => { setBestSellers([]); setSelectedProduct(null); setProducts([]); setGoldenProducts([]); }}><X className="w-3 h-3" /></IconBtn>
               ) : undefined} />
-            </div>
+          </div>
 
           {panelState === "empty" && (
             <div className="flex items-center justify-center p-6 sm:p-10 lg:p-16">
               <div className="dash flex flex-col items-center justify-center py-12 sm:py-16 rounded-2xl w-full max-w-sm text-center px-4">
                 <div className="w-14 h-14 rounded-2xl bg-[#e24c30]/10 border border-[#e24c30]/20 flex items-center justify-center mb-4">
                   <MousePointer2 className="w-7 h-7 text-[#e24c30]" />
-              </div>
+                </div>
                 <h3 className="text-base font-bold text-[#f0f0f2] mb-2">Pronto para começar!</h3>
                 <p className="text-xs text-[#bebebe] leading-relaxed max-w-[200px]">Cole um link ou explore os mais vendidos na barra lateral.</p>
-            </div>
+              </div>
             </div>
           )}
 
@@ -878,8 +942,8 @@ export default function GeradorLinksShopeePage() {
                   onPrev={() => setSearchResultsPage((p) => Math.max(1, p - 1))}
                   onNext={() => setSearchResultsPage((p) => Math.min(searchTotalPages, p + 1))}
                 />
-            )}
-          </div>
+              )}
+            </div>
           )}
 
           {panelState === "mostSold" && (
@@ -908,7 +972,7 @@ export default function GeradorLinksShopeePage() {
                 <div className="w-[76px] h-[76px] rounded-lg bg-white shrink-0 border border-[#2c2c32] overflow-hidden p-1 flex items-center justify-center">
                   {selectedProduct.imageUrl ? <img src={selectedProduct.imageUrl} alt="Produto" className="max-w-full max-h-full object-contain" /> : <ImageIcon className="w-7 h-7 text-[#686868]" />}
                 </div>
-                  <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0">
                   <p className="text-[13px] font-bold text-[#f0f0f2] leading-snug line-clamp-2">{selectedProduct.productName}</p>
                   <p className="text-[10px] text-[#a0a0a0] mt-1">@{selectedProduct.shopName} · {selectedProduct.sales} vendidos{selectedProduct.ratingStar > 0 ? ` · ${"⭐".repeat(Math.round(Math.min(selectedProduct.ratingStar, 5)))}` : ""}</p>
                   <div className="flex items-center justify-between gap-3 mt-2 flex-wrap">
@@ -923,7 +987,25 @@ export default function GeradorLinksShopeePage() {
                     </p>
                   </div>
                 </div>
-                            </div>
+              </div>
+
+              {/* Converter: Agora em ambos Mobile e Desktop, abaixo do produto pesquisado */}
+              <div className="flex flex-col lg:flex-row lg:items-center gap-4 w-full min-w-0">
+                <button type="button" onClick={handleConvertLink} disabled={!canConvert}
+                  className="w-full lg:w-auto lg:px-8 flex items-center justify-center gap-2 bg-[#e24c30] text-white rounded-xl py-2.5 text-[12px] font-semibold hover:bg-[#c94028] disabled:opacity-40 transition shadow-lg shadow-[#e24c30]/20 shrink-0">
+                  {convertLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                  Converter link
+                </button>
+
+                {lastGeneratedLink && (
+                  <div className="hidden lg:flex items-center gap-2 text-amber-300 text-[11px] font-bold animate-in fade-in slide-in-from-left-3 duration-500">
+                    <div className="w-6 h-6 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                      <Check className="w-3.5 h-3.5" />
+                    </div>
+                    <span>Pronto! O link já está disponível em &quot;Links Gerados&quot;.</span>
+                  </div>
+                )}
+              </div>
 
               {goldenProducts.length > 0 && (
                 <div className="pt-1 w-full min-w-0">
@@ -940,62 +1022,44 @@ export default function GeradorLinksShopeePage() {
                         onPrev={() => setGoldenSimilarPage((p) => Math.max(1, p - 1))}
                         onNext={() => setGoldenSimilarPage((p) => Math.min(goldenSimilarTotalPages, p + 1))}
                       />
-                )}
-              </div>
-              </div>
-            )}
-
-              {/* Mobile: Converter no passo 2, acima do link gerado */}
-              <div className="lg:hidden w-full min-w-0">
-                <button type="button" onClick={handleConvertLink} disabled={!canConvert}
-                  className="w-full flex items-center justify-center gap-2 bg-[#e24c30] text-white rounded-xl py-3 text-[12px] font-semibold hover:bg-[#c94028] disabled:opacity-40 transition shadow-lg shadow-[#e24c30]/20 min-h-[48px]">
-                  {convertLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />} Converter link
-                    </button>
-                  </div>
-
-              <div className="flex flex-col gap-1.5 w-full min-w-0">
-                <span className="text-[9px] font-bold text-[#f0f0f2] uppercase tracking-widest">Link de afiliado gerado</span>
-                {lastGeneratedLink ? (
-                  <div className="flex items-center gap-2 bg-[#1c1c1f] border border-[#2c2c32] rounded-xl px-3.5 py-2.5 hover:border-[#3e3e3e] transition min-w-0 flex-wrap min-[420px]:flex-nowrap">
-                    <p className="flex-1 min-w-0 text-[11px] text-[#e24c30] truncate font-mono basis-full min-[420px]:basis-auto">{lastGeneratedLink}</p>
-                    <div className="flex items-center gap-2 min-[420px]:gap-1.5 shrink-0 ml-auto">
-                      <IconBtn onClick={() => { void navigator.clipboard.writeText(lastGeneratedLink); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000); }} title={linkCopied ? "Copiado!" : "Copiar"} active={linkCopied}>
-                        {linkCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      </IconBtn>
-                      <IconBtn onClick={() => window.open(lastGeneratedLink, "_blank", "noopener,noreferrer")} title="Abrir">
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </IconBtn>
-                        </div>
-                      </div>
-                ) : (
-                  <div className="dash bg-[#17171a] border border-[#2c2c32] rounded-xl px-4 py-4">
-                    <p className="text-[11px] text-[#b5b5ba]">O link aparecerá aqui após clicar em <span className="font-semibold text-[#f0f0f2]">Converter</span>.</p>
-                      </div>
                     )}
                   </div>
                 </div>
+              )}
+
+            </div>
           )}
         </main>
-                </div>
+      </div>
 
       {/* Histórico */}
       <section className={cn("border-t border-[#2c2c32] bg-[#27272a]", mobileTab === "historico" ? "block" : "hidden lg:block")}>
+        <div className="lg:hidden px-3 sm:px-5 pt-4">
+          <button
+            onClick={() => setMobileTab("config")}
+            className="w-full flex items-center justify-center gap-2 bg-[#e24c30] text-white text-[11px] font-extrabold rounded-xl py-3 shadow-lg shadow-[#e24c30]/20 active:scale-[0.98] transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            CRIAR NOVO LINK
+          </button>
+        </div>
+
         <div className="px-3 sm:px-5 py-4 border-b border-[#2c2c32] flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-6 h-6 rounded-lg bg-[#e24c30]/15 border border-[#e24c30]/25 flex items-center justify-center shrink-0">
               <LinkIcon className="w-3 h-3 text-[#e24c30]" />
-              </div>
-            <h2 className="text-sm font-bold text-[#f0f0f2] truncate">Histórico de Links</h2>
+            </div>
+            <h2 className="text-sm font-bold text-[#f0f0f2] truncate">Links Gerados</h2>
             {historyTotal > 0 && (
               <span className="text-[9px] text-[#bebebe] bg-[#232328] px-1.5 py-px rounded-full border border-[#3e3e3e] shrink-0">{historyTotal} links</span>
             )}
-              </div>
+          </div>
           <div className="relative w-full sm:w-56 group/search">
             <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#e24c30]/55 group-focus-within/search:text-[#e24c30] transition-colors" />
             <input value={historySearch} onChange={(e) => setHistorySearch(e.target.value)} placeholder="Buscar produto, sub ID..."
               className="w-full sm:w-56 bg-[#18181c] border border-[#e24c30]/20 rounded-xl py-2 pl-8 pr-3 text-xs text-[#f0f0f2] placeholder:text-[#7a7a82] shadow-inner shadow-black/20 outline-none transition-all hover:border-[#e24c30]/35 focus:border-[#e24c30] focus:ring-2 focus:ring-[#e24c30]/25 focus:bg-[#1c1c20]" />
-            </div>
           </div>
+        </div>
 
         <div className="px-3 sm:px-5 py-2.5 border-b border-[#2c2c32] bg-[#1c1c1f] flex flex-row flex-wrap items-center justify-between gap-2 lg:gap-3">
           <label
@@ -1011,7 +1075,7 @@ export default function GeradorLinksShopeePage() {
               className={cn("w-4 h-4 rounded-md border flex items-center justify-center shrink-0 transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-[#e24c30]/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1c1c1f]",
                 allSelected ? "bg-[#e24c30] border-[#e24c30] shadow-[0_0_12px_rgba(226,76,48,0.35)]"
                   : someSelected ? "bg-[#e24c30]/18 border-[#e24c30] ring-1 ring-inset ring-[#e24c30]/30"
-                  : "bg-[#141418] border-[#3f3f46] group-hover:border-[#e24c30]/45 group-hover:bg-[#e24c30]/5")}>
+                    : "bg-[#141418] border-[#3f3f46] group-hover:border-[#e24c30]/45 group-hover:bg-[#e24c30]/5")}>
               {someSelected && !allSelected && <span className="w-2 h-1 rounded-[2px] bg-[#e24c30]" />}
             </div>
             <span className="hidden lg:inline text-[11px] font-medium text-[#bebebe] group-hover:text-[#e0e0e0] transition">
@@ -1038,12 +1102,17 @@ export default function GeradorLinksShopeePage() {
             </button>
             <button
               type="button"
-              onClick={() => openAddToListModal(history.filter((h) => selectedHistoryIds.has(h.id)))}
+              onClick={() => void openAddToListModalFromHistorySelection()}
+              disabled={historyBulkSelectionLoading}
               title={`Adicionar ${selectedHistoryIds.size} à lista`}
               aria-label={`Adicionar ${selectedHistoryIds.size} à lista de ofertas`}
-              className="flex items-center justify-center gap-1.5 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 bg-emerald-500/8 hover:bg-emerald-500/15 border border-emerald-500/20 hover:border-emerald-500/35 p-2.5 lg:px-2.5 lg:py-1 rounded-lg transition"
+              className="flex items-center justify-center gap-1.5 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 bg-emerald-500/8 hover:bg-emerald-500/15 border border-emerald-500/20 hover:border-emerald-500/35 p-2.5 lg:px-2.5 lg:py-1 rounded-lg transition disabled:opacity-50 disabled:pointer-events-none"
             >
-              <ListPlus className="w-4 h-4 lg:w-3 lg:h-3 shrink-0" />
+              {historyBulkSelectionLoading ? (
+                <Loader2 className="w-4 h-4 lg:w-3 lg:h-3 shrink-0 animate-spin" />
+              ) : (
+                <ListPlus className="w-4 h-4 lg:w-3 lg:h-3 shrink-0" />
+              )}
               <span className="hidden lg:inline whitespace-nowrap">Adicionar à lista ({selectedHistoryIds.size})</span>
             </button>
             <button
@@ -1065,8 +1134,8 @@ export default function GeradorLinksShopeePage() {
               ? "bg-amber-500/8 border-amber-500/20 text-amber-400"
               : "bg-emerald-500/8 border-emerald-500/20 text-emerald-400")}>
             <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> {addToListFeedback}
-            </div>
-          )}
+          </div>
+        )}
 
         <div className="divide-y divide-[#2c2c32] max-h-[min(70vh,720px)] overflow-y-auto scrollbar-ref bg-[#1c1c1f]">
           {historyLoading && history.length === 0 ? (
@@ -1106,33 +1175,33 @@ export default function GeradorLinksShopeePage() {
                     />
                     <div className="w-10 h-10 rounded-lg shrink-0 border border-[#2c2c32] overflow-hidden bg-[#232328]">
                       {h.imageUrl ? <img src={h.imageUrl} alt="Produto" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><ImageIcon className="w-4 h-4 text-[#686868]" /></div>}
-                        </div>
+                    </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-[#f0f0f2] truncate line-clamp-2 min-[380px]:line-clamp-none">{h.productName || "Link gerado"}</p>
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className="text-[9px] text-[#a0a0a0]">{new Date(h.createdAt).toLocaleDateString("pt-BR")}</span>
                         {h.subId1 && <span className="text-[9px] font-mono text-[#d2d2d2] bg-[#232328] px-1.5 py-px rounded border border-[#3e3e3e]">#{h.subId1}</span>}
-                      {(h.commissionRate > 0 || h.commissionValue > 0) && (
+                        {(h.commissionRate > 0 || h.commissionValue > 0) && (
                           <span className="text-[9px] font-semibold text-emerald-400">Comissão {((h.commissionRate ?? 0) * 100).toFixed(1)}% · {formatCurrency(h.commissionValue ?? 0)}</span>
-                      )}
-                    </div>
+                        )}
+                      </div>
                       <div className="flex items-center gap-1 shrink-0 mt-2 min-[560px]:hidden" onClick={(e) => e.stopPropagation()}>
                         <HistoryActions inList={inList} copiedId={isCopied}
                           onCopy={() => { void navigator.clipboard.writeText(h.shortLink); setCopiedHistoryId(h.id); setTimeout(() => setCopiedHistoryId((c) => c === h.id ? null : c), 1500); }}
                           onOpen={() => window.open(h.shortLink, "_blank", "noopener,noreferrer")}
                           onAddToList={() => openAddToListModal([h])}
                           onDelete={() => handleDeleteHistory(h.id)} />
+                      </div>
                     </div>
-                  </div>
                     <div className="hidden min-[560px]:flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                       <HistoryActions inList={inList} copiedId={isCopied}
                         onCopy={() => { void navigator.clipboard.writeText(h.shortLink); setCopiedHistoryId(h.id); setTimeout(() => setCopiedHistoryId((c) => c === h.id ? null : c), 1500); }}
                         onOpen={() => window.open(h.shortLink, "_blank", "noopener,noreferrer")}
                         onAddToList={() => openAddToListModal([h])}
                         onDelete={() => handleDeleteHistory(h.id)} />
+                    </div>
+                  </div>
                 </div>
-        </div>
-      </div>
               );
             })
           )}
@@ -1157,10 +1226,10 @@ export default function GeradorLinksShopeePage() {
         lists={listasOfertas} newListName={novaListaNome} setNewListName={setNovaListaNome}
         activeListId={selectedListaId} setActiveListId={setSelectedListaId}
         onCreate={async () => {
-                      if (!novaListaNome.trim()) return;
+          if (!novaListaNome.trim()) return;
           try {
-                      const res = await fetch("/api/shopee/minha-lista-ofertas/listas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nome: novaListaNome.trim() }) });
-                      const json = await res.json();
+            const res = await fetch("/api/shopee/minha-lista-ofertas/listas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nome: novaListaNome.trim() }) });
+            const json = await res.json();
             if (res.ok && json?.data?.id) { setSelectedListaId(json.data.id); await loadListasOfertas(); setNovaListaNome(""); }
           } catch { /**/ }
         }}

@@ -4,20 +4,27 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import {
-  MessageCircle, Loader2, Trash2, AlertCircle, Search,
+  Loader2, Trash2, AlertCircle, Search,
   Clock, PlusCircle, Info, Zap, Tag, RefreshCw,
   Play, Pause, Hash, Layers, X, ChevronLeft, ChevronRight, ChevronDown,
-  List as ListIcon, User, Settings2, Smartphone, CheckCheck, Send,
+  List as ListIcon, User, Settings2, Smartphone, CheckCheck, Send, Pencil,
 } from "lucide-react";
 import BuscarGruposModal, {
   type BuscarGruposPayload,
   type EvolutionInstanceItem,
+  type WhatsAppGroupItem,
 } from "../gpl/BuscarGruposModal";
 import MetaSearchablePicker from "@/app/components/meta/MetaSearchablePicker";
 import { GeradorPaginationBar } from "@/app/components/shopee/GeradorPaginationBar";
 import { janelaDuracaoMinutos, mensagemErroJanela, MAX_JANELA_MINUTOS } from "@/lib/grupos-venda-janela";
 import { createClient as createBrowserSupabase } from "utils/supabase/client";
 import { isGruposVendaMlOfferBlocked, MERCADOLIVRE_UX_COMING_SOON } from "@/lib/mercadolivre-ux-coming-soon";
+import {
+  isShoiaListName,
+  SHOIA_LIST_LEADING_IMAGE_SRC,
+  stripShoiaListNamePrefix,
+} from "@/lib/shopee/shoia-list-label";
+import ChannelTabs from "./ChannelTabs";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type ListaGrupos = { id: string; instanceId: string; nomeLista: string; createdAt: string };
@@ -25,6 +32,7 @@ type ContinuoItem = {
   id: string; listaId: string | null; listaNome: string;
   listaOfertasId: string | null; listaOfertasNome: string | null;
   listaOfertasMlId: string | null; listaOfertasMlNome: string | null;
+  listaOfertasInfoId: string | null; listaOfertasInfoNome: string | null;
   instanceId: string; keywords: string[]; subId1: string; subId2: string; subId3: string;
   ativo: boolean; proximoIndice: number; ultimoDisparoAt: string | null; updatedAt: string;
   proximaKeyword: string | null;
@@ -147,10 +155,11 @@ function WizardStepper({ currentStep, onClose }: { currentStep: number; onClose:
 }
 
 // ─── DisparoCard ────────────────────────────────────────────────────────────────
-function DisparoCard({ c, togglingId, onToggle, onRemove, onTestPulse, testPulseId }: {
+function DisparoCard({ c, togglingId, onToggle, onRemove, onEdit, onTestPulse, testPulseId }: {
   c: ContinuoItem; togglingId: string | null;
   onToggle: (id: string, ativar: boolean) => void;
   onRemove: (id: string) => void;
+  onEdit?: () => void;
   onTestPulse?: (id: string) => void;
   testPulseId?: string | null;
 }) {
@@ -214,7 +223,19 @@ function DisparoCard({ c, togglingId, onToggle, onRemove, onTestPulse, testPulse
           <div className="flex items-start md:items-center gap-1.5 text-[9px] text-[#a0a0a0] min-w-0">
             <Layers className="w-2.5 h-2.5 text-[#e24c30] shrink-0 mt-0.5 md:mt-0" />
             <span className="min-w-0 max-md:break-words md:truncate">
-              Lista Shopee: <span className="text-white">{c.listaOfertasNome}</span>
+              Lista Shopee:{" "}
+              <span className="inline-flex items-center gap-1.5 text-white">
+                {isShoiaListName(c.listaOfertasNome) ? (
+                  <Image
+                    src={SHOIA_LIST_LEADING_IMAGE_SRC}
+                    alt=""
+                    width={18}
+                    height={18}
+                    className="h-[18px] w-[18px] shrink-0 object-contain"
+                  />
+                ) : null}
+                <span>{stripShoiaListNamePrefix(c.listaOfertasNome)}</span>
+              </span>
             </span>
           </div>
         )}
@@ -223,6 +244,14 @@ function DisparoCard({ c, togglingId, onToggle, onRemove, onTestPulse, testPulse
             <Layers className="w-2.5 h-2.5 text-amber-400 shrink-0 mt-0.5 md:mt-0" />
             <span className="min-w-0 max-md:break-words md:truncate">
               Lista ML: <span className="text-white">{c.listaOfertasMlNome}</span>
+            </span>
+          </div>
+        )}
+        {c.listaOfertasInfoNome && (
+          <div className="flex items-start md:items-center gap-1.5 text-[9px] text-[#a0a0a0] min-w-0">
+            <Layers className="w-2.5 h-2.5 text-emerald-400 shrink-0 mt-0.5 md:mt-0" />
+            <span className="min-w-0 max-md:break-words md:truncate">
+              Lista Infoprodutor: <span className="text-white">{c.listaOfertasInfoNome}</span>
             </span>
           </div>
         )}
@@ -277,7 +306,19 @@ function DisparoCard({ c, togglingId, onToggle, onRemove, onTestPulse, testPulse
             )}
           </div>
         )}
+        {onEdit ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            title="Editar lista de grupos, keywords, horário e listas de ofertas"
+            aria-label="Editar automação"
+            className="text-[#a0a0a0] hover:text-[#e24c30] transition bg-[#121214] border border-[#2c2c32] p-1.5 rounded-lg hover:border-[#e24c30]/25 shrink-0"
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
+        ) : null}
         <button type="button" onClick={() => onRemove(c.id)}
+          title="Excluir automação"
           className="text-[#a0a0a0] hover:text-red-400 transition bg-[#121214] border border-[#2c2c32] p-1.5 rounded-lg hover:border-red-400/20 shrink-0">
           <Trash2 className="w-3 h-3" />
         </button>
@@ -317,7 +358,10 @@ export default function GruposVendaPage() {
   const [listasOfertasMl, setListasOfertasMl] = useState<ListaOfertasItem[]>([]);
   const [loadingListasOfertasMl, setLoadingListasOfertasMl] = useState(false);
   const [selectedListaOfertasMlId, setSelectedListaOfertasMlId] = useState("");
-  const [offerListSource, setOfferListSource] = useState<"shopee" | "ml" | "crossover">("shopee");
+  const [listasOfertasInfo, setListasOfertasInfo] = useState<ListaOfertasItem[]>([]);
+  const [loadingListasOfertasInfo, setLoadingListasOfertasInfo] = useState(false);
+  const [selectedListaOfertasInfoId, setSelectedListaOfertasInfoId] = useState("");
+  const [offerListSource, setOfferListSource] = useState<"shopee" | "ml" | "crossover" | "infoprodutor">("shopee");
   const [horaInicio, setHoraInicio] = useState("");
   const [horaFim, setHoraFim] = useState("");
 
@@ -337,10 +381,21 @@ export default function GruposVendaPage() {
   const [wizardListaAlvoAlertOpen, setWizardListaAlvoAlertOpen] = useState(false);
   /** Passo 3: modo keywords sem nenhuma keyword — modal de aviso */
   const [wizardKeywordsAlertOpen, setWizardKeywordsAlertOpen] = useState(false);
+  /** Modal lista: edição (id + prefill carregado da API) */
+  const [listaModalEdicaoId, setListaModalEdicaoId] = useState<string | null>(null);
+  const [listaEditPrefill, setListaEditPrefill] = useState<{
+    nomeLista: string;
+    grupos: WhatsAppGroupItem[];
+  } | null>(null);
+  const [listaEditLoading, setListaEditLoading] = useState(false);
+  /** Confirmar exclusão de lista alvo */
+  const [listaDeleteConfirm, setListaDeleteConfirm] = useState<{ id: string; nome: string } | null>(null);
   /** Painel: 2 cards/página abaixo de lg; 6 no desktop (lg+, 1024px) */
   const [panelPerPage, setPanelPerPage] = useState(2);
   /** Painel: filtrar cards por status (evita confusão “Ativos” vs cards Parado) */
   const [panelStatusFilter, setPanelStatusFilter] = useState<"all" | "active" | "paused">("all");
+  /** Edição de automação existente (wizard reutilizado + POST continuo com updateOnly) */
+  const [editingContinuoId, setEditingContinuoId] = useState<string | null>(null);
 
   // ─── API ────────────────────────────────────────────────────────────────────
   const loadInstances = useCallback(async () => {
@@ -396,52 +451,123 @@ export default function GruposVendaPage() {
     finally { setLoadingListasOfertasMl(false); }
   }, []);
 
+  const loadListasOfertasInfo = useCallback(async () => {
+    setLoadingListasOfertasInfo(true);
+    try {
+      const res = await fetch("/api/infoprodutor/minha-lista-ofertas/listas");
+      const data = await res.json();
+      if (res.ok) setListasOfertasInfo(Array.isArray(data.data) ? data.data : []);
+    } catch { setListasOfertasInfo([]); }
+    finally { setLoadingListasOfertasInfo(false); }
+  }, []);
+
   useEffect(() => { loadInstances(); }, [loadInstances]);
   useEffect(() => { loadListas(); }, [loadListas]);
   useEffect(() => { loadContinuo(); }, [loadContinuo]);
   useEffect(() => { loadListasOfertas(); }, [loadListasOfertas]);
   useEffect(() => { loadListasOfertasMl(); }, [loadListasOfertasMl]);
+  useEffect(() => { loadListasOfertasInfo(); }, [loadListasOfertasInfo]);
 
   const handleConfirmGroups = useCallback(async (payload: BuscarGruposPayload) => {
     const instance = instances.find((i) => i.nome_instancia === payload.nomeInstancia);
     if (!instance) { setError("Instância não encontrada."); return; }
     const nomeLista = payload.nomeLista?.trim();
     if (!nomeLista) { setError("Informe o nome da lista."); return; }
+    const listaId = payload.listaId?.trim();
+    const groupsBody = payload.grupos.map((g) => ({ id: g.id, nome: g.nome }));
     setSaving(true); setError(null);
     try {
       const res = await fetch("/api/grupos-venda/listas", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instanceId: instance.id, nomeLista, groups: payload.grupos.map((g) => ({ id: g.id, nome: g.nome })) }),
+        method: listaId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          listaId
+            ? { id: listaId, nomeLista, groups: groupsBody }
+            : { instanceId: instance.id, nomeLista, groups: groupsBody },
+        ),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error ?? "Erro ao criar lista");
-      setFeedback(`Lista "${data.data?.nomeLista ?? nomeLista}" criada com ${data.data?.groupsCount ?? payload.grupos.length} grupo(s).`);
+      if (!res.ok) throw new Error(data?.error ?? (listaId ? "Erro ao atualizar lista" : "Erro ao criar lista"));
+      const n = data.data?.groupsCount ?? payload.grupos.length;
+      setFeedback(
+        listaId
+          ? `Lista "${data.data?.nomeLista ?? nomeLista}" atualizada (${n} grupo(s)).`
+          : `Lista "${data.data?.nomeLista ?? nomeLista}" criada com ${n} grupo(s).`,
+      );
       setTimeout(() => setFeedback(""), 5000);
       loadListas();
-    } catch (e) { setError(e instanceof Error ? e.message : "Erro ao criar lista"); }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : listaId ? "Erro ao atualizar lista" : "Erro ao criar lista");
+    }
     finally { setSaving(false); }
     setModalOpen(false);
+    setListaModalEdicaoId(null);
+    setListaEditPrefill(null);
   }, [instances, loadListas]);
+
+  const openModalCriarLista = useCallback(() => {
+    setListaModalEdicaoId(null);
+    setListaEditPrefill(null);
+    setModalOpen(true);
+  }, []);
+
+  const openModalEditarLista = useCallback(async (list: ListaGrupos) => {
+    setError(null);
+    setListaEditLoading(true);
+    setListaModalEdicaoId(null);
+    setListaEditPrefill(null);
+    try {
+      const res = await fetch(`/api/grupos-venda/listas?id=${encodeURIComponent(list.id)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error ?? "Erro ao carregar lista");
+      const row = data.data as {
+        nomeLista?: string;
+        groups?: { id: string; nome: string; qtdMembros?: number }[];
+      };
+      const grupos: WhatsAppGroupItem[] = (row.groups ?? []).map((g) => ({
+        id: g.id,
+        nome: g.nome || "Grupo",
+        qtdMembros: typeof g.qtdMembros === "number" ? g.qtdMembros : 0,
+      }));
+      setListaModalEdicaoId(list.id);
+      setListaEditPrefill({ nomeLista: row.nomeLista ?? list.nomeLista, grupos });
+      setModalOpen(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao carregar lista");
+    } finally {
+      setListaEditLoading(false);
+    }
+  }, []);
 
   const handleDeleteLista = useCallback(async (id: string) => {
     setDeletingListaId(id);
     try {
       const res = await fetch(`/api/grupos-venda/listas?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Erro ao remover");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "Erro ao remover");
+      if (selectedListaId === id) setSelectedListaId("");
       loadListas();
       setContinuoList((prev) => prev.filter((c) => c.listaId !== id));
-    } catch { setError("Erro ao remover lista"); }
-    finally { setDeletingListaId(null); }
-  }, [loadListas]);
+      setFeedback("Lista removida.");
+      setTimeout(() => setFeedback(""), 4000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao remover lista");
+    } finally {
+      setDeletingListaId(null);
+      setListaDeleteConfirm(null);
+    }
+  }, [loadListas, selectedListaId]);
 
   const handleDisparar = useCallback(async () => {
     if (!selectedListaId) { setError("Selecione uma lista de grupos."); return; }
     const kwList = keywords.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
     const pickShopee = contentMode === "list" && (offerListSource === "shopee" || offerListSource === "crossover");
     const pickMl = contentMode === "list" && (offerListSource === "ml" || offerListSource === "crossover");
+    const pickInfo = contentMode === "list" && offerListSource === "infoprodutor";
     const useListaShopee = pickShopee && !!selectedListaOfertasId;
     const useListaMl = pickMl && !!selectedListaOfertasMlId;
-    const useListaOfertas = useListaShopee || useListaMl;
+    const useListaInfo = pickInfo && !!selectedListaOfertasInfoId;
+    const useListaOfertas = useListaShopee || useListaMl || useListaInfo;
     if (contentMode === "list") {
       if (isGruposVendaMlOfferBlocked(offerListSource)) {
         setError("Mercado Livre e crossover estão em breve. Use a lista Shopee ou keywords.");
@@ -459,6 +585,10 @@ export default function GruposVendaPage() {
         setError("No crossover, selecione uma lista Shopee e uma lista Mercado Livre.");
         return;
       }
+      if (offerListSource === "infoprodutor" && !selectedListaOfertasInfoId) {
+        setError("Selecione uma lista do Infoprodutor.");
+        return;
+      }
     } else if (kwList.length === 0) {
       setError("Digite ao menos uma keyword.");
       return;
@@ -472,6 +602,7 @@ export default function GruposVendaPage() {
           keywords: useListaOfertas ? [] : kwList,
           listaOfertasId: useListaShopee ? selectedListaOfertasId : undefined,
           listaOfertasMlId: useListaMl ? selectedListaOfertasMlId : undefined,
+          listaOfertasInfoId: useListaInfo ? selectedListaOfertasInfoId : undefined,
           subId1, subId2, subId3,
         }),
       });
@@ -484,7 +615,7 @@ export default function GruposVendaPage() {
       if (errList.length > 0) setError(errList.map((e: { keyword: string; error: string }) => `${e.keyword}: ${e.error}`).join("; "));
     } catch (e) { setError(e instanceof Error ? e.message : "Erro ao disparar"); }
     finally { setDisparando(false); }
-  }, [selectedListaId, contentMode, offerListSource, selectedListaOfertasId, selectedListaOfertasMlId, keywords, subId1, subId2, subId3]);
+  }, [selectedListaId, contentMode, offerListSource, selectedListaOfertasId, selectedListaOfertasMlId, selectedListaOfertasInfoId, keywords, subId1, subId2, subId3]);
 
   const handleContinuoToggle = useCallback(async (configId: string, ativar: boolean) => {
     setError(null);
@@ -508,7 +639,7 @@ export default function GruposVendaPage() {
       } else {
         const c = continuoList.find((x) => x.id === configId);
         if (!c?.listaId) throw new Error("Config sem lista");
-        const res = await fetch("/api/grupos-venda/continuo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: configId, listaId: c.listaId, listaOfertasId: c.listaOfertasId || undefined, listaOfertasMlId: c.listaOfertasMlId || undefined, keywords: c.keywords, subId1: c.subId1, subId2: c.subId2, subId3: c.subId3, horarioInicio: c.horarioInicio, horarioFim: c.horarioFim, ativo: true }) });
+        const res = await fetch("/api/grupos-venda/continuo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: configId, listaId: c.listaId, listaOfertasId: c.listaOfertasId || undefined, listaOfertasMlId: c.listaOfertasMlId || undefined, listaOfertasInfoId: c.listaOfertasInfoId || undefined, keywords: c.keywords, subId1: c.subId1, subId2: c.subId2, subId3: c.subId3, horarioInicio: c.horarioInicio, horarioFim: c.horarioFim, ativo: true }) });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error ?? "Erro ao ativar");
         setFeedback("Automação ativada.");
@@ -521,11 +652,15 @@ export default function GruposVendaPage() {
 
   const handleAddContinuo = useCallback(async () => {
     if (!selectedListaId) { setError("Selecione uma lista de grupos."); return; }
+    const editId = editingContinuoId;
+    const isEditing = Boolean(editId);
     const pickShopee = contentMode === "list" && (offerListSource === "shopee" || offerListSource === "crossover");
     const pickMl = contentMode === "list" && (offerListSource === "ml" || offerListSource === "crossover");
+    const pickInfo = contentMode === "list" && offerListSource === "infoprodutor";
     const useListaShopee = pickShopee && !!selectedListaOfertasId;
     const useListaMl = pickMl && !!selectedListaOfertasMlId;
-    const useListaOfertas = useListaShopee || useListaMl;
+    const useListaInfo = pickInfo && !!selectedListaOfertasInfoId;
+    const useListaOfertas = useListaShopee || useListaMl || useListaInfo;
     const kwList = keywords.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
     if (!useListaOfertas && kwList.length === 0) { setError("Digite ao menos uma keyword ou selecione uma lista de ofertas."); return; }
     if (contentMode === "list" && isGruposVendaMlOfferBlocked(offerListSource)) {
@@ -536,37 +671,51 @@ export default function GruposVendaPage() {
       setError("No crossover, selecione uma lista Shopee e uma lista Mercado Livre.");
       return;
     }
+    if (contentMode === "list" && offerListSource === "infoprodutor" && !selectedListaOfertasInfoId) {
+      setError("Selecione uma lista do Infoprodutor.");
+      return;
+    }
     const jErr = mensagemErroJanela(horaInicio, horaFim);
     if (jErr) { setError(jErr); return; }
-    setContinuoTogglingId("new"); setError(null);
+    setContinuoTogglingId(isEditing && editId ? editId : "new"); setError(null);
     try {
       const res = await fetch("/api/grupos-venda/continuo", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...(isEditing && editId
+            ? { id: editId, updateOnly: true, ativo: false }
+            : {}),
           listaId: selectedListaId,
           listaOfertasId: useListaShopee ? selectedListaOfertasId : undefined,
           listaOfertasMlId: useListaMl ? selectedListaOfertasMlId : undefined,
+          listaOfertasInfoId: useListaInfo ? selectedListaOfertasInfoId : undefined,
           keywords: useListaOfertas ? [] : kwList,
-          subId1, subId2, subId3, horarioInicio: horaInicio.trim(), horarioFim: horaFim.trim(), ativo: true,
+          subId1, subId2, subId3, horarioInicio: horaInicio.trim(), horarioFim: horaFim.trim(),
+          ...(!isEditing ? { ativo: true } : {}),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "Erro");
       const horarioMsg = ` Janela ${horaInicio} – ${horaFim}.`;
       const listaMsg =
-        offerListSource === "crossover" && useListaOfertas
-          ? "Automação crossover (Shopee + ML) criada."
-          : useListaOfertas
-            ? "Automação por lista de ofertas criada."
-            : "Automação criada.";
-      setFeedback(`${listaMsg}${horarioMsg}`);
+        isEditing
+          ? "Automação atualizada."
+          : offerListSource === "crossover" && useListaOfertas
+            ? "Automação crossover (Shopee + ML) criada."
+            : useListaInfo
+              ? "Automação por lista do Infoprodutor criada."
+              : useListaOfertas
+                ? "Automação por lista de ofertas criada."
+                : "Automação criada.";
+      setFeedback(isEditing ? listaMsg : `${listaMsg}${horarioMsg}`);
       setTimeout(() => setFeedback(""), 5000);
-      setSelectedListaId(""); setKeywords(""); setSelectedListaOfertasId(""); setSelectedListaOfertasMlId(""); setSubId1(""); setSubId2(""); setSubId3(""); setHoraInicio(""); setHoraFim("");
+      setEditingContinuoId(null);
+      setSelectedListaId(""); setKeywords(""); setSelectedListaOfertasId(""); setSelectedListaOfertasMlId(""); setSelectedListaOfertasInfoId(""); setSubId1(""); setSubId2(""); setSubId3(""); setHoraInicio(""); setHoraFim("");
       setView("panel");
       await loadContinuo();
     } catch (e) { setError(e instanceof Error ? e.message : "Erro ao criar automação"); }
     finally { setContinuoTogglingId(null); }
-  }, [selectedListaId, contentMode, offerListSource, selectedListaOfertasId, selectedListaOfertasMlId, keywords, subId1, subId2, subId3, horaInicio, horaFim, loadContinuo]);
+  }, [editingContinuoId, selectedListaId, contentMode, offerListSource, selectedListaOfertasId, selectedListaOfertasMlId, selectedListaOfertasInfoId, keywords, subId1, subId2, subId3, horaInicio, horaFim, loadContinuo]);
 
   const handleRemoveContinuo = useCallback(async (id: string) => {
     try {
@@ -801,8 +950,11 @@ export default function GruposVendaPage() {
       },
       ...listasOfertas.map((l) => ({
         value: l.id,
-        label: l.nome,
+        label: stripShoiaListNamePrefix(l.nome),
         description: `${l.totalItens} ${l.totalItens === 1 ? "item" : "itens"}`,
+        ...(isShoiaListName(l.nome)
+          ? { leadingImageSrc: SHOIA_LIST_LEADING_IMAGE_SRC, leadingImageAlt: "" }
+          : {}),
       })),
     ],
     [listasOfertas],
@@ -824,17 +976,94 @@ export default function GruposVendaPage() {
     [listasOfertasMl],
   );
 
+  const listaOfertasInfoPickerOptions = useMemo(
+    () => [
+      {
+        value: "",
+        label: "Selecione uma lista Infoprodutor",
+        description: "Crie em Infoprodutor",
+      },
+      ...listasOfertasInfo.map((l) => ({
+        value: l.id,
+        label: l.nome,
+        description: `${l.totalItens} ${l.totalItens === 1 ? "item" : "itens"}`,
+      })),
+    ],
+    [listasOfertasInfo],
+  );
+
   function openWizard() {
+    setEditingContinuoId(null);
     setWizardStep(1);
     setShowStepInfo(false);
     setWizardListaAlvoAlertOpen(false);
     setWizardKeywordsAlertOpen(false);
     setView("wizard");
   }
+
+  function openWizardForEdit(c: ContinuoItem) {
+    setEditingContinuoId(c.id);
+    setWizardStep(1);
+    setShowStepInfo(false);
+    setWizardListaAlvoAlertOpen(false);
+    setWizardKeywordsAlertOpen(false);
+    setError(null);
+    setSelectedInstanceId(c.instanceId || "");
+    setSelectedListaId(c.listaId || "");
+    setSubId1(c.subId1 ?? "");
+    setSubId2(c.subId2 ?? "");
+    setSubId3(c.subId3 ?? "");
+    setHoraInicio((c.horarioInicio ?? "").trim());
+    setHoraFim((c.horarioFim ?? "").trim());
+
+    if (c.listaOfertasInfoId) {
+      setContentMode("list");
+      setOfferListSource("infoprodutor");
+      setSelectedListaOfertasInfoId(c.listaOfertasInfoId);
+      setSelectedListaOfertasId("");
+      setSelectedListaOfertasMlId("");
+      setKeywords("");
+    } else if (c.listaOfertasId && c.listaOfertasMlId) {
+      setContentMode("list");
+      setOfferListSource("crossover");
+      setSelectedListaOfertasId(c.listaOfertasId);
+      setSelectedListaOfertasMlId(c.listaOfertasMlId);
+      setSelectedListaOfertasInfoId("");
+      setKeywords("");
+    } else if (c.listaOfertasMlId) {
+      setContentMode("list");
+      setOfferListSource("ml");
+      setSelectedListaOfertasMlId(c.listaOfertasMlId);
+      setSelectedListaOfertasId("");
+      setSelectedListaOfertasInfoId("");
+      setKeywords("");
+    } else if (c.listaOfertasId) {
+      setContentMode("list");
+      setOfferListSource("shopee");
+      setSelectedListaOfertasId(c.listaOfertasId);
+      setSelectedListaOfertasMlId("");
+      setSelectedListaOfertasInfoId("");
+      setKeywords("");
+    } else {
+      setContentMode("keywords");
+      setOfferListSource("shopee");
+      setKeywords((c.keywords ?? []).join("\n"));
+      setSelectedListaOfertasId("");
+      setSelectedListaOfertasMlId("");
+      setSelectedListaOfertasInfoId("");
+    }
+
+    setView("wizard");
+  }
+
   function closeWizard() {
     setShowStepInfo(false);
     setWizardListaAlvoAlertOpen(false);
     setWizardKeywordsAlertOpen(false);
+    setModalOpen(false);
+    setListaModalEdicaoId(null);
+    setListaEditPrefill(null);
+    setEditingContinuoId(null);
     setView("panel");
   }
   function handleNext() {
@@ -869,6 +1098,10 @@ export default function GruposVendaPage() {
         }
         if (offerListSource === "crossover" && (!selectedListaOfertasId || !selectedListaOfertasMlId)) {
           setError("No crossover, selecione uma lista Shopee e uma lista Mercado Livre.");
+          return;
+        }
+        if (offerListSource === "infoprodutor" && !selectedListaOfertasInfoId) {
+          setError("Selecione uma lista do Infoprodutor.");
           return;
         }
         setError(null);
@@ -906,12 +1139,12 @@ export default function GruposVendaPage() {
         .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #e24c30; }
       `}</style>
 
+      <ChannelTabs />
+
       {/* Header */}
       <header>
         <h1 className="text-lg sm:text-xl font-bold flex items-center gap-2.5 text-white">
-          <div className="p-1.5 bg-[#e24c30]/10 rounded-lg border border-[#e24c30]/20 shrink-0">
-            <MessageCircle className="w-4 h-4 text-[#e24c30]" />
-          </div>
+          <Image src="/whatsapp.png" alt="WhatsApp" width={32} height={32} className="w-7 h-7 object-contain shrink-0" />
           Grupos de Venda
         </h1>
         <p className="text-[11px] text-[#a0a0a0] mt-1 leading-relaxed max-md:hidden">
@@ -1045,6 +1278,7 @@ export default function GruposVendaPage() {
                       togglingId={continuoTogglingId}
                       onToggle={handleContinuoToggle}
                       onRemove={handleRemoveContinuo}
+                      onEdit={() => openWizardForEdit(item)}
                       onTestPulse={handleTestPulse}
                       testPulseId={testPulseId}
                     />
@@ -1150,7 +1384,7 @@ export default function GruposVendaPage() {
                       className="w-full bg-[#222228] border border-[#3e3e3e] rounded-lg pl-8 pr-8 py-2.5 sm:py-2 text-[10px] text-white placeholder:text-[#868686] focus:border-[#e24c30] outline-none transition" />
                     {listSearch && <button onClick={() => setListSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#a0a0a0] hover:text-white transition"><X className="w-3 h-3" /></button>}
                   </div>
-                  <button onClick={() => setModalOpen(true)}
+                  <button type="button" onClick={openModalCriarLista}
                     className="w-full sm:w-auto flex items-center justify-center gap-2 shrink-0 bg-[#e24c30]/5 border border-[#e24c30]/25 hover:bg-[#e24c30]/10 hover:border-[#e24c30]/45 rounded-lg px-3.5 py-2.5 sm:py-2 transition-all group">
                     <div className="w-5 h-5 rounded-md bg-[#e24c30]/10 border border-[#e24c30]/20 flex items-center justify-center shrink-0 group-hover:bg-[#e24c30]/20 transition-all">
                       <PlusCircle className="w-3 h-3 text-[#e24c30]" />
@@ -1161,24 +1395,74 @@ export default function GruposVendaPage() {
 
                 {loadingListas ? (
                   <div className="flex items-center gap-2 py-4 text-[#a0a0a0] text-xs"><Loader2 className="w-4 h-4 animate-spin" /> Carregando listas...</div>
+                ) : listaEditLoading ? (
+                  <div className="flex items-center gap-2 py-4 text-[#a0a0a0] text-xs"><Loader2 className="w-4 h-4 animate-spin" /> Abrindo lista para edição…</div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-1.5 max-h-[192px] overflow-y-auto scrollbar-thin pr-1">
                     {filteredLists.length > 0 ? filteredLists.map((list) => {
                       const isSelected = selectedListaId === list.id;
                       return (
-                        <button key={list.id} onClick={() => setSelectedListaId(isSelected ? "" : list.id)}
-                          className={cn("flex items-center gap-3 p-2.5 rounded-xl border-2 text-left transition-all min-w-0",
-                            isSelected ? "border-[#e24c30] bg-[#e24c30]/5" : "border-[#2c2c32] bg-[#1c1c1f] hover:border-[#3e3e3e]")}>
-                          <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border",
-                            isSelected ? "bg-[#e24c30]/10 border-[#e24c30]/30" : "bg-[#1c1c1f] border-[#2c2c32]")}>
-                            <ListIcon className={cn("w-3.5 h-3.5", isSelected ? "text-[#e24c30]" : "text-[#a0a0a0]")} />
+                        <div
+                          key={list.id}
+                          className={cn(
+                            "flex min-w-0 items-stretch gap-0 rounded-xl border-2 transition-all",
+                            isSelected ? "border-[#e24c30] bg-[#e24c30]/5" : "border-[#2c2c32] bg-[#1c1c1f] hover:border-[#3e3e3e]",
+                          )}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setSelectedListaId(isSelected ? "" : list.id)}
+                            className="flex min-w-0 flex-1 items-center gap-3 p-2.5 text-left"
+                          >
+                            <div
+                              className={cn(
+                                "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border",
+                                isSelected ? "border-[#e24c30]/30 bg-[#e24c30]/10" : "border-[#2c2c32] bg-[#1c1c1f]",
+                              )}
+                            >
+                              <ListIcon className={cn("h-3.5 w-3.5", isSelected ? "text-[#e24c30]" : "text-[#a0a0a0]")} />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className={cn("truncate text-[11px] font-bold", isSelected ? "text-white" : "text-[#d8d8d8]")}>
+                                {list.nomeLista}
+                              </p>
+                              <p className="mt-0.5 truncate text-[9px] text-[#a0a0a0]">
+                                {instances.find((i) => i.id === list.instanceId)?.nome_instancia ?? list.instanceId.slice(0, 8)}
+                              </p>
+                            </div>
+                            {isSelected ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-[#e24c30]" /> : null}
+                          </button>
+                          <div className="flex shrink-0 flex-col justify-center gap-0.5 border-l border-[#2c2c32]/80 py-1 pl-0.5 pr-1">
+                            <button
+                              type="button"
+                              title="Editar grupos da lista"
+                              disabled={listaEditLoading || saving}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void openModalEditarLista(list);
+                              }}
+                              className="flex h-7 w-7 items-center justify-center rounded-lg text-[#a0a0a0] transition hover:bg-[#e24c30]/15 hover:text-[#e24c30] disabled:opacity-40"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Apagar lista inteira"
+                              disabled={deletingListaId === list.id || saving}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setListaDeleteConfirm({ id: list.id, nome: list.nomeLista });
+                              }}
+                              className="flex h-7 w-7 items-center justify-center rounded-lg text-[#a0a0a0] transition hover:bg-red-500/15 hover:text-red-400 disabled:opacity-40"
+                            >
+                              {deletingListaId === list.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3 w-3" />
+                              )}
+                            </button>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={cn("text-[11px] font-bold truncate", isSelected ? "text-white" : "text-[#d8d8d8]")}>{list.nomeLista}</p>
-                            <p className="text-[9px] text-[#a0a0a0] mt-0.5 truncate">{instances.find((i) => i.id === list.instanceId)?.nome_instancia ?? list.instanceId.slice(0, 8)}</p>
-                          </div>
-                          {isSelected && <CheckCheck className="w-3.5 h-3.5 text-[#e24c30] shrink-0" />}
-                        </button>
+                        </div>
                       );
                     }) : (
                       <div className="col-span-full flex flex-col items-center justify-center gap-2 py-8 text-center">
@@ -1232,12 +1516,13 @@ export default function GruposVendaPage() {
                   ) : (
                     <div className="min-w-0">
                       <FieldLabel>Origem da lista</FieldLabel>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-0 rounded-xl overflow-hidden border border-[#2c2c32] mb-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 rounded-xl overflow-hidden border border-[#2c2c32] mb-3">
                         <button
                           type="button"
                           onClick={() => {
                             setOfferListSource("shopee");
                             setSelectedListaOfertasMlId("");
+                            setSelectedListaOfertasInfoId("");
                           }}
                           className={cn(
                             "flex items-center justify-center gap-2 px-3 py-2.5 text-[10px] font-bold transition-all sm:border-r border-[#2c2c32]",
@@ -1251,9 +1536,10 @@ export default function GruposVendaPage() {
                           onClick={() => {
                             setOfferListSource("ml");
                             setSelectedListaOfertasId("");
+                            setSelectedListaOfertasInfoId("");
                           }}
                           className={cn(
-                            "flex flex-col items-center justify-center gap-1 px-2 py-2.5 text-[10px] font-bold transition-all border-t sm:border-t-0 sm:border-l border-[#2c2c32] sm:flex-row sm:gap-2 sm:px-3",
+                            "flex flex-col items-center justify-center gap-1 px-2 py-2.5 text-[10px] font-bold transition-all border-l sm:border-l border-[#2c2c32] sm:flex-row sm:gap-2 sm:px-3",
                             offerListSource === "ml" ? "bg-amber-500/15 text-amber-400" : "bg-[#222228] text-[#a0a0a0] hover:text-white",
                           )}
                         >
@@ -1266,7 +1552,10 @@ export default function GruposVendaPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setOfferListSource("crossover")}
+                          onClick={() => {
+                            setOfferListSource("crossover");
+                            setSelectedListaOfertasInfoId("");
+                          }}
                           className={cn(
                             "flex flex-col items-center justify-center gap-1 px-2 py-2.5 text-[10px] font-bold transition-all border-t sm:border-t-0 sm:border-l border-[#2c2c32] sm:flex-row sm:gap-2 sm:px-3",
                             offerListSource === "crossover"
@@ -1280,6 +1569,22 @@ export default function GruposVendaPage() {
                               Em breve
                             </span>
                           ) : null}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOfferListSource("infoprodutor");
+                            setSelectedListaOfertasId("");
+                            setSelectedListaOfertasMlId("");
+                          }}
+                          className={cn(
+                            "flex items-center justify-center gap-2 px-3 py-2.5 text-[10px] font-bold transition-all border-t sm:border-t-0 border-l border-[#2c2c32]",
+                            offerListSource === "infoprodutor"
+                              ? "bg-emerald-500/15 text-emerald-400"
+                              : "bg-[#222228] text-[#a0a0a0] hover:text-white",
+                          )}
+                        >
+                          <span className="text-center leading-tight">Infoprodutor</span>
                         </button>
                       </div>
                       {isGruposVendaMlOfferBlocked(offerListSource) ? null : (
@@ -1332,12 +1637,40 @@ export default function GruposVendaPage() {
                               )}
                             </div>
                           )}
+                          {offerListSource === "infoprodutor" && (
+                            <div className="mb-1 min-w-0">
+                              <FieldLabel>Lista Infoprodutor</FieldLabel>
+                              {loadingListasOfertasInfo ? (
+                                <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando listas…
+                                </div>
+                              ) : (
+                                <MetaSearchablePicker
+                                  value={selectedListaOfertasInfoId}
+                                  onChange={setSelectedListaOfertasInfoId}
+                                  options={listaOfertasInfoPickerOptions}
+                                  modalTitle="Lista do Infoprodutor"
+                                  modalDescription="Listas com produtos cadastrados por você na página Infoprodutor."
+                                  searchPlaceholder="Filtrar listas…"
+                                  emptyButtonLabel="Escolher lista Infoprodutor"
+                                  emptyAsTag
+                                  emptyTagLabel="Selecionar Lista"
+                                  emptyOptionsMessage="Nenhuma lista cadastrada."
+                                  className="w-full max-w-full"
+                                />
+                              )}
+                            </div>
+                          )}
                           <p className="text-[9px] text-[#a0a0a0] mt-2 leading-relaxed">
                             {offerListSource === "crossover" ? (
                               <>
                                 <span className="text-amber-400/90 font-semibold">Crossover:</span> itens Shopee e ML viram{" "}
                                 <strong className="text-white">uma única fila</strong> (Shopee primeiro, depois ML, cada um na ordem da lista). O cron envia{" "}
                                 <strong className="text-white">um produto por tick</strong>, no mesmo formato de payload do n8n que você já usa para Shopee.
+                              </>
+                            ) : offerListSource === "infoprodutor" ? (
+                              <>
+                                <span className="text-emerald-400/90 font-semibold">Infoprodutor:</span> seus próprios produtos (imagem, título, descrição e link) são enviados pelo mesmo webhook do n8n, sem depender de API de afiliados.
                               </>
                             ) : (
                               <>
@@ -1351,74 +1684,76 @@ export default function GruposVendaPage() {
                   )}
                 </div>
 
-                {/* Sub IDs — desktop: sempre expandido */}
-                <div className="hidden md:flex flex-col gap-3 min-w-0">
-                  <FieldLabel>
-                    <span className="inline-flex items-center gap-1 flex-wrap">
-                      <Tag className="w-2.5 h-2.5" /> Sub IDs de Rastreamento
-                      <span className="text-[8px] normal-case tracking-normal font-normal text-[#a0a0a0] ml-1">(opcional)</span>
-                    </span>
-                  </FieldLabel>
-                  <div className="flex flex-col gap-2">
-                    {[
-                      { label: "Canal", value: subId1, setter: setSubId1, ph: "Ex: Whtasapp" },
-                      { label: "Lista", value: subId2, setter: setSubId2, ph: "Ex: Camisa Anime" },
-                      { label: "Campanha", value: subId3, setter: setSubId3, ph: "Ex: Natal" },
-                    ].map(({ label, value, setter, ph }) => (
-                      <div key={label} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 sm:gap-3">
-                        <span className="text-[8px] text-[#a0a0a0] uppercase tracking-widest font-bold w-full sm:w-16 shrink-0">{label}</span>
-                        <input type="text" value={value} onChange={(e) => setter(e.target.value)} placeholder={ph}
-                          className="w-full flex-1 bg-[#222228] border border-[#3e3e3e] rounded-lg px-3 py-2.5 sm:py-2 text-[10px] text-white placeholder:text-[#868686] focus:border-[#e24c30] outline-none transition" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Sub IDs — mobile: dropdown estilo instância, começa recolhido */}
-                <div className="md:hidden min-w-0 flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setMobileSubIdsOpen((o) => !o)}
-                    aria-expanded={mobileSubIdsOpen}
-                    className="w-full flex items-center justify-between gap-3 rounded-xl bg-[#1a1a1c] border border-[#2c2c32] px-4 py-3 text-left transition hover:border-[#3e3e3e] active:scale-[0.99]"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest flex items-center gap-1.5">
-                        <Tag className="w-2.5 h-2.5 text-[#e24c30] shrink-0" />
-                        Sub IDs de Rastreamento
-                        <span className="text-[8px] normal-case tracking-normal font-normal text-[#a0a0a0]">(opcional)</span>
-                      </p>
-                      <p className="text-[10px] text-[#f0f0f2] mt-1 truncate">{subIdsMobileSummary}</p>
-                    </div>
-                    <ChevronDown
-                      className={cn(
-                        "w-4 h-4 shrink-0 text-[#f0f0f2] transition-transform duration-200",
-                        mobileSubIdsOpen && "rotate-180",
-                      )}
-                      aria-hidden
-                    />
-                  </button>
-                  {mobileSubIdsOpen && (
-                    <div className="flex flex-col gap-2 pl-0.5 pt-1 border border-[#2c2c32] rounded-xl bg-[#222228]/50 p-3">
+                {/* Sub IDs — desktop: sempre expandido (apenas em modo keywords ou listas não-shopee) */}
+                {(contentMode === "keywords" || offerListSource !== "shopee") && (
+                  <div className="hidden md:flex flex-col gap-3 min-w-0">
+                    <FieldLabel>
+                      <span className="inline-flex items-center gap-1 flex-wrap">
+                        <Tag className="w-2.5 h-2.5" /> Sub IDs de Rastreamento
+                        <span className="text-[8px] normal-case tracking-normal font-normal text-[#a0a0a0] ml-1">(opcional)</span>
+                      </span>
+                    </FieldLabel>
+                    <div className="flex flex-col gap-2">
                       {[
-                        { label: "Canal", value: subId1, setter: setSubId1, ph: "Ex: Whtasapp" },
-                        { label: "Lista", value: subId2, setter: setSubId2, ph: "Ex: Camisa Anime" },
-                        { label: "Campanha", value: subId3, setter: setSubId3, ph: "Ex: Natal" },
+                        { label: "subId1", value: subId1, setter: setSubId1, ph: "Canal (ex: Whatsapp)" },
+                        { label: "subId2", value: subId2, setter: setSubId2, ph: "Lista (ex: Camisa Anime)" },
+                        { label: "subId3", value: subId3, setter: setSubId3, ph: "Campanha (ex: Natal)" },
                       ].map(({ label, value, setter, ph }) => (
-                        <div key={label} className="flex flex-col gap-1.5">
-                          <span className="text-[8px] text-[#a0a0a0] uppercase tracking-widest font-bold">{label}</span>
-                          <input
-                            type="text"
-                            value={value}
-                            onChange={(e) => setter(e.target.value)}
-                            placeholder={ph}
-                            className="w-full bg-[#222228] border border-[#3e3e3e] rounded-lg px-3 py-2.5 text-[10px] text-white placeholder:text-[#868686] focus:border-[#e24c30] outline-none transition"
-                          />
+                        <div key={label} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 sm:gap-3">
+                          <input type="text" value={value} onChange={(e) => setter(e.target.value)} placeholder={ph}
+                            className="w-full flex-1 bg-[#222228] border border-[#3e3e3e] rounded-lg px-3 py-2.5 sm:py-2 text-[10px] text-white placeholder:text-[#868686] focus:border-[#e24c30] outline-none transition" />
                         </div>
                       ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
+
+                {/* Sub IDs — mobile: dropdown estilo instância, começa recolhido (apenas em modo keywords ou listas não-shopee) */}
+                {(contentMode === "keywords" || offerListSource !== "shopee") && (
+                  <div className="md:hidden min-w-0 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMobileSubIdsOpen((o) => !o)}
+                      aria-expanded={mobileSubIdsOpen}
+                      className="w-full flex items-center justify-between gap-3 rounded-xl bg-[#1a1a1c] border border-[#2c2c32] px-4 py-3 text-left transition hover:border-[#3e3e3e] active:scale-[0.99]"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[9px] font-bold text-[#d8d8d8] uppercase tracking-widest flex items-center gap-1.5">
+                          <Tag className="w-2.5 h-2.5 text-[#e24c30] shrink-0" />
+                          Sub IDs de Rastreamento
+                          <span className="text-[8px] normal-case tracking-normal font-normal text-[#a0a0a0]">(opcional)</span>
+                        </p>
+                        <p className="text-[10px] text-[#f0f0f2] mt-1 truncate">{subIdsMobileSummary}</p>
+                      </div>
+                      <ChevronDown
+                        className={cn(
+                          "w-4 h-4 shrink-0 text-[#f0f0f2] transition-transform duration-200",
+                          mobileSubIdsOpen && "rotate-180",
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                    {mobileSubIdsOpen && (
+                      <div className="flex flex-col gap-2 pl-0.5 pt-1 border border-[#2c2c32] rounded-xl bg-[#222228]/50 p-3">
+                        {[
+                          { label: "subId1", value: subId1, setter: setSubId1, ph: "Canal (ex: Whatsapp)" },
+                          { label: "subId2", value: subId2, setter: setSubId2, ph: "Lista (ex: Camisa Anime)" },
+                          { label: "subId3", value: subId3, setter: setSubId3, ph: "Campanha (ex: Natal)" },
+                        ].map(({ label, value, setter, ph }) => (
+                          <div key={label} className="flex flex-col gap-1.5">
+                            <input
+                              type="text"
+                              value={value}
+                              onChange={(e) => setter(e.target.value)}
+                              placeholder={ph}
+                              className="w-full bg-[#222228] border border-[#3e3e3e] rounded-lg px-3 py-2.5 text-[10px] text-white placeholder:text-[#868686] focus:border-[#e24c30] outline-none transition"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1474,7 +1809,9 @@ export default function GruposVendaPage() {
                             ? "Crossover Shopee + ML"
                             : offerListSource === "ml"
                               ? "Lista ML"
-                              : "Lista Shopee"}{" "}
+                              : offerListSource === "infoprodutor"
+                                ? "Lista Infoprodutor"
+                                : "Lista Shopee"}{" "}
                         · {horaInicio && horaFim ? `${horaInicio}–${horaFim}` : "Definir janela"}
                         {" "}
                         · A cada 10 min
@@ -1513,7 +1850,9 @@ export default function GruposVendaPage() {
                               ? "Crossover (Shopee + Mercado Livre)"
                               : offerListSource === "ml"
                                 ? "Lista Mercado Livre"
-                                : "Lista Shopee",
+                                : offerListSource === "infoprodutor"
+                                  ? "Lista Infoprodutor"
+                                  : "Lista Shopee",
                         warn: false,
                       },
                       { icon: <Clock className="w-3.5 h-3.5 text-[#e24c30] shrink-0" />, label: "Horário", value: horaInicio && horaFim ? `${horaInicio} – ${horaFim} (máx. 14 h)` : "Defina início e fim da janela", warn: false },
@@ -1568,16 +1907,24 @@ export default function GruposVendaPage() {
                 <button
                   type="button"
                   onClick={handleFinish}
-                  disabled={continuoTogglingId === "new" || !podeAtivarAutomacao}
+                  disabled={
+                    (!!continuoTogglingId && (continuoTogglingId === "new" || continuoTogglingId === editingContinuoId))
+                    || !podeAtivarAutomacao
+                  }
                   title={!podeAtivarAutomacao && erroJanelaAtivar ? erroJanelaAtivar : undefined}
                   className={cn(
                     "w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-bold transition-all shadow-lg group bg-[#e24c30]/10 border border-[#e24c30]/25 text-[#e24c30] hover:bg-[#e24c30] hover:text-white shadow-[#e24c30]/5",
                     "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#e24c30]/10 disabled:hover:text-[#e24c30] disabled:shadow-none",
                   )}
                 >
-                  {continuoTogglingId === "new" ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : <Play className="w-3.5 h-3.5 fill-current" />}
-                  Ativar automação
+                  {(continuoTogglingId === "new" || continuoTogglingId === editingContinuoId) ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : editingContinuoId ? (
+                    <Pencil className="w-3.5 h-3.5" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                  )}
+                  {editingContinuoId ? "Salvar alterações" : "Ativar automação"}
                 </button>
               )}
             </div>
@@ -1588,11 +1935,61 @@ export default function GruposVendaPage() {
       {/* Modal buscar grupos */}
       <BuscarGruposModal
         isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={() => {
+          setModalOpen(false);
+          setListaModalEdicaoId(null);
+          setListaEditPrefill(null);
+        }}
         onConfirm={handleConfirmGroups}
         criarListaMode
         initialInstanceId={selectedInstanceId || undefined}
+        listaIdEdicao={listaModalEdicaoId}
+        listaNomeInicial={listaEditPrefill?.nomeLista}
+        gruposListaInicial={listaEditPrefill?.grupos ?? null}
       />
+
+      {listaDeleteConfirm &&
+        createPortal(
+          <div className="fixed inset-0 z-[240] flex items-center justify-center p-4 sm:p-6" role="presentation">
+            <button
+              type="button"
+              aria-label="Fechar"
+              className="absolute inset-0 z-0 bg-black/65 backdrop-blur-[2px] transition-opacity"
+              onClick={() => setListaDeleteConfirm(null)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="lista-delete-title"
+              className="relative z-10 w-full max-w-[400px] rounded-2xl border border-[#2c2c32] bg-[#1c1c1f] p-5 shadow-2xl shadow-black/50"
+            >
+              <h2 id="lista-delete-title" className="text-sm font-bold text-white">
+                Apagar lista?
+              </h2>
+              <p className="mt-2 text-[12px] leading-relaxed text-[#b8b8bc]">
+                A lista <span className="font-semibold text-white">«{listaDeleteConfirm.nome}»</span> será removida
+                permanentemente. Automações que a usem deixarão de ter esta lista.
+              </p>
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setListaDeleteConfirm(null)}
+                  className="rounded-xl border border-[#3e3e3e] px-4 py-2.5 text-[12px] font-semibold text-[#d8d8d8] transition hover:bg-[#222228]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteLista(listaDeleteConfirm.id)}
+                  className="rounded-xl bg-red-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-lg transition hover:bg-red-500"
+                >
+                  Apagar lista
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {wizardListaAlvoAlertOpen &&
         createPortal(

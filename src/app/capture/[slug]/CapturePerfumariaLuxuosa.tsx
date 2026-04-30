@@ -6,7 +6,7 @@ import { Cormorant_Garamond, Playfair_Display } from "next/font/google";
 import { FaWhatsapp } from "react-icons/fa";
 import type { CaptureVipLandingProps } from "./capture-vip-types";
 import { parseColorToRgb } from "@/app/(main)/dashboard/captura/_lib/captureUtils";
-import { isWhatsAppUrl } from "./capture-vip-shared";
+import { handlePixelCTAClick, isWhatsAppUrl, trackPixelLead } from "./capture-vip-shared";
 import CaptureVipEntradaToasts from "./CaptureVipEntradaToasts";
 import { CaptureYoutubeAtSlot } from "./CaptureYoutubeAtSlot";
 import {
@@ -79,11 +79,13 @@ function CtaLux(props: {
   r: number;
   g: number;
   b: number;
+  metaPixelId?: string | null;
 }) {
-  const { ctaHref, buttonColor, safeBtn, showWa, r, g, b } = props;
+  const { ctaHref, buttonColor, safeBtn, showWa, r, g, b, metaPixelId } = props;
   return (
     <a
       href={ctaHref}
+      onClick={(e) => handlePixelCTAClick(e, metaPixelId)}
       className={`lux-cta-pulse ${CAPTURE_CTA_CLASS} rounded-full border-2 font-semibold tracking-wide`}
       style={{
         background: `linear-gradient(165deg, rgba(${r},${g},${b},0.95) 0%, rgb(${Math.max(0, r - 35)},${Math.max(0, g - 35)},${Math.max(0, b - 35)}) 100%)`,
@@ -131,6 +133,7 @@ export default function CapturePerfumariaLuxuosa(props: CaptureVipLandingProps) 
     promoSectionsEnabled,
     promoTitles,
     promoCards,
+    metaPixelId,
   } = props;
 
   const notifOn = notificationsEnabled !== false;
@@ -154,8 +157,27 @@ export default function CapturePerfumariaLuxuosa(props: CaptureVipLandingProps) 
   const handleLine = (promoTitles?.inGroup ?? "").trim();
 
   const simpleLines = useMemo(() => normalizeSimpleFourLinesFromDb(promoCards), [promoCards]);
-  const miniTrack = useMemo(() => [...BRANDS_MINI, ...BRANDS_MINI], []);
-  const stripTrack = useMemo(() => [...PRODUCT_STRIP, ...PRODUCT_STRIP], []);
+  /** Várias repetições por segmento para a largura do track ≥ viewport (evita “faixa vazia” em ecrãs largos). */
+  const miniTrack = useMemo(() => {
+    const segment = [
+      ...BRANDS_MINI,
+      ...BRANDS_MINI,
+      ...BRANDS_MINI,
+      ...BRANDS_MINI,
+      ...BRANDS_MINI,
+      ...BRANDS_MINI,
+    ];
+    return [...segment, ...segment];
+  }, []);
+  const stripTrack = useMemo(() => {
+    const segment = [
+      ...PRODUCT_STRIP,
+      ...PRODUCT_STRIP,
+      ...PRODUCT_STRIP,
+      ...PRODUCT_STRIP,
+    ];
+    return [...segment, ...segment];
+  }, []);
 
   return (
     <>
@@ -194,9 +216,17 @@ export default function CapturePerfumariaLuxuosa(props: CaptureVipLandingProps) 
             width: max-content;
             animation: lux-ticker 22s linear infinite;
           }
+          .lux-marquee-clip {
+            width: 100%;
+            min-width: 0;
+          }
           @media (prefers-reduced-motion: reduce) {
             .lux-cta-pulse { animation: none !important; }
             .lux-marquee-track { animation: none !important; }
+            .lux-marquee-clip {
+              display: flex;
+              justify-content: center;
+            }
             .lux-ticker-track { animation: none !important; }
           }
           .lux-grain {
@@ -314,15 +344,16 @@ export default function CapturePerfumariaLuxuosa(props: CaptureVipLandingProps) 
               <CaptureOfertCarouselIf {...props} slot="above_cta" variant="aurora" eyebrow="Destaques" />
 
               <div className="mt-8 w-full">
-                <CtaLux
-                  ctaHref={ctaHref}
-                  buttonColor={color}
-                  safeBtn={safeBtn}
-                  showWa={showWa}
-                  r={r}
-                  g={g}
-                  b={b}
-                />
+                  <CtaLux
+                    ctaHref={ctaHref}
+                    buttonColor={color}
+                    safeBtn={safeBtn}
+                    showWa={showWa}
+                    r={r}
+                    g={g}
+                    b={b}
+                    metaPixelId={metaPixelId}
+                  />
               </div>
 
               <CaptureOfertCarouselIf {...props} slot="below_cta" variant="aurora" eyebrow="Destaques" />
@@ -354,9 +385,9 @@ export default function CapturePerfumariaLuxuosa(props: CaptureVipLandingProps) 
               </div>
           </div>
 
-          {/* Faixa marketplaces */}
+          {/* Faixa marketplaces — w-full para não herdar largura limitada de colunas acima */}
           <section
-            className="relative z-[1] mt-4 border-y py-5"
+            className="relative z-[1] mt-4 w-full min-w-0 border-y py-5"
             style={{ borderColor: "rgba(201,169,98,0.12)", background: "rgba(0,0,0,0.35)" }}
           >
             <div
@@ -371,7 +402,7 @@ export default function CapturePerfumariaLuxuosa(props: CaptureVipLandingProps) 
                 background: "linear-gradient(270deg, #0c0b0a 0%, transparent 100%)",
               }}
             />
-            <div className="overflow-hidden">
+            <div className="lux-marquee-clip overflow-hidden">
               <div className="lux-marquee-track items-center py-1">
                 {miniTrack.map((b, i) => (
                   <div key={`${b.file}-${i}`} className="flex h-12 shrink-0 items-center opacity-80">
@@ -407,7 +438,7 @@ export default function CapturePerfumariaLuxuosa(props: CaptureVipLandingProps) 
                   </h2>
                 </div>
 
-                <div className="overflow-hidden" style={{ borderColor: GOLD_SOFT }}>
+                <div className="lux-marquee-clip overflow-hidden" style={{ borderColor: GOLD_SOFT }}>
                   <div className="lux-marquee-track lux-marquee-slow">
                     {stripTrack.map((file, i) => (
                       <div key={`${file}-${i}`} className="flex h-[100px] shrink-0 items-center sm:h-[120px]">
@@ -464,6 +495,7 @@ export default function CapturePerfumariaLuxuosa(props: CaptureVipLandingProps) 
                     r={r}
                     g={g}
                     b={b}
+                    metaPixelId={metaPixelId}
                   />
                 </div>
               </div>

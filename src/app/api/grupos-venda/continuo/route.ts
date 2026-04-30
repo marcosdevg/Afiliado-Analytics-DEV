@@ -3,6 +3,7 @@
  * Janela obrigatória: início/fim HH:MM, duração máxima 14 horas (sem modo 24h).
  * GET → lista de configs (id, listaId, listaNome, instanceId, keywords, subIds, ativo, proximoIndice, ultimoDisparoAt)
  * POST { listaId, keywords, subId1, subId2, subId3, horarioInicio, horarioFim, ativo } → criar/atualizar ou { id, ativo: false } → parar
+ * POST { id, updateOnly: true, ativo: false, ...campos } → atualizar config mantendo ativo, proximo_indice e keyword_pool_indices (edição no painel)
  * DELETE ?id= → remover um config
  */
 
@@ -21,13 +22,13 @@ export async function GET() {
 
     const { data: rows, error } = await supabase
       .from("grupos_venda_continuo")
-      .select("id, lista_id, instance_id, lista_ofertas_id, lista_ofertas_ml_id, keywords, sub_id_1, sub_id_2, sub_id_3, ativo, proximo_indice, ultimo_disparo_at, updated_at, horario_inicio, horario_fim")
+      .select("id, lista_id, instance_id, lista_ofertas_id, lista_ofertas_ml_id, lista_ofertas_info_id, keywords, sub_id_1, sub_id_2, sub_id_3, ativo, proximo_indice, ultimo_disparo_at, updated_at, horario_inicio, horario_fim")
       .eq("user_id", user.id)
       .order("updated_at", { ascending: false });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    type Row = { id: string; lista_id: string | null; instance_id: string; lista_ofertas_id?: string | null; lista_ofertas_ml_id?: string | null; keywords: string[]; sub_id_1: string; sub_id_2: string; sub_id_3: string; ativo: boolean; proximo_indice: number; ultimo_disparo_at: string | null; updated_at: string; horario_inicio: string | null; horario_fim: string | null };
+    type Row = { id: string; lista_id: string | null; instance_id: string; lista_ofertas_id?: string | null; lista_ofertas_ml_id?: string | null; lista_ofertas_info_id?: string | null; keywords: string[]; sub_id_1: string; sub_id_2: string; sub_id_3: string; ativo: boolean; proximo_indice: number; ultimo_disparo_at: string | null; updated_at: string; horario_inicio: string | null; horario_fim: string | null };
     const list = (rows ?? []) as Row[];
     const listaIds = [...new Set(list.map((r) => r.lista_id).filter(Boolean))] as string[];
     const listasMap: Record<string, string> = {};
@@ -47,12 +48,19 @@ export async function GET() {
       const { data: listasMl } = await supabase.from("listas_ofertas_ml").select("id, nome").in("id", listaOfertasMlIds);
       (listasMl ?? []).forEach((l: { id: string; nome: string }) => { listasOfertasMlMap[l.id] = l.nome ?? ""; });
     }
+    const listaOfertasInfoIds = [...new Set(list.map((r) => r.lista_ofertas_info_id).filter(Boolean))] as string[];
+    const listasOfertasInfoMap: Record<string, string> = {};
+    if (listaOfertasInfoIds.length > 0) {
+      const { data: listasInfo } = await supabase.from("listas_ofertas_info").select("id, nome").in("id", listaOfertasInfoIds);
+      (listasInfo ?? []).forEach((l: { id: string; nome: string }) => { listasOfertasInfoMap[l.id] = l.nome ?? ""; });
+    }
 
     const data = list.map((r) => {
       const keywords = Array.isArray(r.keywords) ? r.keywords : [];
       const idx = r.proximo_indice ?? 0;
       const listaOfertasId = r.lista_ofertas_id ?? null;
       const listaOfertasMlId = r.lista_ofertas_ml_id ?? null;
+      const listaOfertasInfoId = r.lista_ofertas_info_id ?? null;
       return {
         id: r.id,
         listaId: r.lista_id,
@@ -61,6 +69,8 @@ export async function GET() {
         listaOfertasNome: (listaOfertasId && listasOfertasMap[listaOfertasId]) || null,
         listaOfertasMlId,
         listaOfertasMlNome: (listaOfertasMlId && listasOfertasMlMap[listaOfertasMlId]) || null,
+        listaOfertasInfoId,
+        listaOfertasInfoNome: (listaOfertasInfoId && listasOfertasInfoMap[listaOfertasInfoId]) || null,
         instanceId: r.instance_id,
         keywords,
         subId1: r.sub_id_1 ?? "",
@@ -90,9 +100,12 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const id = typeof body.id === "string" ? body.id.trim() : "";
+    const updateOnly =
+      Boolean(id) && (body.updateOnly === true || body.updateOnly === "true");
     const listaId = typeof body.listaId === "string" ? body.listaId.trim() : "";
     const listaOfertasId = typeof body.listaOfertasId === "string" ? body.listaOfertasId.trim() || null : null;
     const listaOfertasMlId = typeof body.listaOfertasMlId === "string" ? body.listaOfertasMlId.trim() || null : null;
+    const listaOfertasInfoId = typeof body.listaOfertasInfoId === "string" ? body.listaOfertasInfoId.trim() || null : null;
     const ativo = body.ativo === true || body.ativo === "true";
     const keywordsRaw = body.keywords;
     const keywords: string[] = Array.isArray(keywordsRaw)
@@ -108,7 +121,7 @@ export async function POST(req: Request) {
 
     const now = new Date().toISOString();
 
-    if (!ativo && id) {
+    if (!ativo && id && !updateOnly) {
       const { data: updated, error } = await supabase
         .from("grupos_venda_continuo")
         .update({ ativo: false, keyword_pool_indices: {}, updated_at: now })
@@ -126,8 +139,8 @@ export async function POST(req: Request) {
       });
     }
 
-    // Verificar limite de campanhas ativas antes de criar/ativar
-    if (ativo) {
+    // Verificar limite de campanhas ativas antes de criar/ativar (edição “updateOnly” não altera o slot)
+    if (ativo && !updateOnly) {
       const ent = await getEntitlementsForUser(supabase, user.id);
       const usage = await getUsageSnapshot(supabase, user.id);
       const alreadyActive = id ? usage.activeCampaigns : usage.activeCampaigns;
@@ -143,10 +156,25 @@ export async function POST(req: Request) {
     if (!listaId) return NextResponse.json({ error: "Lista de grupos é obrigatória." }, { status: 400 });
     const isListaShopee = !!listaOfertasId;
     const isListaMl = !!listaOfertasMlId;
+    const isListaInfo = !!listaOfertasInfoId;
     const isCrossover = isListaShopee && isListaMl;
-    const isListaOfertasMode = isListaShopee || isListaMl;
+    const isListaOfertasMode = isListaShopee || isListaMl || isListaInfo;
     if (!isListaOfertasMode && keywords.length === 0) return NextResponse.json({ error: "Informe ao menos uma keyword ou selecione uma lista de ofertas." }, { status: 400 });
-    if (isCrossover) {
+    if (isListaInfo) {
+      const { data: listaInfo } = await supabase
+        .from("listas_ofertas_info")
+        .select("id")
+        .eq("id", listaOfertasInfoId)
+        .eq("user_id", user.id)
+        .single();
+      if (!listaInfo) return NextResponse.json({ error: "Lista do Infoprodutor não encontrada." }, { status: 404 });
+      const { count } = await supabase
+        .from("minha_lista_ofertas_info")
+        .select("id", { count: "exact", head: true })
+        .eq("lista_id", listaOfertasInfoId)
+        .eq("user_id", user.id);
+      if (!count || count < 1) return NextResponse.json({ error: "A lista do Infoprodutor está vazia. Adicione produtos primeiro." }, { status: 400 });
+    } else if (isCrossover) {
       const { data: listaOferta } = await supabase.from("listas_ofertas").select("id").eq("id", listaOfertasId).eq("user_id", user.id).single();
       if (!listaOferta) return NextResponse.json({ error: "Lista de ofertas Shopee não encontrada." }, { status: 404 });
       const { count: c1 } = await supabase.from("minha_lista_ofertas").select("id", { count: "exact", head: true }).eq("lista_id", listaOfertasId).eq("user_id", user.id);
@@ -186,12 +214,13 @@ export async function POST(req: Request) {
     const janelaErr = mensagemErroJanela(horarioInicio, horarioFim);
     if (janelaErr) return NextResponse.json({ error: janelaErr }, { status: 400 });
 
-    const payloadContinuo = {
+    const payloadContinuo: Record<string, unknown> = {
       lista_id: listaId,
       instance_id: instanceId,
       keywords: isListaOfertasMode ? [] : keywords,
       lista_ofertas_id: listaOfertasId || null,
       lista_ofertas_ml_id: listaOfertasMlId || null,
+      lista_ofertas_info_id: listaOfertasInfoId || null,
       sub_id_1: subId1,
       sub_id_2: subId2,
       sub_id_3: subId3,
@@ -204,6 +233,20 @@ export async function POST(req: Request) {
     };
 
     if (id) {
+      if (updateOnly) {
+        const { data: prev, error: prevErr } = await supabase
+          .from("grupos_venda_continuo")
+          .select("ativo, proximo_indice, keyword_pool_indices")
+          .eq("id", id)
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (prevErr) return NextResponse.json({ error: prevErr.message }, { status: 500 });
+        if (!prev) return NextResponse.json({ error: "Automação não encontrada." }, { status: 404 });
+        payloadContinuo.ativo = (prev as { ativo?: boolean }).ativo ?? false;
+        payloadContinuo.proximo_indice = (prev as { proximo_indice?: number }).proximo_indice ?? 0;
+        payloadContinuo.keyword_pool_indices =
+          (prev as { keyword_pool_indices?: unknown }).keyword_pool_indices ?? {};
+      }
       const { data: updated, error } = await supabase
         .from("grupos_venda_continuo")
         .update(payloadContinuo)
@@ -214,10 +257,10 @@ export async function POST(req: Request) {
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({
         success: true,
-        ativo: true,
+        ativo: !!(updated as { ativo?: boolean })?.ativo,
         id: updated?.id,
-        proximoIndice: 0,
-        ultimoDisparoAt: updated?.ultimo_disparo_at,
+        proximoIndice: (updated as { proximo_indice?: number })?.proximo_indice ?? 0,
+        ultimoDisparoAt: (updated as { ultimo_disparo_at?: string | null })?.ultimo_disparo_at,
       });
     }
 

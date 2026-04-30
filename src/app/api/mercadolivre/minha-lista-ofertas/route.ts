@@ -36,7 +36,7 @@ export async function GET(req: Request) {
         )
         .eq("user_id", user.id)
         .eq("lista_id", listaId)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ data: (rows ?? []).map(mapItem) });
@@ -48,7 +48,7 @@ export async function GET(req: Request) {
         "id, lista_id, image_url, product_name, price_original, price_promo, discount_rate, converter_link, product_page_url, created_at",
       )
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: true });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -117,8 +117,28 @@ export async function PATCH(req: Request) {
     if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
+    const itemIds = body?.itemIds || body?.item_ids;
+    const listaIdForReorder = body?.listaId || body?.lista_id;
+
+    // Se houver itemIds e listaId, tratamos como reordenação
+    if (Array.isArray(itemIds) && listaIdForReorder) {
+      const now = new Date();
+      for (let i = 0; i < itemIds.length; i++) {
+        const id = itemIds[i];
+        // Invertemos: o primeiro da lista UI é o mais antigo para a automação
+        const newDate = new Date(now.getTime() - (itemIds.length - i) * 1000);
+        await supabase
+          .from("minha_lista_ofertas_ml")
+          .update({ created_at: newDate.toISOString() })
+          .eq("id", id)
+          .eq("user_id", user.id)
+          .eq("lista_id", listaIdForReorder);
+      }
+      return NextResponse.json({ ok: true });
+    }
+
     const id = String(body?.id ?? "").trim();
-    if (!id) return NextResponse.json({ error: "id é obrigatório" }, { status: 400 });
+    if (!id) return NextResponse.json({ error: "id é obrigatório para atualização individual ou itemIds para reordenação" }, { status: 400 });
 
     const priceOriginal = body?.priceOriginal != null ? Number(body.priceOriginal) : null;
     const pricePromo = body?.pricePromo != null ? Number(body.pricePromo) : null;

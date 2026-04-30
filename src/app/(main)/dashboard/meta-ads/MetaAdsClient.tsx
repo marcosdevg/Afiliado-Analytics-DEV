@@ -42,13 +42,18 @@ import {
   getDefaultGoalForObjective,
   isMetaLeadsWebsiteConversionEvent,
 } from "@/lib/meta-ads-constants";
+import { uploadMetaAdVideo } from "@/lib/meta-ad-video-upload";
+import {
+  extractVideoCoverFrame,
+  uploadCoverBlobToMetaLibrary,
+} from "@/lib/meta-ad-cover-frame";
 
 type AdAccount = { id: string; name: string; business_id?: string };
 type Page = { id: string; name: string; instagram_account?: { id: string; username: string } | null };
 type Pixel = { id: string; name: string };
 type InstagramAccount = { id: string; username: string; profile_pic: string | null };
 type LibraryImage = { hash: string; url: string | null; id: string | null };
-type LibraryVideo = { id: string; title: string; source: string | null; length: number | null; picture: string | null };
+type LibraryVideo = { id: string; title: string; source: string | null; length: number | null; picture: string | null; status?: string | null; ready?: boolean };
 
 const STEPS = [
   { id: 1, title: "Conta & Página", icon: Building2 },
@@ -295,6 +300,53 @@ export default function MetaAdsClient() {
     return () => { cancelled = true; };
   }, [step, adAccountId]);
 
+  /**
+   * Polling: enquanto houver vídeos na biblioteca em processamento
+   * (`ready === false`), refaz o GET de advideos a cada 8s. O Meta retorna
+   * `picture` placeholder mesmo durante o processamento, então usamos o campo
+   * `status.video_status === "ready"` (mapeado para `ready` no backend) para
+   * detectar quando está pronto. Para quando todos estão prontos ou após
+   * `MAX_ATTEMPTS` tentativas (~6 minutos).
+   */
+  useEffect(() => {
+    if (step !== 4 || !adAccountId) return;
+    const hasProcessing = libraryVideos.some((v) => v.ready === false);
+    if (!hasProcessing) return;
+
+    const POLL_INTERVAL_MS = 8000;
+    const MAX_ATTEMPTS = 45;
+    let cancelled = false;
+    let attempts = 0;
+
+    const tick = async () => {
+      if (cancelled) return;
+      attempts += 1;
+      try {
+        const res = await fetch(`/api/meta/advideos?ad_account_id=${encodeURIComponent(adAccountId)}`);
+        const json = await res.json();
+        if (!cancelled && json.videos) {
+          // Merge: preserva entradas locais que ainda não foram indexadas no
+          // GET (delay entre POST /advideos e listagem é normal).
+          setLibraryVideos((prev) => {
+            const serverIds = new Set<string>(
+              (json.videos as LibraryVideo[]).map((v) => v.id)
+            );
+            const localOnly = prev.filter((v) => !serverIds.has(v.id));
+            return [...localOnly, ...(json.videos as LibraryVideo[])];
+          });
+        }
+      } catch {
+        // silencioso — tenta de novo no próximo tick
+      }
+      if (!cancelled && attempts < MAX_ATTEMPTS) {
+        timer = setTimeout(tick, POLL_INTERVAL_MS);
+      }
+    };
+
+    let timer = setTimeout(tick, POLL_INTERVAL_MS);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [step, adAccountId, libraryVideos]);
+
   const canStep2 = adAccountId && pageId;
   const canStep3 = campaignId && campaignName;
   const isSalesCampaign = campaignObjective === "OUTCOME_SALES";
@@ -508,27 +560,84 @@ export default function MetaAdsClient() {
   const uploadImage = async (file: File) => {
     if (!adAccountId) return;
     setUploadingImage(true); setError(null);
+    const previewUrl = URL.createObjectURL(file);
     try {
       const form = new FormData(); form.set("file", file); form.set("ad_account_id", adAccountId);
       const res = await fetch("/api/meta/adimages", { method: "POST", body: form });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Erro ao enviar");
       setImageHash(json.hash); setImageUrl("");
-      setLibraryImages((prev) => [{ hash: json.hash, url: null, id: null }, ...prev]);
-    } catch (err) { setError(err instanceof Error ? err.message : "Erro ao enviar imagem"); }
+      setLibraryImages((prev) => [{ hash: json.hash, url: previewUrl, id: null }, ...prev]);
+    } catch (err) {
+      URL.revokeObjectURL(previewUrl);
+      setError(err instanceof Error ? err.message : "Erro ao enviar imagem");
+    }
     finally { setUploadingImage(false); }
   };
 
+  /**
+   * Sobe o vídeo e, em paralelo, gera + sobe a capa automática (frame do vídeo
+   * extraído no client). O Meta exige cover image em ads de vídeo; gerar por
+   * baixo dos panos evita confundir o usuário com um campo "obrigatório" extra.
+   *
+   * Adiciona o vídeo no state IMEDIATAMENTE (com `ready: false`) para feedback
+   * instantâneo. Depois faz refetch da biblioteca com merge — o Meta tem delay
+   * entre POST /advideos e o GET listar o novo vídeo (principalmente com
+   * `file_url`, ele baixa do Supabase antes de catalogar). Se o vídeo ainda não
+   * apareceu no GET, preservamos a entrada local; o polling de processing
+   * eventualmente puxa o vídeo já indexado e faz o merge correto.
+   */
   const uploadVideo = async (file: File) => {
     if (!adAccountId) return;
     setUploadingVideo(true); setError(null);
     try {
-      const form = new FormData(); form.set("file", file); form.set("ad_account_id", adAccountId);
-      const res = await fetch("/api/meta/advideos", { method: "POST", body: form });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Erro ao enviar");
-      setVideoId(json.video_id);
-      setLibraryVideos((prev) => [{ id: json.video_id, title: json.video_id, source: null, length: null, picture: null }, ...prev]);
+      const [{ videoId: newVideoId }, coverResult] = await Promise.all([
+        uploadMetaAdVideo(file, adAccountId),
+        (async () => {
+          try {
+            const frame = await extractVideoCoverFrame(file);
+            return await uploadCoverBlobToMetaLibrary(frame, adAccountId);
+          } catch {
+            return null;
+          }
+        })(),
+      ]);
+
+      // Adiciona localmente — feedback imediato no grid mesmo se o Meta ainda
+      // não indexou o vídeo no endpoint de listagem.
+      setLibraryVideos((prev) => {
+        if (prev.some((v) => v.id === newVideoId)) return prev;
+        return [
+          { id: newVideoId, title: newVideoId, source: null, length: null, picture: null, status: "processing", ready: false },
+          ...prev,
+        ];
+      });
+      setVideoId(newVideoId);
+      if (coverResult) {
+        setImageHash(coverResult.hash);
+        setImageUrl("");
+      }
+
+      // Refetch com merge: vídeos do servidor têm prioridade; locais que ainda
+      // não chegaram no GET ficam preservados até o polling indexar.
+      try {
+        const [imgRes, vidRes] = await Promise.all([
+          fetch(`/api/meta/adimages?ad_account_id=${encodeURIComponent(adAccountId)}`).then((r) => r.json()),
+          fetch(`/api/meta/advideos?ad_account_id=${encodeURIComponent(adAccountId)}`).then((r) => r.json()),
+        ]);
+        if (imgRes.images) setLibraryImages(imgRes.images);
+        if (vidRes.videos) {
+          setLibraryVideos((prev) => {
+            const serverIds = new Set<string>(
+              (vidRes.videos as LibraryVideo[]).map((v) => v.id)
+            );
+            const localOnly = prev.filter((v) => !serverIds.has(v.id));
+            return [...localOnly, ...(vidRes.videos as LibraryVideo[])];
+          });
+        }
+      } catch {
+        // sem internet/erro — o polling de processing tenta de novo
+      }
     } catch (err) { setError(err instanceof Error ? err.message : "Erro ao enviar vídeo"); }
     finally { setUploadingVideo(false); }
   };
@@ -1179,14 +1288,27 @@ export default function MetaAdsClient() {
                   className="inline-flex items-center gap-1.5 rounded-xl border border-dark-border px-4 py-2.5 text-sm font-medium text-text-secondary hover:bg-dark-bg transition-colors">
                   <ChevronLeft className="h-4 w-4" /> Voltar
                 </button>
-                <button type="button" onClick={createAd}
-                  disabled={!adMessage.trim() || loading ||
+                {(() => {
+                  const selectedVideo = mediaType === "video"
+                    ? libraryVideos.find((v) => v.id === videoId.trim())
+                    : null;
+                  const selectedVideoProcessing =
+                    mediaType === "video" && !!selectedVideo && selectedVideo.ready === false;
+                  const disabled =
+                    !adMessage.trim() ||
+                    loading ||
+                    selectedVideoProcessing ||
                     (mediaType === "image" && !imageHash.trim() && !imageUrl.trim()) ||
-                    (mediaType === "video" && (!videoId.trim() || (!imageHash.trim() && !imageUrl.trim())))}
-                  className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-shopee-orange px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40 transition-all shadow-[0_2px_12px_rgba(238,77,45,0.2)]">
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
-                  Criar anúncio
-                </button>
+                    (mediaType === "video" && (!videoId.trim() || (!imageHash.trim() && !imageUrl.trim())));
+                  return (
+                    <button type="button" onClick={createAd}
+                      disabled={disabled}
+                      className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-shopee-orange px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40 transition-all shadow-[0_2px_12px_rgba(238,77,45,0.2)]">
+                      {loading || selectedVideoProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+                      {selectedVideoProcessing ? "Aguardando vídeo processar…" : "Criar anúncio"}
+                    </button>
+                  );
+                })()}
               </div>
             </div>
 
@@ -1322,6 +1444,9 @@ export default function MetaAdsClient() {
                     <div className="grid grid-cols-2 gap-2 content-start h-full">
                       {pagedVideos.map((v) => {
                         const selected = videoId === v.id;
+                        // Meta entrega `picture` placeholder durante o processamento,
+                        // então confiamos em `ready` (vem de status.video_status do Graph).
+                        const processing = v.ready === false;
                         return (
                           <button key={v.id} type="button"
                             onClick={() => setVideoId(v.id)}
@@ -1330,10 +1455,13 @@ export default function MetaAdsClient() {
                             {v.picture ? (
                               <img src={v.picture} alt={v.title} className="w-full h-full object-cover" />
                             ) : (
-                              <div className="w-full h-full bg-gradient-to-br from-dark-bg to-dark-border" />
+                              <div className="w-full h-full bg-gradient-to-br from-dark-bg to-dark-border flex flex-col items-center justify-center gap-1.5">
+                                <Loader2 className="h-5 w-5 text-shopee-orange animate-spin" />
+                                <span className="text-[10px] font-medium text-shopee-orange">Processando…</span>
+                              </div>
                             )}
-                            <div className={`absolute inset-0 flex items-center justify-center transition-all ${selected ? "bg-shopee-orange/25" : "bg-black/30 group-hover:bg-black/50"}`}>
-                              {selected ? (
+                            <div className={`absolute inset-0 flex items-center justify-center transition-all ${processing ? "" : selected ? "bg-shopee-orange/25" : "bg-black/30 group-hover:bg-black/50"}`}>
+                              {processing ? null : selected ? (
                                 <div className="w-7 h-7 rounded-full bg-shopee-orange flex items-center justify-center shadow-lg">
                                   <Check className="h-4 w-4 text-white" />
                                 </div>
@@ -1425,7 +1553,7 @@ export default function MetaAdsClient() {
               {mediaType === "video" && videoId && (
                 <div className="shrink-0 pt-2 border-t border-dark-border/50 space-y-2">
                   <p className="text-[11px] text-text-secondary/60 font-medium uppercase tracking-wide">
-                    Imagem de capa * <span className="normal-case text-text-secondary/40">(obrigatória)</span>
+                    Imagem de capa <span className="normal-case text-text-secondary/40">(automática)</span>
                   </p>
                   {(imageHash || imageUrl) ? (
                     <div className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2">
@@ -1437,11 +1565,11 @@ export default function MetaAdsClient() {
                       </button>
                     </div>
                   ) : (
-                    <p className="text-xs text-amber-400/80">Mude para aba Imagem e selecione a capa, ou envie:</p>
+                    <p className="text-xs text-text-secondary/70">A capa é gerada automaticamente do vídeo. Se quiser trocar, envie uma:</p>
                   )}
                   <label className={`inline-flex items-center gap-1.5 rounded-xl border border-dark-border bg-dark-bg px-3 py-2 text-xs font-medium text-text-secondary hover:text-text-primary hover:border-shopee-orange/40 cursor-pointer transition-all ${uploadingImage ? "opacity-50 cursor-not-allowed" : ""}`}>
                     {uploadingImage ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                    {uploadingImage ? "Enviando…" : "Enviar capa"}
+                    {uploadingImage ? "Enviando…" : "Trocar capa (opcional)"}
                     <input type="file" accept="image/*" className="sr-only" disabled={uploadingImage || !adAccountId}
                       onChange={async (e) => { const f = e.target.files?.[0]; if (f) { await uploadImage(f); e.target.value = ""; } }} />
                   </label>

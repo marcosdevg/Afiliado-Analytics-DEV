@@ -50,9 +50,9 @@ const subscriptionPlans: SubscriptionPlan[] = [
       'Redirecionador de Links',
       'Calculadora GPL Manual',
       'Gerador de links Shopee',
-      'Automação de Grupos: 1 grupo',
+      'Automação de Grupos: 5 grupos',
       'Site de captura: 1',
-      'Instâncias conectadas: 1',
+      'Instâncias conectadas: 2',
     ],
   },
   {
@@ -71,13 +71,13 @@ const subscriptionPlans: SubscriptionPlan[] = [
     features: [
       'Tudo do plano Padrão',
       'Tráfego Inteligente (ATI)',
-      'Gerador de Criativo: 2 vídeos',
+      'Gerador de Criativo',
       'Custo Real de Leads do WhatsApp',
       'Criar campanha no Meta',
-      'Automação de Grupos: 10 grupos',
-      'Espelhamento de Grupos: 10 Espelhamentos',
+      'Automação de Grupos: ilimitados',
+      'Espelhamento de Grupos: ilimitados',
       'Site de captura: 5',
-      'Instâncias conectadas: 2',
+      'Instâncias conectadas: 5',
       'Gerador de Especialistas: 100 Afiliado Coins',
     ],
   },
@@ -340,7 +340,7 @@ function PlanCard({
             <div className="pointer-events-none absolute -bottom-[60px] -left-[60px] h-[180px] w-[180px] rounded-full bg-[radial-gradient(circle,rgba(124,58,237,0.12)_0%,transparent_70%)]" />
 
             <div className="relative mb-[20px] flex min-h-[46px] items-center justify-between gap-[12px]">
-              <h3 className="font-[var(--font-space-grotesk)] text-[31px] font-extrabold bg-[linear-gradient(90deg,#ffffff_0%,#ffd9cf_20%,#ffffff_40%,#ffffff_100%)] [background-size:220%_100%] bg-clip-text text-transparent [animation:shimmer_3s_linear_infinite]">
+              <h3 className="font-[var(--font-space-grotesk)] text-[31px] font-extrabold bg-[linear-gradient(90deg,#ffffff_0%,#ffd9cf_20%,#ffffff_40%,#ffffff_100%)] light:bg-[linear-gradient(90deg,#18181b_0%,#e24c30_20%,#18181b_40%,#18181b_100%)] [background-size:220%_100%] bg-clip-text text-transparent [animation:shimmer_3s_linear_infinite]">
                 {plan.name}
               </h3>
 

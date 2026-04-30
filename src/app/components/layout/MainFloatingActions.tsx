@@ -21,6 +21,7 @@ const STAGGER_MS = 50;
 export default function MainFloatingActions() {
   const pathname = usePathname() ?? "";
   const isCapture = pathname.startsWith("/capture");
+  const isCheckout = pathname.startsWith("/checkout");
   const isHome = pathname === "/";
   const menuId = useId();
 
@@ -101,7 +102,8 @@ export default function MainFloatingActions() {
     setOpen(false);
   }, [pathname]);
 
-  if (isCapture) {
+  /** Rotas /capture/…, /checkout/… e URLs limpas no subdomínio público (/<slug>, /<slug>/go) — sem FAB de menu. */
+  if (isCapture || isCheckout || slugOnCapturePublicHost) {
     return null;
   }
 

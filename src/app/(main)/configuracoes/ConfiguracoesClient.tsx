@@ -1,14 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import { IdCard, Megaphone, MessageCircle, ChevronRight, ShoppingBag } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Bell, IdCard, Megaphone, MessageCircle, ChevronRight, ShoppingBag, Wallet } from "lucide-react";
 import ShopeeIntegrationCard from "./ShopeeIntegrationCard";
 import MetaIntegrationCard from "./MetaIntegrationCard";
-import EvolutionIntegrationCard from "./EvolutionIntegrationCard";
+import MessagingChannelsCard from "./MessagingChannelsCard";
 import MercadoLivreIntegrationCard from "./MercadoLivreIntegrationCard";
+import MercadoPagoIntegrationCard from "./MercadoPagoIntegrationCard";
+import ShippingProfileCard from "./ShippingProfileCard";
+import NotificacoesCard from "./NotificacoesCard";
 import { MERCADOLIVRE_UX_COMING_SOON } from "@/lib/mercadolivre-ux-coming-soon";
 
-export type SectionKey = "shopee" | "mercadolivre" | "meta" | "evolution" | null;
+export type SectionKey =
+  | "shopee"
+  | "mercadolivre"
+  | "meta"
+  | "evolution"
+  | "mercadopago"
+  | "notificacoes"
+  | null;
 
 type ConfiguracoesClientProps = {
   initialAppId: string;
@@ -35,12 +45,12 @@ const CARDS: {
   {
     key: "shopee",
     title: "Integração Shopee",
-    description: "App ID e API Key para comissões e relatórios",
+    description: "API Shopee.",
     icon: IdCard,
   },
   {
     key: "mercadolivre",
-    title: "Mercado Livre Afiliados",
+    title: "Integração ML",
     description: "Etiqueta em uso e token da extensão",
     icon: ShoppingBag,
   },
@@ -52,9 +62,21 @@ const CARDS: {
   },
   {
     key: "evolution",
-    title: "Integração WhatsApp",
-    description: "Instâncias WhatsApp",
+    title: "Integrações",
+    description: "Instâncias WhatsApp e bots Telegram",
     icon: MessageCircle,
+  },
+  {
+    key: "mercadopago",
+    title: "Infoprodutor",
+    description: "Conecte suas formas de pagamento.",
+    icon: Wallet,
+  },
+  {
+    key: "notificacoes",
+    title: "Ativar notificação",
+    description: "",
+    icon: Bell,
   },
 ];
 
@@ -82,6 +104,14 @@ export default function ConfiguracoesClient({
     MERCADOLIVRE_UX_COMING_SOON ? null : initialOpenMl ? "mercadolivre" : null,
   );
   const visibleCards = CARDS.filter((c) => !c.hidden);
+
+  // Se o usuário voltou do callback OAuth do Mercado Pago, abre o card MP
+  // automaticamente para mostrar o banner de sucesso/erro.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("mp")) setOpenSection("mercadopago");
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -164,7 +194,18 @@ export default function ConfiguracoesClient({
       )}
       {openSection === "evolution" && (
         <div className="animate-in fade-in duration-200">
-          <EvolutionIntegrationCard />
+          <MessagingChannelsCard />
+        </div>
+      )}
+      {openSection === "mercadopago" && (
+        <div className="animate-in fade-in duration-200 space-y-4">
+          <MercadoPagoIntegrationCard />
+          <ShippingProfileCard />
+        </div>
+      )}
+      {openSection === "notificacoes" && (
+        <div className="animate-in fade-in duration-200">
+          <NotificacoesCard />
         </div>
       )}
     </div>

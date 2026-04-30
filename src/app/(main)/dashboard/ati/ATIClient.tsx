@@ -31,6 +31,8 @@ import {
   ChevronRight,
   Loader2,
   RefreshCw,
+  CreditCard,
+  PauseCircle,
 } from "lucide-react";
 
 const ATI_CAMPAIGNS_PER_PAGE = 6;
@@ -215,6 +217,7 @@ function AdAccordionItem({
   adTogglingId,
   onEditAd,
   onReloadAti,
+  campaignIsInfoP = false,
 }: {
   row: ATICreativeRow;
   dateLabel: string;
@@ -232,16 +235,24 @@ function AdAccordionItem({
   adTogglingId?: string | null;
   onEditAd?: (r: ATICreativeRow) => void;
   onReloadAti: () => Promise<void>;
+  /** Se a campanha-pai está marcada como InfoP, exibimos o bloco de SubId InfoP. */
+  campaignIsInfoP?: boolean;
 }) {
   const isOpen = expandedId === row.adId;
   const [shopeeSubDraft, setShopeeSubDraft] = useState(() => row.shopeeSubId ?? row.subId ?? "");
   const [shopeeSubBusy, setShopeeSubBusy] = useState(false);
   const [shopeeSubFeedback, setShopeeSubFeedback] = useState<string | null>(null);
 
+  const [infopSubDraft, setInfopSubDraft] = useState(() => row.infopSubId ?? "");
+  const [infopSubBusy, setInfopSubBusy] = useState(false);
+  const [infopSubFeedback, setInfopSubFeedback] = useState<string | null>(null);
+
   useEffect(() => {
     setShopeeSubDraft(row.shopeeSubId ?? row.subId ?? "");
     setShopeeSubFeedback(null);
-  }, [row.adId, row.shopeeSubId, row.subId]);
+    setInfopSubDraft(row.infopSubId ?? "");
+    setInfopSubFeedback(null);
+  }, [row.adId, row.shopeeSubId, row.subId, row.infopSubId]);
 
   useEffect(() => {
     if (isOpen && row) onExpandedFetchLink(row);
@@ -322,11 +333,6 @@ function AdAccordionItem({
       >
         <span className="font-medium text-text-primary truncate">{row.adName}</span>
         <span className="flex items-center gap-2 flex-shrink-0">
-          {adStatus !== undefined && (
-            <span className={`text-xs font-medium ${adStatus === "ACTIVE" ? "text-emerald-400" : "text-text-secondary"}`}>
-              {adStatus === "ACTIVE" ? "Ativo" : "Desativado"}
-            </span>
-          )}
           {onAdStatusToggle && (
             <button
               type="button"
@@ -349,6 +355,7 @@ function AdAccordionItem({
 
       {isOpen && (
         <div className="border-t border-dark-border bg-dark-bg/30 p-4 space-y-4">
+          {/* Shopee SubId: cruzamento com vendas Shopee */}
           <div className="rounded-lg border border-dark-border/80 bg-dark-card/50 p-3 space-y-2">
             <p className="text-xs font-semibold text-text-primary flex items-center gap-1.5">
               <ShoppingBag className="h-3.5 w-3.5 text-shopee-orange" />
@@ -426,6 +433,88 @@ function AdAccordionItem({
               </p>
             )}
           </div>
+
+          {/* ── SubId InfoP (cruzamento com produtos Mercado Pago) — só aparece em campanhas marcadas como InfoP ── */}
+          {campaignIsInfoP ? (
+          <div className="rounded-lg border border-[#635bff]/30 bg-[#635bff]/5 p-3 space-y-2">
+            <p className="text-xs font-semibold text-text-primary flex items-center gap-1.5">
+              <CreditCard className="h-3.5 w-3.5 text-[#a8a2ff]" />
+              SubId InfoP (produtos Mercado Pago)
+            </p>
+            <p className="text-[11px] text-text-secondary leading-relaxed">
+              Cole aqui o mesmo SubId do produto Mercado Pago (ex.: <code className="bg-dark-bg px-1 rounded">whey-protein</code>) para cruzar custos e receita na aba Trackeamento.
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex-1 min-w-[140px]">
+                <label className="block text-[10px] text-text-secondary mb-0.5">SubId</label>
+                <input
+                  type="text"
+                  value={infopSubDraft}
+                  onChange={(e) => setInfopSubDraft(e.target.value)}
+                  placeholder="ex.: whey-protein"
+                  className="w-full rounded-lg border border-dark-border bg-dark-bg py-1.5 px-2.5 text-xs text-text-primary placeholder-text-secondary/50 focus:outline-none focus:border-[#635bff]"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={infopSubBusy || infopSubDraft.trim().length < 2}
+                onClick={async () => {
+                  setInfopSubBusy(true);
+                  setInfopSubFeedback(null);
+                  try {
+                    const res = await fetch("/api/ati/ad-infop-sub", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ adId: row.adId, infopSubId: infopSubDraft.trim() }),
+                    });
+                    const j = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(j?.error ?? "Erro ao salvar");
+                    setInfopSubFeedback("Salvo.");
+                    await onReloadAti();
+                  } catch (e) {
+                    setInfopSubFeedback(e instanceof Error ? e.message : "Erro");
+                  } finally {
+                    setInfopSubBusy(false);
+                  }
+                }}
+                className="rounded-lg bg-[#635bff] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#5047e5] disabled:opacity-50"
+              >
+                {infopSubBusy ? "…" : "Salvar"}
+              </button>
+              {row.infopSubId && (
+                <button
+                  type="button"
+                  disabled={infopSubBusy}
+                  onClick={async () => {
+                    setInfopSubBusy(true);
+                    setInfopSubFeedback(null);
+                    try {
+                      const res = await fetch(`/api/ati/ad-infop-sub?adId=${encodeURIComponent(row.adId)}`, { method: "DELETE" });
+                      const j = await res.json().catch(() => ({}));
+                      if (!res.ok) throw new Error(j?.error ?? "Erro");
+                      setInfopSubDraft("");
+                      setInfopSubFeedback("Removido.");
+                      await onReloadAti();
+                    } catch (e) {
+                      setInfopSubFeedback(e instanceof Error ? e.message : "Erro");
+                    } finally {
+                      setInfopSubBusy(false);
+                    }
+                  }}
+                  className="rounded-lg border border-dark-border px-3 py-1.5 text-xs text-text-secondary hover:text-red-400 hover:border-red-500/40 disabled:opacity-50"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+            {infopSubFeedback && (
+              <p className={`text-[11px] ${infopSubFeedback === "Salvo." || infopSubFeedback === "Removido." ? "text-emerald-400" : "text-red-400"}`}>
+                {infopSubFeedback}
+              </p>
+            )}
+          </div>
+          ) : null}
+
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -655,6 +744,8 @@ export default function ATIClient() {
   const [adTogglingId, setAdTogglingId] = useState<string | null>(null);
   const [campaignIdsTraficoGrupos, setCampaignIdsTraficoGrupos] = useState<string[]>([]);
   const [traficoGruposTogglingId, setTraficoGruposTogglingId] = useState<string | null>(null);
+  const [campaignIdsInfoP, setCampaignIdsInfoP] = useState<string[]>([]);
+  const [infopTogglingId, setInfopTogglingId] = useState<string | null>(null);
   const [expandedCampaigns, setExpandedCampaigns] = useState<Record<string, boolean>>({});
   const [expandedAdSets, setExpandedAdSets] = useState<Record<string, boolean>>({});
   const [campaignListPage, setCampaignListPage] = useState(1);
@@ -719,6 +810,8 @@ export default function ATIClient() {
   const [adDuplicateCount, setAdDuplicateCount] = useState("5");
   const [adDuplicateSaving, setAdDuplicateSaving] = useState(false);
   const [shopeeWarning, setShopeeWarning] = useState<string | null>(null);
+  const [pauseConfirm, setPauseConfirm] = useState<{ type: "campaign" | "adset" | "ad"; id: string; name: string } | null>(null);
+  const [pauseConfirmLoading, setPauseConfirmLoading] = useState(false);
 
   const applyAtiPayload = useCallback((data: ATIDashboardSessionPayload) => {
     setCreatives(data.creatives);
@@ -730,6 +823,7 @@ export default function ATIClient() {
     setAdStatusMap(data.adStatusMap);
     setShopeeWarning(data.shopeeWarning);
     setCampaignIdsTraficoGrupos(data.campaignIdsTraficoGrupos);
+    setCampaignIdsInfoP(Array.isArray(data.campaignIdsInfoP) ? data.campaignIdsInfoP : []);
   }, []);
 
   useEffect(() => {
@@ -771,6 +865,13 @@ export default function ATIClient() {
           campaignIdsTraficoGrupos = Array.isArray(tagsJson.campaignIds) ? tagsJson.campaignIds : [];
         }
 
+        const infopTagsRes = await fetch("/api/ati/campaign-tags?tag=Tráfego%20para%20InfoP", { cache: "no-store" });
+        let campaignIdsInfoP: string[] = [];
+        if (infopTagsRes.ok) {
+          const infopJson = (await infopTagsRes.json()) as { campaignIds?: string[] };
+          campaignIdsInfoP = Array.isArray(infopJson.campaignIds) ? infopJson.campaignIds : [];
+        }
+
         const payload: ATIDashboardSessionPayload = {
           creatives: json.creatives ?? [],
           validated: json.validated ?? [],
@@ -781,6 +882,7 @@ export default function ATIClient() {
           adStatusMap: (json.adStatusMap as Record<string, string>) ?? {},
           shopeeWarning: typeof json.shopeeWarning === "string" ? json.shopeeWarning : null,
           campaignIdsTraficoGrupos,
+          campaignIdsInfoP,
         };
 
         writeAtiSessionCache(start, end, payload);
@@ -796,6 +898,7 @@ export default function ATIClient() {
           setAdSetStatusMap({});
           setAdStatusMap({});
           setCampaignIdsTraficoGrupos([]);
+          setCampaignIdsInfoP([]);
           setShopeeWarning(null);
         }
       } finally {
@@ -910,20 +1013,73 @@ export default function ATIClient() {
     }
   };
 
+  const handleConfirmPause = async () => {
+    if (!pauseConfirm) return;
+    const { type, id } = pauseConfirm;
+    setPauseConfirmLoading(true);
+    try {
+      if (type === "campaign") {
+        setCampaignTogglingId(id);
+        const res = await fetch("/api/meta/campaigns/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ campaign_id: id, status: "PAUSED" }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error ?? "Erro ao pausar");
+        setCampaignStatus((prev) => ({ ...prev, [id]: "PAUSED" }));
+        setCampaignTogglingId(null);
+      } else if (type === "adset") {
+        setAdSetTogglingId(id);
+        const res = await fetch("/api/meta/adsets/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ adset_id: id, status: "PAUSED" }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error ?? "Erro ao pausar");
+        setAdSetStatusMap((prev) => ({ ...prev, [id]: "PAUSED" }));
+        setAdSetTogglingId(null);
+      } else {
+        setAdTogglingId(id);
+        const res = await fetch("/api/meta/ads/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ad_id: id, status: "PAUSED" }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error ?? "Erro ao pausar");
+        setAdStatusMap((prev) => ({ ...prev, [id]: "PAUSED" }));
+        setAdTogglingId(null);
+      }
+      setPauseConfirm(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao pausar");
+      setCampaignTogglingId(null);
+      setAdSetTogglingId(null);
+      setAdTogglingId(null);
+    } finally {
+      setPauseConfirmLoading(false);
+    }
+  };
+
   const handleCampaignStatusToggle = async (campaignId: string) => {
-    const current = campaignStatus[campaignId];
-    const isActive = current === "ACTIVE";
-    const nextStatus = isActive ? "PAUSED" : "ACTIVE";
+    const isActive = campaignStatus[campaignId] === "ACTIVE";
+    if (isActive) {
+      const name = campaignsList.find((c) => c.id === campaignId)?.name ?? campaignId;
+      setPauseConfirm({ type: "campaign", id: campaignId, name });
+      return;
+    }
     setCampaignTogglingId(campaignId);
     try {
       const res = await fetch("/api/meta/campaigns/status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ campaign_id: campaignId, status: nextStatus }),
+        body: JSON.stringify({ campaign_id: campaignId, status: "ACTIVE" }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Erro ao atualizar campanha");
-      setCampaignStatus((prev) => ({ ...prev, [campaignId]: nextStatus }));
+      setCampaignStatus((prev) => ({ ...prev, [campaignId]: "ACTIVE" }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao alterar status");
     } finally {
@@ -956,6 +1112,15 @@ export default function ATIClient() {
       setCampaignIdsTraficoGrupos((prev) =>
         hasTag ? prev.filter((id) => id !== campaignId) : [...prev, campaignId]
       );
+      // Mantém o cache de sessão coerente — senão, ao sair e voltar, o toggle volta ao estado antigo.
+      const cached = readAtiSessionCache(start, end);
+      if (cached) {
+        const currentIds = Array.isArray(cached.campaignIdsTraficoGrupos) ? cached.campaignIdsTraficoGrupos : [];
+        const nextIds = hasTag
+          ? currentIds.filter((id) => id !== campaignId)
+          : [...currentIds, campaignId];
+        writeAtiSessionCache(start, end, { ...cached, campaignIdsTraficoGrupos: nextIds });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao atualizar tag");
     } finally {
@@ -963,20 +1128,57 @@ export default function ATIClient() {
     }
   };
 
+  const handleToggleInfoP = async (campaignId: string) => {
+    const hasTag = campaignIdsInfoP.includes(campaignId);
+    setInfopTogglingId(campaignId);
+    try {
+      const res = await fetch("/api/ati/campaign-tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaign_id: campaignId,
+          tag: "Tráfego para InfoP",
+          add: !hasTag,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Erro ao atualizar tag InfoP");
+      setCampaignIdsInfoP((prev) =>
+        hasTag ? prev.filter((id) => id !== campaignId) : [...prev, campaignId],
+      );
+      // Mantém o cache de sessão coerente — senão, ao sair e voltar, o toggle volta ao estado antigo.
+      const cached = readAtiSessionCache(start, end);
+      if (cached) {
+        const currentIds = Array.isArray(cached.campaignIdsInfoP) ? cached.campaignIdsInfoP : [];
+        const nextIds = hasTag
+          ? currentIds.filter((id) => id !== campaignId)
+          : [...currentIds, campaignId];
+        writeAtiSessionCache(start, end, { ...cached, campaignIdsInfoP: nextIds });
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao atualizar tag InfoP");
+    } finally {
+      setInfopTogglingId(null);
+    }
+  };
+
   const handleAdSetStatusToggle = async (adSetId: string) => {
-    const current = adSetStatusMap[adSetId];
-    const isActive = current === "ACTIVE";
-    const nextStatus = isActive ? "PAUSED" : "ACTIVE";
+    const isActive = adSetStatusMap[adSetId] === "ACTIVE";
+    if (isActive) {
+      const name = adSetList.find((s) => s.id === adSetId)?.name ?? adSetId;
+      setPauseConfirm({ type: "adset", id: adSetId, name });
+      return;
+    }
     setAdSetTogglingId(adSetId);
     try {
       const res = await fetch("/api/meta/adsets/status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adset_id: adSetId, status: nextStatus }),
+        body: JSON.stringify({ adset_id: adSetId, status: "ACTIVE" }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Erro ao atualizar conjunto");
-      setAdSetStatusMap((prev) => ({ ...prev, [adSetId]: nextStatus }));
+      setAdSetStatusMap((prev) => ({ ...prev, [adSetId]: "ACTIVE" }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao alterar status do conjunto");
     } finally {
@@ -985,19 +1187,22 @@ export default function ATIClient() {
   };
 
   const handleAdStatusToggle = async (adId: string) => {
-    const current = adStatusMap[adId];
-    const isActive = current === "ACTIVE";
-    const nextStatus = isActive ? "PAUSED" : "ACTIVE";
+    const isActive = adStatusMap[adId] === "ACTIVE";
+    if (isActive) {
+      const name = creatives.find((c) => c.adId === adId)?.adName ?? adId;
+      setPauseConfirm({ type: "ad", id: adId, name });
+      return;
+    }
     setAdTogglingId(adId);
     try {
       const res = await fetch("/api/meta/ads/status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ad_id: adId, status: nextStatus }),
+        body: JSON.stringify({ ad_id: adId, status: "ACTIVE" }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? "Erro ao atualizar anúncio");
-      setAdStatusMap((prev) => ({ ...prev, [adId]: nextStatus }));
+      setAdStatusMap((prev) => ({ ...prev, [adId]: "ACTIVE" }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao alterar status do anúncio");
     } finally {
@@ -1403,7 +1608,7 @@ export default function ATIClient() {
       </div>
 
       {loading ? (
-        <div className="min-h-[min(360px,calc(100vh-12rem))] flex flex-col items-center justify-center px-6 py-16 -mx-1 rounded-none" style={{ backgroundColor: "#18181b" }}>
+        <div className="min-h-[min(360px,calc(100vh-12rem))] flex flex-col items-center justify-center px-6 py-16 -mx-1 rounded-none bg-dark-bg">
           <div className="relative flex items-center justify-center">
             <span className="absolute inline-flex h-20 w-20 rounded-full bg-shopee-orange/10 animate-ping" />
             <span className="absolute inline-flex h-14 w-14 rounded-full bg-shopee-orange/15 animate-pulse" />
@@ -1615,7 +1820,8 @@ export default function ATIClient() {
                         disabled={traficoGruposTogglingId === camp.campaignId}
                         onClick={(e) => { e.stopPropagation(); handleToggleTraficoGrupos(camp.campaignId); }}
                         title={campaignIdsTraficoGrupos.includes(camp.campaignId) ? "Remover tag Tráfego para Grupos" : "Marcar como Tráfego para Grupos"}
-                        className={`hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium transition-all ${
+                        aria-label="Tráfego para Grupos"
+                        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium transition-all ${
                           campaignIdsTraficoGrupos.includes(camp.campaignId)
                             ? "bg-shopee-orange/15 text-shopee-orange border border-shopee-orange/40"
                             : "text-text-secondary border border-dark-border hover:border-shopee-orange/40 hover:text-shopee-orange"
@@ -1627,6 +1833,25 @@ export default function ATIClient() {
                           <MessageCircle className="h-3 w-3" />
                         )}
                         <span className="hidden md:inline">Grupos</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={infopTogglingId === camp.campaignId}
+                        onClick={(e) => { e.stopPropagation(); handleToggleInfoP(camp.campaignId); }}
+                        title={campaignIdsInfoP.includes(camp.campaignId) ? "Remover tag Tráfego para InfoP" : "Marcar como Tráfego para InfoP (cruza com produtos Mercado Pago)"}
+                        aria-label="Tráfego para InfoP"
+                        className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium transition-all ${
+                          campaignIdsInfoP.includes(camp.campaignId)
+                            ? "bg-[#635bff]/15 text-[#a8a2ff] border border-[#635bff]/40"
+                            : "text-text-secondary border border-dark-border hover:border-[#635bff]/40 hover:text-[#a8a2ff]"
+                        } disabled:opacity-50`}
+                      >
+                        {infopTogglingId === camp.campaignId ? (
+                          <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        ) : (
+                          <CreditCard className="h-3 w-3" />
+                        )}
+                        <span className="hidden md:inline">InfoP</span>
                       </button>
                       <button
                         type="button"
@@ -1692,9 +1917,6 @@ export default function ATIClient() {
                         >
                           <span className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow ring-0 transition ${campIsActive ? "translate-x-4" : "translate-x-0.5"}`} />
                         </button>
-                        <span className={`text-[11px] font-medium shrink-0 ${campIsActive ? "text-emerald-400" : "text-text-secondary"}`}>
-                          {campIsActive ? "Ativo" : "Pausado"}
-                        </span>
                       </div>
                     </div>
                   </div>
@@ -1745,9 +1967,6 @@ export default function ATIClient() {
                                 >
                                   <span className={`pointer-events-none inline-block h-3 w-3 rounded-full bg-white shadow ring-0 transition ${adSetIsActive ? "translate-x-3.5" : "translate-x-0.5"}`} />
                                 </button>
-                                <span className={`text-[10px] font-medium hidden sm:inline ${adSetIsActive ? "text-emerald-400" : "text-text-secondary"}`}>
-                                  {adSetIsActive ? "Ativo" : "Pausado"}
-                                </span>
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); setAdSetEditModal({ adSetId: set.adSetId, adSetName: set.adSetName, adAccountId: set.adAccountId ?? "", campaignId: camp.campaignId, campaignName: camp.campaignName }); setAdSetEditError(null); }}
@@ -1812,6 +2031,7 @@ export default function ATIClient() {
                                       } else setError("Conta de anúncios não disponível.");
                                     }}
                                     onReloadAti={load}
+                                    campaignIsInfoP={campaignIdsInfoP.includes(camp.campaignId)}
                                   />
                                 ))}
                               </div>
@@ -2215,6 +2435,74 @@ export default function ATIClient() {
             <div className="flex gap-2 justify-end">
               <button type="button" onClick={() => setAdDuplicateModal(null)} className="rounded-md border border-dark-border py-2 px-4 text-sm font-medium text-text-secondary hover:bg-dark-bg">Cancelar</button>
               <button type="button" disabled={adDuplicateSaving} onClick={handleAdDuplicateSave} className="rounded-md bg-shopee-orange py-2 px-4 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">{adDuplicateSaving ? "Duplicando…" : "Duplicar"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de confirmação de pausa (campanha / conjunto / anúncio) ── */}
+      {pauseConfirm && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-[2px]"
+          onClick={() => { if (!pauseConfirmLoading) setPauseConfirm(null); }}
+        >
+          <div
+            className="w-full max-w-sm bg-dark-card border border-shopee-orange/25 rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+
+
+            {/* Ícone + Título */}
+            <div className="flex flex-col items-center px-6 pt-6 pb-3 gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-shopee-orange/10 border border-shopee-orange/30 flex items-center justify-center">
+                <PauseCircle className="h-7 w-7 text-shopee-orange" aria-hidden="true" />
+              </div>
+              <div className="text-center">
+                <h2 className="text-base font-bold text-text-primary">
+                  Pausar {pauseConfirm.type === "campaign" ? "Campanha" : pauseConfirm.type === "adset" ? "Conjunto" : "Anúncio"}?
+                </h2>
+                <p className="text-xs text-text-secondary mt-1 line-clamp-2 max-w-[260px] mx-auto">
+                  &ldquo;{pauseConfirm.name}&rdquo;
+                </p>
+              </div>
+            </div>
+
+            {/* Aviso */}
+            <div className="mx-5 mb-4 rounded-xl bg-shopee-orange/8 border border-shopee-orange/20 px-3 py-2.5 flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 text-shopee-orange shrink-0 mt-0.5" aria-hidden="true" />
+              <p className="text-xs text-shopee-orange/90 leading-relaxed font-medium">
+                Este item será pausado no Meta imediatamente. Você pode reativar a qualquer momento.
+              </p>
+            </div>
+
+            {/* Botões */}
+            <div className="flex gap-2.5 px-5 pt-1 pb-6">
+              <button
+                type="button"
+                disabled={pauseConfirmLoading}
+                onClick={() => setPauseConfirm(null)}
+                className="flex-1 rounded-xl border border-dark-border py-3 text-sm font-semibold text-text-secondary hover:bg-dark-bg hover:text-text-primary transition-all disabled:opacity-40 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={pauseConfirmLoading}
+                onClick={handleConfirmPause}
+                className="flex-1 rounded-xl bg-shopee-orange py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {pauseConfirmLoading ? (
+                  <>
+                    <span className="h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    Pausando&hellip;
+                  </>
+                ) : (
+                  <>
+                    <PauseCircle className="h-4 w-4" aria-hidden="true" />
+                    Confirmar pausa
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

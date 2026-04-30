@@ -14,6 +14,7 @@ export const TRIAL_BLOCKED_DASHBOARD_PREFIXES: string[] = [
   "/dashboard/minha-lista-ofertas",
   "/dashboard/minha-lista-ofertas-ml",
   "/dashboard/admin",
+  "/dashboard/infoprodutor",
 ];
 
 export function isTrialBlockedDashboardPath(pathname: string): boolean {

@@ -47,6 +47,7 @@ const PAID_DASHBOARD_PREFIXES = [
   "/dashboard/minha-lista-ofertas-ml",
   "/dashboard/video-editor",
   "/dashboard/gerador-especialista",
+  "/dashboard/infoprodutor",
 ];
 
 function isPaidDashboardPath(pathname: string) {

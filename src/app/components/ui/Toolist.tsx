@@ -4,8 +4,8 @@ import { useState, useRef, useCallback, useEffect, useId } from "react";
 import { createPortal } from "react-dom";
 import { Info } from "lucide-react";
 
-const TOOLIST_BG = "#2d2e32";
-const TOOLIST_BORDER = "rgba(255,255,255,0.12)";
+const TOOLIST_BG = "var(--color-dark-tooltip)";
+const TOOLIST_BORDER = "var(--color-dark-border)";
 
 export type ToolistProps = {
   text: string;
@@ -49,7 +49,7 @@ function ToolistBubble({
               boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
             }}
           >
-            <p className="text-[11px] sm:text-xs font-normal leading-relaxed text-white whitespace-normal">
+            <p className="text-[11px] sm:text-xs font-normal leading-relaxed text-text-primary whitespace-normal">
               {text}
             </p>
           </div>
@@ -64,7 +64,7 @@ function ToolistBubble({
               boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
             }}
           >
-            <p className="text-[11px] sm:text-xs font-normal leading-relaxed text-white whitespace-normal">
+            <p className="text-[11px] sm:text-xs font-normal leading-relaxed text-text-primary whitespace-normal">
               {text}
             </p>
           </div>
@@ -171,7 +171,7 @@ export default function Toolist({
         onFocus={show}
         onBlur={hide}
       >
-        <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#333]/80 text-[#a8a8a8] transition-colors hover:bg-shopee-orange/15 hover:text-shopee-orange">
+        <span className="toolist-trigger inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors">
           <Info className={`h-2.5 w-2.5 ${iconClassName}`} strokeWidth={2.5} />
         </span>
       </span>

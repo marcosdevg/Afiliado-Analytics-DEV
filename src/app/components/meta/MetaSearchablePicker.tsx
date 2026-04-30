@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useId, useMemo, useState, useCallback, useEffect } from "react";
+import React, { useId, useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import Image from "next/image";
 import { ChevronDown, Search, X } from "lucide-react";
 
 function normalizeSearch(s: string) {
@@ -12,7 +13,22 @@ function normalizeSearch(s: string) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-export type MetaPickerOption = { value: string; label: string; description?: string };
+function LeadingOptionImage({ src, alt }: { src: string; alt?: string }) {
+  return (
+    <span className="relative flex h-7 w-7 shrink-0 items-center justify-center">
+      <Image src={src} alt={alt ?? ""} width={28} height={28} className="h-full w-full object-contain" />
+    </span>
+  );
+}
+
+export type MetaPickerOption = {
+  value: string;
+  label: string;
+  description?: string;
+  /** Miniatura à esquerda do nome (ex.: mascote para listas Sho.IA). */
+  leadingImageSrc?: string;
+  leadingImageAlt?: string;
+};
 
 export type MetaSearchablePickerProps = {
   value: string;
@@ -39,6 +55,11 @@ export type MetaSearchablePickerProps = {
    * `field` — uma linha como input do assistente (texto + seta); abre o mesmo modal.
    */
   triggerVariant?: "tag" | "field";
+  /** Não renderiza gatilho; abre só o modal (use com `modalOpen` + `onModalOpenChange`). */
+  hideTrigger?: boolean;
+  /** Abertura do modal controlada pelo pai (ex.: abrir direto ao clicar num botão da página). */
+  modalOpen?: boolean;
+  onModalOpenChange?: (open: boolean) => void;
 };
 
 /**
@@ -61,11 +82,24 @@ export default function MetaSearchablePicker({
   className = "",
   emptyOptionsMessage = "Nenhuma opção disponível.",
   triggerVariant = "tag",
+  hideTrigger = false,
+  modalOpen: modalOpenProp,
+  onModalOpenChange,
 }: MetaSearchablePickerProps) {
   const titleId = useId();
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<string>("");
+
+  const isModalControlled = modalOpenProp !== undefined && onModalOpenChange !== undefined;
+  const open = isModalControlled ? modalOpenProp : uncontrolledOpen;
+  const setModalOpen = useCallback(
+    (next: boolean) => {
+      if (isModalControlled) onModalOpenChange(next);
+      else setUncontrolledOpen(next);
+    },
+    [isModalControlled, onModalOpenChange],
+  );
 
   const labelFor = useCallback(
     (v: string) => {
@@ -76,14 +110,16 @@ export default function MetaSearchablePicker({
     [options, emptyAsTag, emptyTagLabel]
   );
 
+  const selectedOption = useMemo(() => options.find((x) => x.value === value), [options, value]);
+
   const openModal = useCallback(() => {
     if (disabled || options.length === 0) return;
     setDraft(value);
     setQuery("");
-    setOpen(true);
-  }, [disabled, options.length, value]);
+    setModalOpen(true);
+  }, [disabled, options.length, value, setModalOpen]);
 
-  const closeModal = useCallback(() => setOpen(false), []);
+  const closeModal = useCallback(() => setModalOpen(false), [setModalOpen]);
 
   const filtered = useMemo(() => {
     const q = normalizeSearch(query);
@@ -98,16 +134,25 @@ export default function MetaSearchablePicker({
 
   const confirm = useCallback(() => {
     onChange(draft);
-    setOpen(false);
-  }, [draft, onChange]);
+    setModalOpen(false);
+  }, [draft, onChange, setModalOpen]);
 
   const showBigButton = value === "" && !emptyAsTag;
   const showTagRow = value !== "" || emptyAsTag;
 
+  const prevOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && !prevOpenRef.current) {
+      setDraft(value);
+      setQuery("");
+    }
+    prevOpenRef.current = open;
+  }, [open, value]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") setModalOpen(false);
     };
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
@@ -116,7 +161,7 @@ export default function MetaSearchablePicker({
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [open]);
+  }, [open, setModalOpen]);
 
   const modal =
     open && typeof document !== "undefined"
@@ -180,18 +225,23 @@ export default function MetaSearchablePicker({
                         key={o.value}
                         type="button"
                         onClick={() => setDraft(o.value)}
-                        className={`w-full text-left rounded-lg border px-3 py-2.5 text-sm font-medium transition-all ${
+                        className={`flex w-full items-start gap-2.5 text-left rounded-lg border px-3 py-2.5 text-sm font-medium transition-all ${
                           selected
                             ? "border-shopee-orange/50 bg-shopee-orange/10 text-text-primary"
                             : "border-dark-border/60 bg-dark-bg/30 text-text-secondary hover:border-shopee-orange/30"
                         }`}
                       >
-                        <span className="block truncate">{o.label}</span>
-                        {o.description ? (
-                          <span className="block text-[11px] text-text-secondary/55 font-normal truncate mt-0.5">
-                            {o.description}
-                          </span>
+                        {o.leadingImageSrc ? (
+                          <LeadingOptionImage src={o.leadingImageSrc} alt={o.leadingImageAlt} />
                         ) : null}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">{o.label}</span>
+                          {o.description ? (
+                            <span className="block text-[11px] text-text-secondary/55 font-normal truncate mt-0.5">
+                              {o.description}
+                            </span>
+                          ) : null}
+                        </span>
                       </button>
                     );
                   })
@@ -239,6 +289,10 @@ export default function MetaSearchablePicker({
     </button>
   );
 
+  if (options.length === 0 && hideTrigger) {
+    return null;
+  }
+
   if (options.length === 0 && !emptyAsTag) {
     return <p className={`text-xs text-amber-500/90 ${className}`}>{emptyOptionsMessage}</p>;
   }
@@ -263,7 +317,7 @@ export default function MetaSearchablePicker({
 
   return (
     <div className={className}>
-      {showBigButton &&
+      {!hideTrigger && showBigButton &&
         (triggerVariant === "field" ? (
           <button
             type="button"
@@ -288,7 +342,7 @@ export default function MetaSearchablePicker({
           </button>
         ))}
 
-      {showTagRow &&
+      {!hideTrigger && showTagRow &&
         (triggerVariant === "field" ? (
           <div className="flex w-full min-w-0 items-stretch gap-2">
             <button
@@ -299,12 +353,25 @@ export default function MetaSearchablePicker({
               className={fieldTriggerClass}
               aria-haspopup="dialog"
             >
-              <span
-                className={`min-w-0 flex-1 truncate font-medium ${
-                  value === "" && emptyAsTag ? "text-text-secondary" : ""
-                }`}
-              >
-                {labelFor(value)}
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                {selectedOption?.leadingImageSrc ? (
+                  <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
+                    <Image
+                      src={selectedOption.leadingImageSrc}
+                      alt={selectedOption.leadingImageAlt ?? ""}
+                      width={20}
+                      height={20}
+                      className="h-full w-full object-contain"
+                    />
+                  </span>
+                ) : null}
+                <span
+                  className={`min-w-0 truncate font-medium ${
+                    value === "" && emptyAsTag ? "text-text-secondary" : ""
+                  }`}
+                >
+                  {labelFor(value)}
+                </span>
               </span>
               <ChevronDown className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden />
             </button>
@@ -328,6 +395,17 @@ export default function MetaSearchablePicker({
                   : "border-shopee-orange/50 bg-shopee-orange/8 text-text-primary"
               }`}
             >
+              {selectedOption?.leadingImageSrc ? (
+                <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
+                  <Image
+                    src={selectedOption.leadingImageSrc}
+                    alt={selectedOption.leadingImageAlt ?? ""}
+                    width={20}
+                    height={20}
+                    className="h-full w-full object-contain"
+                  />
+                </span>
+              ) : null}
               <span className="truncate max-w-[min(100%,280px)]">{labelFor(value)}</span>
               {value !== "" && allowClear ? (
                 <button

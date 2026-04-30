@@ -12,6 +12,7 @@ import {
 import { FEMALE_PRESETS, MALE_PRESETS } from "@/lib/expert-generator/constants";
 import { loadPresetReferenceImages } from "@/lib/expert-generator/load-preset-reference-images";
 import { generateNanoBananaImage } from "@/lib/expert-generator/nano-banana-image";
+import { humanizeVertexUserFacingMessage } from "@/lib/expert-generator/humanize-vertex-user-message";
 
 export const maxDuration = 120;
 
@@ -218,7 +219,7 @@ export async function POST(req: Request) {
       );
     return NextResponse.json(
       {
-        error: nb.error,
+        error: humanizeVertexUserFacingMessage(nb.error),
         detail: nb.detail,
         hint: quota
           ? "Os modelos Gemini Image (Nano Banana) exigem projeto com faturamento ativo (pay-as-you-go); no tier gratuito o limite destes modelos costuma ser 0. No Google AI Studio, associe o projeto à conta de faturamento e confirme o tier em Faturamento. Documentação: https://ai.google.dev/gemini-api/docs/rate-limits"

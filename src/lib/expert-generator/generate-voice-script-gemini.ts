@@ -33,17 +33,18 @@ function extractText(json: GeminiTextResponse): string | null {
  * Chão no prompt: a IA deve preencher o tempo do vídeo, não responder com 3–5 palavras.
  */
 const VOICE_SCRIPT_WORD_RANGE: Record<
-  4 | 6 | 8,
+  4 | 6 | 8 | 12,
   { min: number; max: number }
 > = {
   4: { min: 7, max: 11 },
   6: { min: 12, max: 16 },
   8: { min: 18, max: 22 },
+  12: { min: 24, max: 30 },
 };
 
 function buildPrompt(params: {
   productBrief: string;
-  durationSeconds: 4 | 6 | 8;
+  durationSeconds: 4 | 6 | 8 | 12;
   motionSummary: string;
   voiceGender: "female" | "male";
 }): string {
@@ -90,7 +91,7 @@ function countWords(script: string): number {
 }
 
 function buildExpandPrompt(params: {
-  durationSeconds: 4 | 6 | 8;
+  durationSeconds: 4 | 6 | 8 | 12;
   tooShortScript: string;
   min: number;
   max: number;
@@ -162,6 +163,13 @@ async function generateOnce(
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
+      safetySettings: [
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_ONLY_HIGH" },
+        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_ONLY_HIGH" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_ONLY_HIGH" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_ONLY_HIGH" },
+        { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_ONLY_HIGH" },
+      ],
       generationConfig: {
         temperature: 0.75,
         maxOutputTokens: GEMINI_TEXT_MAX_OUTPUT_TOKENS,
@@ -233,7 +241,7 @@ function isModelNotFound(r: VoiceScriptGeminiResult): boolean {
 
 export async function generateVoiceScriptWithGemini(params: {
   productBrief: string;
-  durationSeconds: 4 | 6 | 8;
+  durationSeconds: 4 | 6 | 8 | 12;
   motionSummary: string;
   voiceGender: "female" | "male";
 }): Promise<VoiceScriptGeminiResult> {

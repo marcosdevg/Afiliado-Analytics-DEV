@@ -9,6 +9,7 @@ import Mockup from "../components/home/Mockup";
 import { motion } from "framer-motion"; // 📦 Importando o Framer Motion
 
 import Link from "next/link";
+import Script from "next/script";
 
 const integrations = [
   "Shopee",
@@ -44,6 +45,13 @@ export default function HomePage() {
 
   return (
     <div className="relative bg-dark-bg text-text-secondary">
+      <Script id="microsoft-clarity" strategy="afterInteractive">
+        {`(function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "wd89jlz2r1");`}
+      </Script>
 
       {/* ══════ HERO ══════ */}
       <section className="relative flex min-h-screen items-center justify-center overflow-hidden">
@@ -53,9 +61,9 @@ export default function HomePage() {
         <div className="animate-aurora2 pointer-events-none absolute right-[10%] top-[30%] h-[500px] w-[500px] rounded-full bg-[radial-gradient(circle,rgba(124,58,237,0.18)_0%,transparent_65%)] blur-[50px]" />
         <div className="animate-aurora3 pointer-events-none absolute bottom-[10%] left-[40%] h-[400px] w-[400px] rounded-full bg-[radial-gradient(circle,rgba(6,182,212,0.12)_0%,transparent_65%)] blur-[45px]" />
 
-        {/* Grids de Fundo */}
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:72px_72px]" />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_45%,rgba(0,0,0,0.65)_100%)]" />
+        {/* Grids de Fundo — linhas brancas no escuro, pretas no claro */}
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] light:bg-[linear-gradient(rgba(24,24,27,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(24,24,27,0.08)_1px,transparent_1px)] bg-[size:72px_72px]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_45%,rgba(0,0,0,0.65)_100%)] light:bg-[radial-gradient(ellipse_at_center,transparent_55%,rgba(24,24,27,0.08)_100%)]" />
 
         <div className="relative z-10 mx-auto max-w-4xl px-6 py-32 text-center">
           
@@ -136,7 +144,7 @@ export default function HomePage() {
             transition={{ duration: 1, delay: 1 }}
             className="animate-floatx flex flex-col items-center gap-2"
           >
-            <div className="flex h-9 w-6 justify-center rounded-xl border-2 border-white/25 pt-1.5">
+            <div className="flex h-9 w-6 justify-center rounded-xl border-2 border-white/25 light:border-shopee-orange pt-1.5">
               <div className="h-2 w-1 rounded-sm bg-shopee-orange" />
             </div>
           </motion.div>

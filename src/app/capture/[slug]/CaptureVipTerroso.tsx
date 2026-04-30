@@ -4,8 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { Clock, Shield, Star } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
+import { parseColorToRgb } from "@/app/(main)/dashboard/captura/_lib/captureUtils";
 import type { CaptureVipLandingProps } from "./capture-vip-types";
-import { isWhatsAppUrl, useCaptureVipFonts } from "./capture-vip-shared";
+import { handlePixelCTAClick, isWhatsAppUrl, useCaptureVipFonts } from "./capture-vip-shared";
 import CaptureVipEntradaToasts from "./CaptureVipEntradaToasts";
 import { CaptureYoutubeAtSlot } from "./CaptureYoutubeAtSlot";
 import {
@@ -44,6 +45,7 @@ export default function CaptureVipTerroso(props: CaptureVipLandingProps) {
     buttonText,
     ctaHref,
     logoUrl,
+    buttonColor,
     youtubeUrl,
     youtubePosition,
     previewMode = false,
@@ -52,7 +54,11 @@ export default function CaptureVipTerroso(props: CaptureVipLandingProps) {
     promoSectionsEnabled,
     promoTitles,
     promoCards,
+    metaPixelId,
   } = props;
+
+  const color = (buttonColor && buttonColor.trim()) ? buttonColor : "#BE9069";
+  const { r, g, b } = parseColorToRgb(color);
 
   const promoOn = promoSectionsEnabled !== false;
   const inGroupHeading =
@@ -212,10 +218,11 @@ export default function CaptureVipTerroso(props: CaptureVipLandingProps) {
           <div className="w-full">
             <a
               href={ctaHref}
+              onClick={(e) => handlePixelCTAClick(e, metaPixelId)}
               className={`capture-vip-terroso-cta-pulse ${CAPTURE_CTA_CLASS} text-lg font-extrabold tracking-wide transition-opacity hover:opacity-95 active:opacity-90`}
               style={{
-                background: `linear-gradient(135deg, ${TERROSO.ctaFrom} 0%, ${TERROSO.ctaTo} 100%)`,
-                boxShadow: TERROSO.ctaShadow,
+                background: `linear-gradient(135deg, rgba(${r},${g},${b},1) 0%, rgba(${r},${g},${b},0.85) 100%)`,
+                boxShadow: `0 8px 25px rgba(${r},${g},${b},0.35)`,
               }}
             >
               {showWa ? <FaWhatsapp className="text-xl shrink-0" aria-hidden /> : null}
@@ -248,9 +255,8 @@ export default function CaptureVipTerroso(props: CaptureVipLandingProps) {
               <span className="text-[13px] font-semibold leading-snug sm:text-[15px]">Vagas restantes</span>
             </div>
             <p
-              className={`capture-vip-terroso-spots-value mt-2.5 w-full text-center text-[clamp(1.85rem,9vw,2.35rem)] font-extrabold tabular-nums leading-none tracking-tight sm:mt-2 sm:text-[clamp(1.75rem,5vw,2.1rem)] ${
-                spotsPulse ? "capture-vip-terroso-spots-down" : ""
-              }`}
+              className={`capture-vip-terroso-spots-value mt-2.5 w-full text-center text-[clamp(1.85rem,9vw,2.35rem)] font-extrabold tabular-nums leading-none tracking-tight sm:mt-2 sm:text-[clamp(1.75rem,5vw,2.1rem)] ${spotsPulse ? "capture-vip-terroso-spots-down" : ""
+                }`}
             >
               {spotsLeft}
             </p>

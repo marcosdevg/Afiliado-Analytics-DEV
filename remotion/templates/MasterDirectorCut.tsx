@@ -53,12 +53,14 @@ export const MasterDirectorCut: React.FC<VideoInputProps> = (props) => {
     price,
     ctaText,
     productName,
+    showProductNameIntro,
     durationInFrames,
   } = props;
   const { fps, width, height } = useVideoConfig();
   const media = interleaveMedia(rawMedia);
   const ctaDuration = Math.round(fps * 2.8);
-  const introFrames = productName.trim() ? Math.min(Math.round(fps * 1.35), 48) : 0;
+  const showIntro = showProductNameIntro === true && productName.trim().length > 0;
+  const introFrames = showIntro ? Math.min(Math.round(fps * 1.35), 48) : 0;
   const contentFrames = durationInFrames - ctaDuration;
   const scenesCount = media.length || 1;
   const framesPerScene = Math.max(fps, Math.floor(contentFrames / Math.max(scenesCount, 1)));
@@ -88,7 +90,7 @@ export const MasterDirectorCut: React.FC<VideoInputProps> = (props) => {
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
-      {introFrames > 0 && productName.trim() && (
+      {introFrames > 0 && showIntro && (
         <Sequence from={0} durationInFrames={introFrames}>
           <IntroTitleCard title={productName.trim()} durationInFrames={introFrames} />
         </Sequence>

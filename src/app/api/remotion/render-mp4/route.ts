@@ -12,7 +12,7 @@ import { gateGeradorCriativos } from "@/lib/require-entitlements";
 import { createClient } from "../../../../../utils/supabase/server";
 import { getEntitlementsForUser, getUsageSnapshot, recordVideoExportUsage } from "@/lib/plan-server";
 import { consumeAfiliadoCoins, refundAfiliadoCoins } from "@/lib/afiliado-coins-server";
-import { AFILIADO_COINS_VIDEO_EDITOR_COST } from "@/lib/afiliado-coins";
+import { AFILIADO_COINS_VIDEO_EDITOR_EXPORT_COST } from "@/lib/afiliado-coins";
 import { REMOTION_COMPOSITION_ID } from "../../../../../remotion/constants";
 import type { VideoInputProps } from "../../../../../remotion/types";
 import { formatUploadError } from "../../../../lib/remotion/format-upload-error";
@@ -66,11 +66,11 @@ export async function POST(req: Request) {
       try { body0 = await req.clone().json(); } catch { body0 = {}; }
       if (body0.useCoins) {
         const consume = await consumeAfiliadoCoins(
-          supabase, gate.userId, AFILIADO_COINS_VIDEO_EDITOR_COST, "video_editor_export",
+          supabase, gate.userId, AFILIADO_COINS_VIDEO_EDITOR_EXPORT_COST, "video_editor_export",
         );
         if (!consume.ok) {
           return NextResponse.json(
-            { error: `Coins insuficientes (necessário: ${AFILIADO_COINS_VIDEO_EDITOR_COST}). Recarregue seus Afiliado Coins.` },
+            { error: `Coins insuficientes (necessário: ${AFILIADO_COINS_VIDEO_EDITOR_EXPORT_COST}). Recarregue seus Afiliado Coins.` },
             { status: 402 },
           );
         }
@@ -194,7 +194,7 @@ export async function POST(req: Request) {
       console.error("render-mp4", err);
       if (paidWithCoins) {
         await refundAfiliadoCoins(
-          supabase, gate.userId, AFILIADO_COINS_VIDEO_EDITOR_COST, "refund_video_editor_export_failed",
+          supabase, gate.userId, AFILIADO_COINS_VIDEO_EDITOR_EXPORT_COST, "refund_video_editor_export_failed",
         );
       }
       await send({

@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
     const textoBruto = typeof body.textoBruto === "string" ? body.textoBruto : "";
     const idMensagem = typeof body.idMensagem === "string" ? body.idMensagem.trim() : null;
     const userIdFilter = typeof body.userId === "string" ? body.userId.trim() : "";
+    const apikeyFilter = typeof body.apikey === "string" ? body.apikey.trim() : "";
     const imagemBase64Raw =
       typeof body.imagemBase64 === "string"
         ? body.imagemBase64
@@ -108,16 +109,17 @@ export async function POST(req: NextRequest) {
       .from("evolution_instances")
       .select("id, user_id, nome_instancia, hash")
       .eq("nome_instancia", instanceName);
+    if (apikeyFilter) instQuery = instQuery.eq("hash", apikeyFilter);
     if (userIdFilter) instQuery = instQuery.eq("user_id", userIdFilter);
     const { data: instList, error: instErr } = await instQuery;
     if (instErr) return NextResponse.json({ error: instErr.message }, { status: 500 });
     if (!instList?.length) {
       return NextResponse.json({ action: "skip", reason: "instance_not_found" }, { status: 200 });
     }
-    if (instList.length > 1 && !userIdFilter) {
+    if (instList.length > 1 && !userIdFilter && !apikeyFilter) {
       return NextResponse.json(
         {
-          error: "Ambíguo: mais de uma instância com este nome. Envie userId no body.",
+          error: "Ambíguo: mais de uma instância com este nome. Envie apikey (preferencial) ou userId no body.",
           count: instList.length,
         },
         { status: 400 }
@@ -286,7 +288,6 @@ export async function POST(req: NextRequest) {
           reason: "webhook_failed",
           webhookStatus,
           ...disparoWebhookDebugMeta(webhookUrl),
-          disparoPayload,
           detail: t.slice(0, 200),
         },
         { status: 200 }
@@ -309,7 +310,6 @@ export async function POST(req: NextRequest) {
       webhookDelivered: webhookOk,
       webhookStatus,
       ...disparoWebhookDebugMeta(webhookUrl),
-      disparoPayload,
       textoSaida,
     });
   } catch (e) {

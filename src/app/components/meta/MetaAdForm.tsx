@@ -6,11 +6,16 @@ import { META_CALL_TO_ACTIONS } from "@/lib/meta-ads-constants";
 import { MetaFormLabel } from "@/app/components/meta/MetaFormLabel";
 import MetaSearchablePicker from "@/app/components/meta/MetaSearchablePicker";
 import ShopeeLinkHistoryPickButton from "@/app/components/shopee/ShopeeLinkHistoryPickButton";
+import { uploadMetaAdVideo } from "@/lib/meta-ad-video-upload";
+import {
+  extractVideoCoverFrame,
+  uploadCoverBlobToMetaLibrary,
+} from "@/lib/meta-ad-cover-frame";
 
 type Page = { id: string; name: string };
 type Pixel = { id: string; name: string };
 type LibraryImage = { hash: string; url: string | null; id: string | null };
-type LibraryVideo = { id: string; title: string; source: string | null; length: number | null; picture: string | null };
+type LibraryVideo = { id: string; title: string; source: string | null; length: number | null; picture: string | null; status?: string | null; ready?: boolean };
 
 export type MetaAdFormBody = {
   name: string;
@@ -322,16 +327,20 @@ export default function MetaAdForm({
                     const f = e.target.files?.[0];
                     if (!f || !adAccountId) return;
                     setUploadingImage(true);
+                    const previewUrl = URL.createObjectURL(f);
                     try {
                       const form = new FormData();
                       form.set("file", f);
                       form.set("ad_account_id", adAccountId);
                       const res = await fetch("/api/meta/adimages", { method: "POST", body: form });
                       const json = await res.json();
-                      if (!res.ok) throw new Error(json?.error ?? "Erro");
+                      if (!res.ok) {
+                        URL.revokeObjectURL(previewUrl);
+                        throw new Error(json?.error ?? "Erro");
+                      }
                       setImageHash(json.hash);
                       setImageUrl("");
-                      setLibraryImages((prev) => [{ hash: json.hash, url: null, id: null }, ...prev]);
+                      setLibraryImages((prev) => [{ hash: json.hash, url: previewUrl, id: null }, ...prev]);
                     } finally {
                       setUploadingImage(false);
                       e.target.value = "";
@@ -389,14 +398,24 @@ export default function MetaAdForm({
                   if (!f || !adAccountId) return;
                   setUploadingVideo(true);
                   try {
-                    const form = new FormData();
-                    form.set("file", f);
-                    form.set("ad_account_id", adAccountId);
-                    const res = await fetch("/api/meta/advideos", { method: "POST", body: form });
-                    const json = await res.json();
-                    if (!res.ok) throw new Error(json?.error ?? "Erro");
-                    setVideoId(json.video_id);
-                    setLibraryVideos((prev) => [{ id: json.video_id, title: json.video_id, source: null, length: null, picture: null }, ...prev]);
+                    const [{ videoId: newVideoId }, coverResult] = await Promise.all([
+                      uploadMetaAdVideo(f, adAccountId),
+                      (async () => {
+                        try {
+                          const frame = await extractVideoCoverFrame(f);
+                          return await uploadCoverBlobToMetaLibrary(frame, adAccountId);
+                        } catch {
+                          return null;
+                        }
+                      })(),
+                    ]);
+                    setVideoId(newVideoId);
+                    setLibraryVideos((prev) => [{ id: newVideoId, title: newVideoId, source: null, length: null, picture: null }, ...prev]);
+                    if (coverResult) {
+                      setImageHash(coverResult.hash);
+                      setImageUrl("");
+                      setLibraryImages((prev) => [{ hash: coverResult.hash, url: coverResult.previewUrl, id: null }, ...prev]);
+                    }
                   } finally {
                     setUploadingVideo(false);
                     e.target.value = "";
@@ -419,14 +438,14 @@ export default function MetaAdForm({
           </div>
           <p className="text-xs font-medium text-text-primary flex items-center gap-1">
             Capa do vídeo
-            <span title="Obrigatório para anúncio em vídeo." aria-label="Ajuda">
+            <span title="Gerada automaticamente do vídeo. Pode trocar se quiser." aria-label="Ajuda">
               <HelpCircle className="h-3.5 w-3.5 text-text-secondary/45 hover:text-shopee-orange cursor-help" />
             </span>
           </p>
           <div className="flex flex-wrap gap-2 md:gap-3">
             <label className="inline-flex items-center gap-2 rounded-md border border-dark-border bg-dark-card px-3 py-2 text-sm font-medium text-text-primary hover:bg-dark-bg cursor-pointer">
               <Upload className="h-4 w-4" />
-              Enviar imagem
+              Trocar capa (opcional)
               <input
                 type="file"
                 accept="image/*"
@@ -436,16 +455,20 @@ export default function MetaAdForm({
                   const f = e.target.files?.[0];
                   if (!f || !adAccountId) return;
                   setUploadingImage(true);
+                  const previewUrl = URL.createObjectURL(f);
                   try {
                     const form = new FormData();
                     form.set("file", f);
                     form.set("ad_account_id", adAccountId);
                     const res = await fetch("/api/meta/adimages", { method: "POST", body: form });
                     const json = await res.json();
-                    if (!res.ok) throw new Error(json?.error ?? "Erro");
+                    if (!res.ok) {
+                      URL.revokeObjectURL(previewUrl);
+                      throw new Error(json?.error ?? "Erro");
+                    }
                     setImageHash(json.hash);
                     setImageUrl("");
-                    setLibraryImages((prev) => [{ hash: json.hash, url: null, id: null }, ...prev]);
+                    setLibraryImages((prev) => [{ hash: json.hash, url: previewUrl, id: null }, ...prev]);
                   } finally {
                     setUploadingImage(false);
                     e.target.value = "";

@@ -128,7 +128,7 @@ function FeatureCard({ feature }: { feature: (typeof features)[number] }) {
 
         {/* Ícone + Título */}
         <div className="mb-4 flex items-start gap-[14px]">
-          <div className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[12px] bg-gradient-to-br from-[#3d1f17] to-[#1e1210] shadow-[0_0_0_1px_rgba(236,92,60,0.12)] transition-all duration-400 group-hover:shadow-[0_0_10px_rgba(236,92,60,0.20)] group-hover:scale-105">
+          <div className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[12px] bg-gradient-to-br from-[#3d1f17] to-[#1e1210] light:bg-none light:bg-white shadow-[0_0_0_1px_rgba(236,92,60,0.12)] light:shadow-[0_0_0_1.5px_#EC5C3C] transition-all duration-400 group-hover:shadow-[0_0_10px_rgba(236,92,60,0.20)] light:group-hover:shadow-[0_0_0_2px_#EC5C3C,0_0_14px_rgba(236,92,60,0.35)] group-hover:scale-105">
             <Icon className="h-[18px] w-[18px] text-[#EC5C3C]" />
           </div>
 

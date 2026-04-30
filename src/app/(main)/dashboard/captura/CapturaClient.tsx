@@ -21,6 +21,7 @@ import {
   LayoutTemplate,
   Smartphone,
   Monitor,
+  Loader2,
 } from "lucide-react";
 
 import { useSupabase } from "../../../components/auth/AuthProvider";
@@ -58,6 +59,7 @@ import {
   promoTitlesForForm,
   resolvePromoTitlesForPublicPage,
 } from "@/lib/capture-promo-sections";
+import { compressImageFileToMaxBytes } from "@/lib/compress-image-client";
 import {
   AURORA_CARD_DEFAULTS,
   appendEmptyAuroraCard,
@@ -129,23 +131,6 @@ function useMatchMedia(query: string, ssrFallback = false): boolean {
 const DOMAIN = "s.afiliadoanalytics.com.br";
 const LOGO_BUCKET = "capture-logos";
 const PRO_CAPTURE_CHECKOUT_URL = "https://pay.kiwify.com.br/y7I4SuT";
-
-/** `public/celularmockup.png` (957×1949) — área útil da tela em % do retângulo do mockup. */
-const VIP_PREVIEW_MOCKUP = {
-  src: "/celularmockup.png",
-  w: 957,
-  h: 1949,
-  /**
-   * Insets em viewport larga (≥768px, Tailwind `md`): painel do dashboard em desktop.
-   * top/bottom menores = conteúdo ocupa mais em altura; lados menores = mais largura.
-   */
-  screen: { top: "5.65%", left: "4.55%", right: "4.55%", bottom: "6.05%" },
-  /**
-   * Insets em viewport estreita (&lt;768px): dashboard no telemóvel / coluna estreita.
-   * Calibre manualmente (valores iniciais abaixo).
-   */
-  screenMaxMd: { top: "2%", left: "4.55%", right: "2.55%", bottom: "4.05%" },
-} as const;
 
 /**
  * `public/pc.png` (2330×1464) — área do display em % do retângulo **da própria imagem**
@@ -279,16 +264,37 @@ export default function CapturaClient() {
     isWizardOpenRef.current = mode === "create" || mode === "edit" || mode === "pickTemplate";
   }, [mode]);
 
+  const forceScrollToTop = () => {
+    if (typeof window === "undefined") return;
+    try {
+      // 1. Tenta focar exatamente no título/cabeçalho da página
+      const header = pageHeaderRef.current;
+      if (header) {
+        header.scrollIntoView({ behavior: "auto", block: "start" });
+      } else {
+        // 2. Fallback: Tenta o container <main> (comum no dashboard)
+        const main = document.querySelector("main");
+        if (main) {
+          main.scrollTo({ top: 0, behavior: "auto" });
+          main.scrollTop = 0;
+        }
+      }
+      
+      // 3. Fallback extra: window/body
+      window.scrollTo({ top: 0, behavior: "auto" });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    } catch (e) {
+      console.error("Scroll error", e);
+    }
+  };
+
   useEffect(() => {
-    if (mode !== "create" && mode !== "edit") return;
-
-    requestAnimationFrame(() => {
-      const el = pageHeaderRef.current;
-      if (!el) return;
-
-      const top = el.getBoundingClientRect().top + window.scrollY;
-      window.scrollTo({ top, behavior: "smooth" });
-    });
+    // Sempre que mudar o modo (ex: entrar na criação/edição) ou o passo, força o scroll para o topo.
+    if (mode === "create" || mode === "edit" || mode === "pickTemplate") {
+      // Usamos um pequeno delay para garantir que o DOM já atualizou
+      setTimeout(forceScrollToTop, 50);
+    }
   }, [step, mode]);
 
   // form states
@@ -412,9 +418,6 @@ export default function CapturaClient() {
   const [vipPreviewDevice, setVipPreviewDevice] = useState<"mobile" | "desktop">("mobile");
   /** Recorte da “tela” no mockup celular: outro conjunto de % quando a janela é menor que 768px (Tailwind md). */
   const vipMobilePreviewNarrow = useMatchMedia("(max-width: 767px)");
-  const vipMobileScreenInsets = vipMobilePreviewNarrow
-    ? VIP_PREVIEW_MOCKUP.screenMaxMd
-    : VIP_PREVIEW_MOCKUP.screen;
   const vipPcScreenInsets = vipMobilePreviewNarrow
     ? VIP_PREVIEW_PC_MOCKUP.screenMaxMd
     : VIP_PREVIEW_PC_MOCKUP.screen;
@@ -443,6 +446,7 @@ export default function CapturaClient() {
 
   // Logo
   const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [compressingLogo, setCompressingLogo] = useState(false);
   const [logoLocalPreviewUrl, setLogoLocalPreviewUrl] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
@@ -465,6 +469,7 @@ export default function CapturaClient() {
     setLogoLocalPreviewUrl(u);
     return () => URL.revokeObjectURL(u);
   }, [logoFile]);
+
 
   const publicUrl = useMemo(() => {
     const s = site?.slug ?? slug;
@@ -824,7 +829,7 @@ export default function CapturaClient() {
     setDescription("");
     setButtonText("");
     setWhatsappUrl("");
-    setButtonColor("#25D366");
+    setButtonColor(t === "vip_terroso" ? "#BE9069" : "#25D366");
     setLayoutVariant(t === "classic" ? "icons" : "scarcity");
     setMetaPixelId("");
     setYoutubeUrl("");
@@ -1110,12 +1115,13 @@ export default function CapturaClient() {
   }
 
   function validateLogoFileOrThrow(f: File) {
-    if (f.type !== "image/png") {
-      throw new Error("A logo deve ser um arquivo PNG.");
+    const isPng = f.type === "image/png";
+    const isJpeg = f.type === "image/jpeg" || f.type === "image/jpg";
+
+    if (!isPng && !isJpeg) {
+      throw new Error("A logo deve ser um arquivo PNG ou JPG.");
     }
-    if (f.size > MAX_LOGO_BYTES) {
-      throw new Error("A logo deve ter no máximo 1MB.");
-    }
+    // Não barramos mais pelo tamanho aqui, pois o compressor vai tentar ajustar antes do upload.
   }
 
   // Usado no CREATE (logo sobe imediatamente após criar)
@@ -1784,6 +1790,13 @@ export default function CapturaClient() {
 
   if (saving && (mode === "create" || mode === "edit")) return <LoadingOverlay message="Salvando..." />;
 
+  function handleCloseWizard() {
+    setMode(sites.length > 0 ? "view" : "empty");
+    setStep(1);
+    setSite(null);
+    setError(null);
+  }
+
   const isVipPreview =
     pageTemplate === "vip_rosa" ||
     pageTemplate === "vip_terroso" ||
@@ -1809,13 +1822,17 @@ export default function CapturaClient() {
   return (
     <div className="px-4 sm:px-0">
       {/* Header */}
-      <div ref={pageHeaderRef} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary font-heading">Site de Captura</h1>
-          <p className="text-sm text-text-secondary mt-1">Crie uma página simples com botão e acompanhe visitas e cliques.</p>
+      <div ref={pageHeaderRef} className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div className="pr-16 sm:pr-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary font-heading leading-tight">
+            Site de Captura
+          </h1>
+          <p className="text-xs sm:text-sm text-text-secondary mt-1">
+            Crie uma página simples com botão e acompanhe visitas e cliques.
+          </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+        <div className={mode === "create" || mode === "edit" || mode === "pickTemplate" ? "absolute top-0 right-0 sm:relative sm:top-auto sm:right-auto" : "flex flex-col sm:flex-row gap-2 w-full sm:w-auto"}>
           {mode === "empty" && canCreateAnotherSite && (
             <button
               onClick={openTemplatePicker}
@@ -1834,6 +1851,18 @@ export default function CapturaClient() {
             >
               <Plus className="h-5 w-5" />
               Criar outro site
+            </button>
+          )}
+
+          {(mode === "create" || mode === "edit" || mode === "pickTemplate") && (
+            <button
+              onClick={handleCloseWizard}
+              className="relative flex items-center gap-2 px-4 py-1.5 sm:px-5 sm:py-2 rounded-full border border-red-500/20 bg-red-500/90 text-white hover:bg-red-500 transition-all duration-500 group shadow-lg shadow-red-500/20 overflow-hidden"
+              type="button"
+            >
+              <div className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+              <span className="relative text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em]">Fechar</span>
+              <X className="relative h-3 w-3 sm:h-3.5 sm:w-3.5 transition-all duration-500 group-hover:rotate-180" strokeWidth={3} />
             </button>
           )}
         </div>
@@ -2108,9 +2137,16 @@ export default function CapturaClient() {
           {/* Form */}
           <div className="bg-dark-card p-4 sm:p-6 rounded-lg border border-dark-border">
             <div className="flex items-center justify-between gap-3 mb-4">
-              <h2 className="text-lg sm:text-xl font-semibold text-text-primary">
-                {mode === "create" ? "Criar Site de Captura" : "Editar Site de Captura"}
-              </h2>
+              <div className="flex flex-col">
+                <h2 className="text-lg sm:text-xl font-semibold text-text-primary">
+                  {mode === "create" ? "Criar Site de Captura" : "Editar Site de Captura"}
+                </h2>
+                {mode === "edit" && (
+                  <p className="text-xs text-text-secondary/80 mt-1">
+                    Slug: <span className="font-mono">{site?.slug}</span>
+                  </p>
+                )}
+              </div>
 
               {mode === "edit" && (
                 <button
@@ -2123,7 +2159,7 @@ export default function CapturaClient() {
                   title="Apagar para poder mudar o slug"
                 >
                   <Trash2 className="h-4 w-4" />
-                  Apagar site
+                  <span className="hidden sm:inline">Apagar site</span>
                 </button>
               )}
             </div>
@@ -2284,10 +2320,10 @@ export default function CapturaClient() {
                     <label className="block cursor-pointer rounded-lg border border-dashed border-dark-border bg-dark-bg/40 hover:bg-dark-bg/60 transition-colors p-4">
                       <input
                         type="file"
-                        accept="image/png"
+                        accept="image/png, image/jpeg, image/jpg"
                         className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0] ?? null;
+                        onChange={async (e) => {
+                          const f = e.target.files?.[0];
 
                           // permite selecionar o mesmo arquivo novamente depois
                           e.target.value = "";
@@ -2300,33 +2336,56 @@ export default function CapturaClient() {
                             return;
                           }
 
-                          // validação imediata (tipo e tamanho)
-                          if (f.type !== "image/png") {
-                            setError("A logo deve ser um arquivo PNG.");
-                            setLogoFile(null);
-                            setLogoPendingAction("keep");
-                            return;
-                          }
-                          if (f.size > MAX_LOGO_BYTES) {
-                            setError("A logo deve ter no máximo 1MB.");
+                          // Validação de tipo
+                          const isPng = f.type === "image/png";
+                          const isJpeg = f.type === "image/jpeg" || f.type === "image/jpg";
+
+                          if (!isPng && !isJpeg) {
+                            setError("Formato inválido. Use PNG ou JPG.");
                             setLogoFile(null);
                             setLogoPendingAction("keep");
                             return;
                           }
 
                           setError(null);
-                          setLogoFile(f);
-                          setLogoPendingAction("upload");
+
+                          // Se for maior que 1MB, comprimimos
+                          if (f.size > MAX_LOGO_BYTES) {
+                            setCompressingLogo(true);
+                            try {
+                              const compressedBlob = await compressImageFileToMaxBytes(f, MAX_LOGO_BYTES);
+                              const compressedFile = new File([compressedBlob], f.name, {
+                                type: compressedBlob.type,
+                                lastModified: Date.now(),
+                              });
+                              setLogoFile(compressedFile);
+                              setLogoPendingAction("upload");
+                            } catch (err: unknown) {
+                              setError(err instanceof Error ? err.message : "Erro ao comprimir imagem.");
+                              setLogoFile(null);
+                            } finally {
+                              setCompressingLogo(false);
+                            }
+                          } else {
+                            setLogoFile(f);
+                            setLogoPendingAction("upload");
+                          }
                         }}
                       />
 
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-md bg-dark-card border border-dark-border flex items-center justify-center">
-                          <Plus className="h-5 w-5 text-text-secondary" />
+                          {compressingLogo ? (
+                            <Loader2 className="h-5 w-5 text-shopee-orange animate-spin" />
+                          ) : (
+                            <Plus className="h-5 w-5 text-text-secondary" />
+                          )}
                         </div>
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold text-text-primary">Selecionar logo</div>
-                          <div className="text-xs text-text-secondary truncate">PNG até 1MB</div>
+                          <div className="text-sm font-semibold text-text-primary">
+                            {compressingLogo ? "Comprimindo..." : "Selecionar logo"}
+                          </div>
+                          <div className="text-xs text-text-secondary truncate">PNG ou JPG (comprimido auto)</div>
                         </div>
                       </div>
                     </label>
@@ -3811,16 +3870,10 @@ export default function CapturaClient() {
                     ) : (
                     <div className="flex min-h-0 flex-1 items-center justify-center p-3 sm:p-4">
                       {(() => {
-                        const mock =
-                          vipPreviewDevice === "mobile" ? VIP_PREVIEW_MOCKUP : VIP_PREVIEW_PC_MOCKUP;
                         const screenRoundClass =
                           vipPreviewDevice === "mobile"
                             ? "rounded-[3.05rem] sm:rounded-[3.2rem]"
                             : "rounded-md sm:rounded-lg";
-                        const frameMaxWClass =
-                          vipPreviewDevice === "mobile"
-                            ? "max-w-[min(100%,320px)]"
-                            : "max-w-[min(100%,min(920px,96vw))]";
                         const isMobileFrame = vipPreviewDevice === "mobile";
 
                         const vipPreviewToastOverlay = (
@@ -3890,29 +3943,40 @@ export default function CapturaClient() {
                         if (isMobileFrame) {
                           return (
                             <div
-                              className={`relative mx-auto h-full max-h-full w-auto shrink-0 ${frameMaxWClass}`}
-                              style={{ aspectRatio: `${mock.w} / ${mock.h}` }}
+                              className="relative mx-auto shadow-2xl shrink-0"
+                              style={{
+                                height: "100%",
+                                maxHeight: 760,
+                                maxWidth: 320,
+                                width: "auto",
+                                aspectRatio: "9 / 19.5",
+                                background: "#0a0a0b",
+                                borderRadius: 42,
+                                padding: 8,
+                              }}
                             >
+                              {/* Botões laterais simulados (cor inline pra não trocar no tema claro) */}
+                              <span aria-hidden className="absolute" style={{ left: -2, top: 110, width: 3, height: 30, borderRadius: 2, background: "#1a1a1e" }} />
+                              <span aria-hidden className="absolute" style={{ right: -2, top: 140, width: 3, height: 60, borderRadius: 2, background: "#1a1a1e" }} />
+
                               <div
-                                className={`absolute z-[1] overflow-hidden ${screenRoundClass}`}
-                                style={vipMobileScreenInsets}
+                                className="relative w-full h-full overflow-hidden"
+                                style={{ borderRadius: 34, background: "#18181b" }}
                               >
+                                {/* Notch/Dynamic Island simulada */}
+                                <div
+                                  aria-hidden
+                                  className="absolute left-1/2 -translate-x-1/2 z-[10]"
+                                  style={{ top: 8, width: 96, height: 22, borderRadius: 14, background: "#000" }}
+                                />
+                                
                                 <VipPreviewViewportShim
-                                  enabled={vipMobilePreviewNarrow}
+                                  enabled
                                   overlay={vipPreviewToastOverlay}
                                 >
                                   {vipLanding}
                                 </VipPreviewViewportShim>
                               </div>
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={mock.src}
-                                alt=""
-                                width={mock.w}
-                                height={mock.h}
-                                className="pointer-events-none absolute inset-0 z-[50] h-full w-full select-none object-contain"
-                                draggable={false}
-                              />
                             </div>
                           );
                         }

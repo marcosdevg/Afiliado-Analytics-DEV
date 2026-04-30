@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* Configura a variante `dark:` do Tailwind v4 para ler a classe `.dark`
+ * aplicada no <html> pelo ThemeProvider. Assim podemos usar classes como
+ * `dark:bg-dark-card` em componentes de landing sem romper o comportamento
+ * padrão (prefers-color-scheme) em páginas que não usam o toggle.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant light (&:where(.light, .light *));
+
 @theme {
   --color-shopee-orange: #EE4D2D;
   --color-dark-bg: #18181B;        
@@ -26,15 +34,715 @@ html {
 }
 
 :root {
-  --background: #FFFFFF;
-  --foreground: #171717;
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ═══════════════ Tema Claro ═══════════════
+ * Sobrepõe as variáveis do @theme quando html.light está ativo.
+ * Como as classes do Tailwind (bg-dark-bg, text-text-primary, etc.)
+ * são compiladas para var(--color-...), a troca propaga em todo o app.
+ */
+html.light {
+  --background: #FFFFFF;
+  --foreground: #171717;
+
+  --color-dark-bg: #F4F4F5;
+  --color-dark-card: #FFFFFF;
+  --color-dark-border: #E4E4E7;
+  --color-dark-tooltip: #FFFFFF;
+  --color-text-primary: #18181B;
+  --color-text-secondary: #52525B;
+  --color-border-secondary: #A1A1AA;
+}
+
+html.light body {
+  background: var(--color-dark-bg) !important;
+}
+
+/* ═══════════════ Tema Claro — Overrides de classes hardcoded ═══════════════
+ * Muitos componentes usam cores em hex arbitrário (bg-[#18181b]) ou paletas
+ * escuras do Tailwind (bg-zinc-900). Como não foram escritos com dark:/light:,
+ * sobrepomos aqui para que respondam ao toggle.
+ */
+
+/* —— Backgrounds escuros → fundo claro —— */
+html.light .bg-\[\#18181b\],
+html.light .bg-\[\#18181B\],
+html.light .bg-\[\#18181c\],
+html.light .bg-\[\#18181C\],
+html.light .bg-\[\#17171a\],
+html.light .bg-\[\#191920\],
+html.light .bg-\[\#1a1a1c\],
+html.light .bg-\[\#1b1b1f\],
+html.light .bg-\[\#1c1c1f\],
+html.light .bg-\[\#1C1C1F\],
+html.light .bg-\[\#1c1c20\],
+html.light .bg-\[\#1e1e24\],
+html.light .bg-\[\#1f1f23\],
+html.light .bg-\[\#1F1F23\],
+html.light .bg-\[\#1a1a1e\],
+html.light .bg-\[\#1A1A1E\],
+html.light .bg-\[\#141418\],
+html.light .bg-\[\#131316\],
+html.light .bg-\[\#161618\],
+html.light .bg-\[\#121214\],
+html.light .bg-\[\#111\],
+html.light .bg-\[\#111111\],
+html.light .bg-\[\#0a0a0a\],
+html.light .bg-\[\#202025\],
+html.light .bg-\[\#212124\],
+html.light .bg-\[\#25252b\],
+html.light .bg-\[\#1b1b1e\],
+html.light .bg-zinc-800,
+html.light .bg-zinc-900,
+html.light .bg-zinc-950,
+html.light .bg-zinc-800\/90,
+html.light .bg-zinc-800\/92,
+html.light .bg-zinc-800\/95,
+html.light .bg-zinc-800\/98,
+html.light .bg-zinc-900\/80,
+html.light .bg-zinc-900\/90,
+html.light .bg-zinc-900\/92,
+html.light .bg-zinc-900\/95,
+html.light .bg-zinc-900\/98,
+html.light .bg-slate-800,
+html.light .bg-slate-900,
+html.light .bg-slate-950,
+html.light .bg-slate-900\/90,
+html.light .bg-slate-900\/95,
+html.light .bg-gray-800,
+html.light .bg-gray-900,
+html.light .bg-gray-950,
+html.light .bg-gray-900\/90,
+html.light .bg-gray-900\/95,
+html.light .bg-neutral-800,
+html.light .bg-neutral-900,
+html.light .bg-neutral-950,
+html.light .bg-neutral-900\/90,
+html.light .bg-neutral-900\/95,
+html.light .bg-black,
+html.light .bg-black\/80,
+html.light .bg-black\/90 {
+  background-color: #F4F4F5 !important;
+}
+
+html.light .hover\:bg-zinc-800\/98:hover,
+html.light .hover\:bg-zinc-900\/95:hover,
+html.light .hover\:bg-zinc-900\/98:hover {
+  background-color: #E4E4E7 !important;
+}
+
+/* —— Cards / painéis intermediários → branco/cinza bem claro —— */
+html.light .bg-\[\#27272a\],
+html.light .bg-\[\#27272A\],
+html.light .bg-\[\#222226\],
+html.light .bg-\[\#222228\],
+html.light .bg-\[\#232328\],
+html.light .bg-\[\#23232A\],
+html.light .bg-\[\#242427\],
+html.light .bg-\[\#242428\],
+html.light .bg-\[\#242431\],
+html.light .bg-\[\#252528\],
+html.light .bg-\[\#2a2a2a\],
+html.light .bg-\[\#2a2a30\],
+html.light .bg-\[\#2c2c30\],
+html.light .bg-\[\#2c2c32\],
+html.light .bg-\[\#2f2f34\],
+html.light .bg-\[\#2d2e32\],
+html.light .bg-\[\#303033\],
+html.light .bg-\[\#323232\],
+html.light .bg-\[\#323235\],
+html.light .bg-\[\#333\],
+html.light .bg-\[\#39393E\],
+html.light .bg-\[\#3e3e46\],
+html.light .bg-\[\#333\]\/80,
+html.light .bg-\[\#333\]\/50,
+html.light .bg-zinc-700,
+html.light .bg-slate-700,
+html.light .bg-gray-700,
+html.light .bg-neutral-700 {
+  background-color: #FFFFFF !important;
+}
+
+/* —— Hovers escuros sobre card —— */
+html.light .hover\:bg-\[\#2f2f34\]\/80:hover,
+html.light .hover\:bg-\[\#2f2f34\]:hover,
+html.light .hover\:bg-\[\#27272a\]:hover,
+html.light .hover\:bg-\[\#222228\]:hover,
+html.light .hover\:bg-\[\#1a1a1e\]:hover,
+html.light .hover\:bg-\[\#1c1c1f\]:hover,
+html.light .hover\:bg-\[\#232328\]:hover,
+html.light .hover\:bg-\[\#333\]:hover,
+html.light .hover\:bg-zinc-800:hover,
+html.light .hover\:bg-zinc-700:hover,
+html.light .hover\:bg-slate-800:hover,
+html.light .hover\:bg-gray-800:hover,
+html.light .hover\:bg-neutral-800:hover {
+  background-color: #F4F4F5 !important;
+}
+
+/* —— Borders escuras → cinza claro —— */
+html.light .border-\[\#2c2c32\],
+html.light .border-\[\#27272a\],
+html.light .border-\[\#27272A\],
+html.light .border-\[\#2a2a30\],
+html.light .border-\[\#34343b\],
+html.light .border-\[\#35353d\],
+html.light .border-\[\#3a3a42\],
+html.light .border-\[\#3e3e3e\],
+html.light .border-\[\#3e3e46\],
+html.light .border-\[\#3f3f46\],
+html.light .border-\[\#4a4a52\],
+html.light .border-\[\#4c4c52\],
+html.light .border-\[\#585858\],
+html.light .border-\[\#5a5a63\],
+html.light .border-\[\#1f1f23\],
+html.light .border-\[\#333\],
+html.light .border-white\/10,
+html.light .border-white\/12,
+html.light .border-white\/15,
+html.light .border-white\/20,
+html.light .border-zinc-700,
+html.light .border-zinc-800,
+html.light .border-zinc-900,
+html.light .border-slate-700,
+html.light .border-slate-800,
+html.light .border-slate-900,
+html.light .border-gray-700,
+html.light .border-gray-800,
+html.light .border-gray-900,
+html.light .border-neutral-700,
+html.light .border-neutral-800,
+html.light .border-neutral-900 {
+  border-color: #E4E4E7 !important;
+}
+
+/* —— Border-top específicas (setas de tooltips com cor hardcoded) —— */
+html.light .border-t-\[\#111\],
+html.light .border-t-\[\#18181b\],
+html.light .border-b-\[\#111\],
+html.light .border-b-\[\#18181b\] {
+  border-color: #FFFFFF !important;
+}
+
+/* —— Textos claros sobre dark → escuros no claro —— */
+html.light .text-\[\#f0f0f2\],
+html.light .text-\[\#F0F0F2\],
+html.light .text-\[\#d2d2d2\],
+html.light .text-\[\#D2D2D2\],
+html.light .text-\[\#d0d0d0\],
+html.light .text-\[\#d4d4d8\],
+html.light .text-\[\#d7d7dc\],
+html.light .text-\[\#d8d8d8\],
+html.light .text-\[\#e0e0e0\],
+html.light .text-\[\#e1e1e5\],
+html.light .text-\[\#e8e8ec\],
+html.light .text-\[\#C4C4C8\],
+html.light .text-\[\#fff\],
+html.light .text-zinc-100,
+html.light .text-zinc-200,
+html.light .text-slate-100,
+html.light .text-slate-200,
+html.light .text-gray-100,
+html.light .text-gray-200,
+html.light .text-neutral-100,
+html.light .text-neutral-200 {
+  color: #18181B !important;
+}
+
+/* —— Textos secundários cinza → cinza escuro no claro —— */
+html.light .text-\[\#bebebe\],
+html.light .text-\[\#9a9aa2\],
+html.light .text-\[\#9c9ca5\],
+html.light .text-\[\#9d9da5\],
+html.light .text-\[\#96969f\],
+html.light .text-\[\#a0a0a0\],
+html.light .text-\[\#a8a8a8\],
+html.light .text-\[\#686868\],
+html.light .text-\[\#6b6b72\],
+html.light .text-\[\#6b6b73\],
+html.light .text-\[\#6f6f78\],
+html.light .text-\[\#7a7a80\],
+html.light .text-\[\#7a7a82\],
+html.light .text-\[\#7d7d86\],
+html.light .text-\[\#555\],
+html.light .text-\[\#5a5a5a\],
+html.light .text-\[\#5c5c5c\],
+html.light .text-\[\#868686\],
+html.light .text-\[\#888888\],
+html.light .text-\[\#888\],
+html.light .text-\[\#8a8a90\],
+html.light .text-\[\#8b8b96\],
+html.light .text-\[\#8e8e96\],
+html.light .text-\[\#b0b0b0\],
+html.light .text-\[\#b5b5ba\],
+html.light .text-\[\#b8b8bc\],
+html.light .text-\[\#bbb\],
+html.light .text-\[\#bdbdc3\],
+html.light .text-\[\#c8c8ce\],
+html.light .text-\[\#C8C8CE\],
+html.light .text-\[\#e5e5e5\],
+html.light .text-\[\#E5E5E5\],
+html.light .text-zinc-300,
+html.light .text-zinc-400,
+html.light .text-zinc-500,
+html.light .text-slate-300,
+html.light .text-slate-400,
+html.light .text-slate-500,
+html.light .text-gray-300,
+html.light .text-gray-400,
+html.light .text-gray-500,
+html.light .text-neutral-300,
+html.light .text-neutral-400,
+html.light .text-neutral-500,
+html.light .text-white\/60,
+html.light .text-white\/70,
+html.light .text-white\/80 {
+  color: #52525B !important;
+}
+
+/* —— text-white genérico: preservar branco apenas sobre fundos coloridos ——
+ * Por padrão text-white vira escuro no modo claro. Exceções: se o elemento
+ * também tem bg colorido (laranja Shopee, gradientes, cores fortes), mantém
+ * branco para garantir contraste.
+ */
+html.light .text-white {
+  color: #18181B !important;
+}
+
+html.light .bg-shopee-orange.text-white,
+html.light .bg-shopee-orange .text-white,
+html.light .bg-gradient-to-r.text-white,
+html.light .bg-gradient-to-r .text-white,
+html.light .bg-gradient-to-br.text-white,
+html.light .bg-gradient-to-br .text-white,
+html.light .bg-gradient-to-l.text-white,
+html.light .bg-gradient-to-l .text-white,
+html.light .bg-gradient-to-bl.text-white,
+html.light .bg-gradient-to-bl .text-white,
+html.light .bg-gradient-to-b.text-white,
+html.light .bg-gradient-to-b .text-white,
+html.light .bg-gradient-to-t.text-white,
+html.light .bg-gradient-to-t .text-white,
+html.light .bg-gradient-to-tr.text-white,
+html.light .bg-gradient-to-tr .text-white,
+html.light .bg-gradient-to-tl.text-white,
+html.light .bg-gradient-to-tl .text-white,
+html.light [class~="bg-red-500"].text-white,
+html.light [class~="bg-red-500"] .text-white,
+html.light [class~="bg-red-600"].text-white,
+html.light [class~="bg-red-600"] .text-white,
+html.light [class~="bg-red-700"].text-white,
+html.light [class~="bg-red-700"] .text-white,
+html.light [class~="bg-green-500"].text-white,
+html.light [class~="bg-green-500"] .text-white,
+html.light [class~="bg-green-600"].text-white,
+html.light [class~="bg-green-600"] .text-white,
+html.light [class~="bg-emerald-500"].text-white,
+html.light [class~="bg-emerald-500"] .text-white,
+html.light [class~="bg-emerald-600"].text-white,
+html.light [class~="bg-emerald-600"] .text-white,
+html.light [class~="bg-blue-500"].text-white,
+html.light [class~="bg-blue-500"] .text-white,
+html.light [class~="bg-blue-600"].text-white,
+html.light [class~="bg-blue-600"] .text-white,
+html.light [class~="bg-orange-500"].text-white,
+html.light [class~="bg-orange-500"] .text-white,
+html.light [class~="bg-amber-500"].text-white,
+html.light [class~="bg-amber-500"] .text-white,
+html.light [class~="bg-purple-500"].text-white,
+html.light [class~="bg-purple-500"] .text-white,
+html.light [class~="bg-purple-600"].text-white,
+html.light [class~="bg-purple-600"] .text-white,
+html.light [class~="bg-indigo-500"].text-white,
+html.light [class~="bg-indigo-500"] .text-white,
+html.light [class~="bg-[#e24c30]"].text-white,
+html.light [class~="bg-[#e24c30]"] .text-white,
+html.light [class~="bg-[#EC5C3C]"].text-white,
+html.light [class~="bg-[#EC5C3C]"] .text-white,
+html.light [class~="bg-[#ED5F41]"].text-white,
+html.light [class~="bg-[#ED5F41]"] .text-white,
+html.light [class~="bg-[#EE4D2D]"].text-white,
+html.light [class~="bg-[#EE4D2D]"] .text-white,
+html.light [class~="bg-[#635bff]"].text-white,
+html.light [class~="bg-[#635bff]"] .text-white,
+html.light [class~="bg-[#a855f7]"].text-white,
+html.light [class~="bg-[#a855f7]"] .text-white,
+html.light [class~="bg-[#06a548]"].text-white,
+html.light [class~="bg-[#06a548]"] .text-white,
+html.light [class~="bg-[#F97316]"].text-white,
+html.light [class~="bg-[#F97316]"] .text-white {
+  color: #FFFFFF !important;
+}
+
+/* —— Placeholders escuros → cinza médio no claro —— */
+html.light .placeholder\:text-\[\#6b6b72\]::placeholder,
+html.light .placeholder\:text-\[\#7a7a82\]::placeholder,
+html.light .placeholder\:text-zinc-500::placeholder,
+html.light .placeholder\:text-zinc-600::placeholder,
+html.light .placeholder\:text-gray-500::placeholder,
+html.light .placeholder\:text-gray-600::placeholder {
+  color: #71717A !important;
+}
+
+/* —— Scrollbar fina no modo claro —— */
+html.light .scrollbar-thin {
+  color-scheme: light;
+  scrollbar-color: #A1A1AA #F4F4F5;
+}
+html.light .scrollbar-thin::-webkit-scrollbar-track {
+  background: #F4F4F5;
+}
+html.light .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #A1A1AA;
+  border-color: #F4F4F5;
+}
+html.light .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #EE4D2D;
+}
+
+/* —— Scrollbar Shopee no modo claro —— */
+html.light .scrollbar-shopee {
+  scrollbar-color: #EE4D2D #F4F4F5;
+}
+html.light .scrollbar-shopee::-webkit-scrollbar-track {
+  background: #F4F4F5;
+}
+html.light .scrollbar-shopee::-webkit-scrollbar-thumb {
+  border-color: #F4F4F5;
+}
+
+/* —— color-scheme no modo claro: controles nativos (checkbox/radio/date) —— */
+html.light {
+  color-scheme: light;
+}
+
+/* —— Toolist trigger (bolinha com ícone "i") ——
+ * Dark: cinza neutro com hover laranja (comportamento original preservado).
+ * Light: cinza neutro discreto, sem laranja — casa com o fundo claro sem chamar atenção.
+ */
+.toolist-trigger {
+  background-color: rgba(51, 51, 51, 0.8);
+  color: #a8a8a8;
+}
+.toolist-trigger:hover {
+  background-color: rgba(238, 77, 45, 0.15);
+  color: var(--color-shopee-orange);
+}
+html.light .toolist-trigger {
+  background-color: #E4E4E7 !important;
+  color: #71717A !important;
+}
+html.light .toolist-trigger:hover {
+  background-color: #D4D4D8 !important;
+  color: #52525B !important;
+}
+
+/* —— Hover laranja claro em listas de produtos (modo claro) ——
+ * Override do hover escuro para uma tinta laranja igual ao estado selecionado
+ * (bg-[#e24c30]/8), dando feedback visual consistente.
+ */
+html.light .hover\:bg-\[\#222228\]:hover {
+  background-color: rgba(238, 77, 45, 0.08) !important;
+}
+
+/* —— Dividers (divide-y com cor escura) no modo claro ——
+ * Aplicamos a TODOS os filhos: a Tailwind v3/v4 geram seletores diferentes
+ * (`> :not([hidden]) ~ :not([hidden])` vs `> * + *` vs `:where(...)`),
+ * então setar border-color em todos os filhos é o mais robusto — o primeiro
+ * filho tem border-top-width: 0 e não renderiza a linha.
+ */
+html.light .divide-\[\#2c2c32\] > *,
+html.light .divide-\[\#27272a\] > *,
+html.light .divide-\[\#3e3e46\] > *,
+html.light .divide-zinc-700 > *,
+html.light .divide-zinc-800 > *,
+html.light .divide-zinc-900 > *,
+html.light .divide-slate-700 > *,
+html.light .divide-slate-800 > *,
+html.light .divide-gray-700 > *,
+html.light .divide-gray-800 > *,
+html.light .divide-neutral-700 > *,
+html.light .divide-neutral-800 > * {
+  border-color: #E4E4E7 !important;
+}
+
+/* —— Variantes de opacidade text-white no modo claro ——
+ * Valores /40 a /55 são usados como texto inativo/dim em fundo escuro →
+ * mapeamos para cinza escuro no claro (leitura).
+ * Valores /65 a /95 aparecem tanto em textos sobre fundo escuro (landing hero,
+ * pills etc — precisam ir para escuro) QUANTO em subtítulos sobre gradientes
+ * coloridos (FAB, Ver Planos — precisam ficar brancos). Abaixo a base vira
+ * escura; as exceções para gradientes/fundos coloridos vêm depois.
+ */
+html.light .text-white\/40,
+html.light .text-white\/45,
+html.light .text-white\/50,
+html.light .text-white\/55 {
+  color: rgba(24, 24, 27, 0.6) !important;
+}
+html.light .text-white\/65,
+html.light .text-white\/75,
+html.light .text-white\/85,
+html.light .text-white\/90,
+html.light .text-white\/92,
+html.light .text-white\/95 {
+  color: #18181B !important;
+}
+
+/* —— Exceções para variantes text-white/xx em contextos coloridos ——
+ * Mantém o texto branco quando o container é botão/gradiente/cor forte.
+ */
+html.light .bg-shopee-orange .text-white\/90,
+html.light .bg-shopee-orange .text-white\/85,
+html.light .bg-shopee-orange .text-white\/65,
+html.light .bg-gradient-to-r .text-white\/90,
+html.light .bg-gradient-to-r .text-white\/85,
+html.light .bg-gradient-to-r .text-white\/65,
+html.light .bg-gradient-to-br .text-white\/90,
+html.light .bg-gradient-to-br .text-white\/85,
+html.light .bg-gradient-to-br .text-white\/65,
+html.light .bg-gradient-to-bl .text-white\/90,
+html.light .bg-gradient-to-bl .text-white\/85,
+html.light .bg-gradient-to-l .text-white\/90,
+html.light .bg-gradient-to-l .text-white\/85,
+html.light .bg-gradient-to-b .text-white\/90,
+html.light .bg-gradient-to-b .text-white\/85,
+html.light .bg-gradient-to-t .text-white\/90,
+html.light .bg-gradient-to-t .text-white\/85,
+html.light .bg-gradient-to-tr .text-white\/90,
+html.light .bg-gradient-to-tr .text-white\/85,
+html.light .bg-gradient-to-tl .text-white\/90,
+html.light .bg-gradient-to-tl .text-white\/85 {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* —— Alerts PIX/Boleto (amber → laranja Shopee no modo claro) —— */
+html.light .bg-amber-500\/5 {
+  background-color: rgba(238, 77, 45, 0.06) !important;
+}
+html.light .bg-amber-500\/10 {
+  background-color: rgba(238, 77, 45, 0.1) !important;
+}
+html.light .border-amber-500\/20 {
+  border-color: rgba(238, 77, 45, 0.35) !important;
+}
+html.light .border-amber-500\/30 {
+  border-color: rgba(238, 77, 45, 0.4) !important;
+}
+html.light .text-amber-200,
+html.light .text-amber-300,
+html.light .text-amber-300\/90,
+html.light .text-amber-400 {
+  color: #c94028 !important;
+}
+
+/* —— Textos de alerta: contraste no modo claro ——
+ * Tons claros (200/300) em texto são quase invisíveis sobre fundo branco.
+ * Mapeia para tons médios/escuros da mesma família de cor.
+ */
+html.light .text-red-200 { color: #b91c1c !important; }
+html.light .text-red-300 { color: #c53030 !important; }
+html.light .text-red-400 { color: #dc2626 !important; }
+html.light .text-emerald-200 { color: #047857 !important; }
+html.light .text-emerald-300 { color: #059669 !important; }
+html.light .text-emerald-400 { color: #059669 !important; }
+html.light .text-blue-200 { color: #1e40af !important; }
+html.light .text-blue-300 { color: #1d4ed8 !important; }
+html.light .text-blue-400 { color: #2563eb !important; }
+html.light .text-sky-200 { color: #0369a1 !important; }
+html.light .text-sky-300 { color: #0284c7 !important; }
+
+/* —— Textos coloridos pastéis: escurecem no claro para ter contraste ——
+ * Tons pastel de laranja/roxo/ciano são projetados para fundo escuro; no claro
+ * ficam quase invisíveis. Mapeia para tons médios da mesma família.
+ */
+html.light .text-\[\#ff7a54\],
+html.light .text-\[\#ff7a5b\],
+html.light .text-\[\#ffb38f\],
+html.light .text-\[\#ffd2c8\],
+html.light .text-\[\#ffd7cb\] {
+  color: #c94028 !important;
+}
+html.light .text-\[\#a8a2ff\],
+html.light .text-\[\#c7c2ff\],
+html.light .text-\[\#d9b8ff\] {
+  color: #6d28d9 !important;
+}
+html.light .text-\[\#8be9f8\] {
+  color: #0e7490 !important;
+}
+
+/* ═══════════════ Scope keep-dark (data-theme="dark") ═══════════════
+ * Elementos com data-theme="dark" preservam o visual escuro mesmo quando
+ * html.light está ativo. Usado no Pricing e outras seções onde o design
+ * dark deve se manter independente do toggle do usuário.
+ *
+ * Estratégia: cada regra aqui tem especificidade [0,3,0] (html.light +
+ * [data-theme="dark"] + classe/attr), vencendo as sobreposições genéricas
+ * [0,2,0] definidas no bloco html.light acima.
+ */
+html.light [data-theme="dark"] {
+  color-scheme: dark;
+  background-color: #18181B;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* Textos: re-aplica branco e variantes rgba(255,255,255) */
+html.light [data-theme="dark"] .text-white,
+html.light [data-theme="dark"] .text-\[\#fff\],
+html.light [data-theme="dark"] .text-\[\#ffffff\] {
+  color: #FFFFFF !important;
+}
+html.light [data-theme="dark"] [class*="text-[rgba(255,255,255"] {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* Backgrounds: hex escuros + rgba branco */
+html.light [data-theme="dark"] [class~="bg-[#242431]"] { background-color: #242431 !important; }
+html.light [data-theme="dark"] [class~="bg-[#18181B]"],
+html.light [data-theme="dark"] [class~="bg-[#18181b]"] { background-color: #18181B !important; }
+html.light [data-theme="dark"] [class~="bg-[#27272A]"],
+html.light [data-theme="dark"] [class~="bg-[#27272a]"] { background-color: #27272A !important; }
+html.light [data-theme="dark"] [class*="bg-[rgba(255,255,255"] {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Gradientes com rgba branco: reverte ao valor original do Tailwind (layer utilities) */
+html.light [data-theme="dark"] [class*="bg-[linear-gradient(180deg,rgba(255,255,255"] {
+  background: revert-layer !important;
+}
+
+/* Borders rgba branco */
+html.light [data-theme="dark"] [class*="border-[rgba(255,255,255"] {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+html.light [data-theme="dark"] .border-white\/10 { border-color: rgba(255, 255, 255, 0.1) !important; }
+html.light [data-theme="dark"] .border-white\/12 { border-color: rgba(255, 255, 255, 0.12) !important; }
+html.light [data-theme="dark"] .border-white\/15 { border-color: rgba(255, 255, 255, 0.15) !important; }
+html.light [data-theme="dark"] .border-white\/20 { border-color: rgba(255, 255, 255, 0.2) !important; }
+
+/* Textos pastéis: re-aplica cor original pastel */
+html.light [data-theme="dark"] [class~="text-[#d9b8ff]"] { color: #d9b8ff !important; }
+html.light [data-theme="dark"] [class~="text-[#8be9f8]"] { color: #8be9f8 !important; }
+html.light [data-theme="dark"] [class~="text-[#fb923c]"] { color: #fb923c !important; }
+html.light [data-theme="dark"] [class~="text-[#ffd7cb]"] { color: #ffd7cb !important; }
+html.light [data-theme="dark"] [class~="text-[#ffb38f]"] { color: #ffb38f !important; }
+html.light [data-theme="dark"] [class~="text-[#ff7a54]"] { color: #ff7a54 !important; }
+html.light [data-theme="dark"] [class~="text-[#ff7a5b]"] { color: #ff7a5b !important; }
+html.light [data-theme="dark"] [class~="text-[#ffd2c8]"] { color: #ffd2c8 !important; }
+
+/* Variantes text-white/opacity dentro do scope dark */
+html.light [data-theme="dark"] .text-white\/40 { color: rgba(255, 255, 255, 0.4) !important; }
+html.light [data-theme="dark"] .text-white\/45 { color: rgba(255, 255, 255, 0.45) !important; }
+html.light [data-theme="dark"] .text-white\/50 { color: rgba(255, 255, 255, 0.5) !important; }
+html.light [data-theme="dark"] .text-white\/55 { color: rgba(255, 255, 255, 0.55) !important; }
+html.light [data-theme="dark"] .text-white\/60 { color: rgba(255, 255, 255, 0.6) !important; }
+html.light [data-theme="dark"] .text-white\/65 { color: rgba(255, 255, 255, 0.65) !important; }
+html.light [data-theme="dark"] .text-white\/70 { color: rgba(255, 255, 255, 0.7) !important; }
+html.light [data-theme="dark"] .text-white\/75 { color: rgba(255, 255, 255, 0.75) !important; }
+html.light [data-theme="dark"] .text-white\/80 { color: rgba(255, 255, 255, 0.8) !important; }
+html.light [data-theme="dark"] .text-white\/85 { color: rgba(255, 255, 255, 0.85) !important; }
+html.light [data-theme="dark"] .text-white\/90 { color: rgba(255, 255, 255, 0.9) !important; }
+html.light [data-theme="dark"] .text-white\/92 { color: rgba(255, 255, 255, 0.92) !important; }
+html.light [data-theme="dark"] .text-white\/95 { color: rgba(255, 255, 255, 0.95) !important; }
+
+/* —— Arbitrary rgba(255,255,255,XX) em landing/home no modo claro ——
+ * Componentes da home (Pricing, Features, Testimonials, Faq, Mockup, Hero)
+ * usam muito text-[rgba(255,255,255,X)], bg-[rgba(255,255,255,X)] e
+ * border-[rgba(255,255,255,X)] pra criar efeitos "glass" que funcionam
+ * só no escuro. No claro ficam brancos invisíveis — overridamos pra escuro
+ * equivalente via attribute selector (match por substring do class name).
+ */
+html.light [class*="text-[rgba(255,255,255"] {
+  color: #18181B !important;
+}
+html.light [class*="bg-[rgba(255,255,255"] {
+  background-color: rgba(24, 24, 27, 0.04) !important;
+}
+html.light [class*="border-[rgba(255,255,255"] {
+  border-color: rgba(24, 24, 27, 0.10) !important;
+}
+
+/* Exceção: textos rgba(255,255,255,X) dentro de botões/containers com
+ * gradiente colorido mantêm cor clara para contraste no CTA.
+ */
+html.light .bg-gradient-to-r [class*="text-[rgba(255,255,255"],
+html.light .bg-gradient-to-br [class*="text-[rgba(255,255,255"],
+html.light .bg-gradient-to-bl [class*="text-[rgba(255,255,255"],
+html.light .bg-gradient-to-l [class*="text-[rgba(255,255,255"],
+html.light .bg-gradient-to-b [class*="text-[rgba(255,255,255"],
+html.light .bg-gradient-to-t [class*="text-[rgba(255,255,255"],
+html.light .bg-gradient-to-tr [class*="text-[rgba(255,255,255"],
+html.light .bg-gradient-to-tl [class*="text-[rgba(255,255,255"],
+html.light .bg-shopee-orange [class*="text-[rgba(255,255,255"] {
+  color: rgba(255, 255, 255, 0.92) !important;
+}
+
+/* —— Bg gradiente escuro → leve tinta colorida no claro ——
+ * Gradientes de cards da home usam `bg-[linear-gradient(180deg,rgba(255,255,255,0.06)...,rgba(COR_ESCURA,X))]`
+ * — no claro viram camadas quase invisíveis. Forçamos um fundo claro sólido
+ * e preservamos um leve tingimento via outra camada quando possível.
+ */
+html.light [class*="bg-[linear-gradient(180deg,rgba(255,255,255"] {
+  background: linear-gradient(180deg, rgba(24, 24, 27, 0.02) 0%, rgba(24, 24, 27, 0.05) 100%), #FFFFFF !important;
+}
+
+/* —— Banda de integrações (seção "Integra com as maiores plataformas") ——
+ * Gradient horizontal escuro da home → laranja claro Shopee com textos brancos
+ * no modo claro, mantendo a identidade de marca como faixa de destaque.
+ */
+html.light section[class*="bg-[linear-gradient(90deg"] {
+  background: linear-gradient(90deg, #ff9a7a 0%, #ff7a54 50%, #ff9a7a 100%) !important;
+}
+html.light section[class*="bg-[linear-gradient(90deg"],
+html.light section[class*="bg-[linear-gradient(90deg"] * {
+  color: #FFFFFF !important;
+}
+html.light section[class*="bg-[linear-gradient(90deg"] [class*="text-white"] {
+  color: #FFFFFF !important;
+}
+/* Overlay interno da seção laranja: torna transparente pra não cobrir o laranja.
+ * Sem esse reset, meu rule global para "bg-[linear-gradient(180deg,rgba(255,255,255..."
+ * pinta esse overlay de branco, escondendo a faixa.
+ */
+html.light section[class*="bg-[linear-gradient(90deg"] [class*="bg-[linear-gradient(180deg,rgba(255,255,255"] {
+  background: transparent !important;
+}
+
+/* —— Header: borda/shadow inferior no modo claro para separar do body —— */
+html.light header.sticky {
+  background-color: rgba(244, 244, 245, 0.92) !important;
+  box-shadow: 0 1px 0 0 rgba(24, 24, 27, 0.08), 0 2px 8px 0 rgba(24, 24, 27, 0.04) !important;
+}
+
+/* —— Ring-offset escuro no FAB: corrige "borda preta" ao abrir o menu ——
+ * As classes ring-offset-zinc-950 / ring-offset-zinc-900 definem a cor do
+ * gap entre o elemento e o anel focal. No claro, precisam casar com o body.
+ */
+html.light .ring-offset-zinc-950,
+html.light .ring-offset-zinc-900,
+html.light .focus-visible\:ring-offset-zinc-950:focus-visible,
+html.light .focus-visible\:ring-offset-zinc-900:focus-visible {
+  --tw-ring-offset-color: #F4F4F5 !important;
+}
+
+/* —— Date picker nativo: força color-scheme light no claro ——
+ * Os inputs de data de Análise de Comissões têm color-scheme: dark hardcoded.
+ * No tema claro precisa ser light para o calendário e o ícone nativos ficarem
+ * com as cores certas (ícone escuro, fundo branco do dropdown).
+ */
+html.light .commissions-date-picker-wrap input[type="date"] {
+  color-scheme: light !important;
+}
+
+/* —— Ícone de calendário sobreposto ao input de data no claro ——
+ * O Lucide CalendarDays usa text-white/90 (para ficar branco sobre o input
+ * escuro). No claro precisa ser escuro pra ficar visível sobre fundo branco.
+ */
+html.light .commissions-date-picker-wrap .text-white\/90 {
+  color: #18181B !important;
 }
 
 /* Remove o outline do gráfico do Recharts */
@@ -253,6 +961,17 @@ select::-webkit-scrollbar-thumb:hover {
   scrollbar-color: #71717a #ffffff;
 }
 
+/* Esconde a barra de scroll mantendo o scroll funcional (usado no preview mobile da captura) */
+.scrollbar-none {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge antigo */
+}
+.scrollbar-none::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 .scrollbar-app::-webkit-scrollbar {
   width: 12px;
   height: 12px;
@@ -420,6 +1139,66 @@ select::-webkit-scrollbar-thumb:hover {
 }
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in-up {
+    animation: none !important;
+  }
+}
+
+/* ═══════════════ Checkout — Gatilhos de venda ═══════════════ */
+
+/* Toast de notificação de compra que entra de baixo (legacy) */
+@keyframes checkout-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-slide-up {
+  animation: checkout-slide-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Toast entrando pela direita (canto superior direito) */
+@keyframes checkout-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.animate-slide-in-right {
+  animation: checkout-slide-in-right 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Barra de countdown piscando quando o tempo acaba */
+@keyframes checkout-blink {
+  0%, 100% { filter: brightness(1); }
+  50%      { filter: brightness(1.3); }
+}
+.animate-blink {
+  animation: checkout-blink 0.9s ease-in-out infinite;
+}
+
+/* Light sweep do botão Pagar */
+@keyframes checkout-light-sweep {
+  0%   { left: -40%; }
+  100% { left: 110%; }
+}
+.animate-light-sweep {
+  animation: checkout-light-sweep 2.6s ease-in-out infinite;
+  left: -40%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-up,
+  .animate-slide-in-right,
+  .animate-blink,
+  .animate-light-sweep {
     animation: none !important;
   }
 }
