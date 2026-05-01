@@ -7,6 +7,8 @@ export type TemporalChartData = {
   pendentes: number;
   cancelados: number; // <-- Adicionado
   nao_pagos: number;   // <-- Adicionado
+  /** YYYY-MM-DD (data local) — preenchido nas barras do drill-down diário */
+  dayKey?: string;
   startDate?: Date;
   endDate?: Date;
 }

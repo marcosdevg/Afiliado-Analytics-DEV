@@ -100,7 +100,8 @@ function OrdersChartComponent({
       if (elements.length > 0) {
         const elementIndex = elements[0].index;
         const clickedData = data[elementIndex];
-        if (view === 'week' && !isDrilledDown && onBarClick && clickedData) {
+        // Semana: 1º clique entra no drill-down diário; no diário, clique abre detalhe (pai decide).
+        if (view === 'week' && onBarClick && clickedData) {
           onBarClick(clickedData);
         }
       }

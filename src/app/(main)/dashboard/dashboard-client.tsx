@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useIdbKeyState } from "@/app/hooks/useIdbKeyState";
 
 import OrdersChart, { type ChartView } from "./OrdersChart";
+import DayProductsModal from "./DayProductsModal";
 import DataTable from "./DataTable";
 import Tabs from "./Tabs";
 import CategoryAnalysis from "./CategoryAnalysis";
@@ -197,6 +198,31 @@ function isEarningStatus(status: CanonicalStatus) {
   return status === "completed" || status === "pending";
 }
 
+/** Agrega produtos (concluídos + pendentes) vendidos em um dia local YYYY-MM-DD. */
+function aggregateProductsForDay(rows: CommissionDataRow[], dayKey: string): ProductData[] {
+  const map = new Map<string, { qty: number; commission: number }>();
+  for (const row of rows) {
+    const status = normalizeStatus(row["Status do Pedido"]);
+    if (!isEarningStatus(status)) continue;
+    const timeStr = safeString(row["Horário do pedido"]).trim();
+    if (!timeStr) continue;
+    const orderDate = new Date(timeStr);
+    if (Number.isNaN(orderDate.getTime())) continue;
+    if (localYMD(orderDate) !== dayKey) continue;
+    const productName = safeString(row["Nome do Item"]).trim() || "Produto desconhecido";
+    const qty = Number.parseInt(safeString(row["Qtd"]), 10);
+    const safeQty = Number.isFinite(qty) ? qty : 0;
+    const commission = parseMoneyPt(row["Comissão líquida do afiliado(R$)"]);
+    const cur = map.get(productName) ?? { qty: 0, commission: 0 };
+    cur.qty += safeQty;
+    cur.commission += commission;
+    map.set(productName, cur);
+  }
+  return Array.from(map.entries())
+    .map(([productName, v]) => ({ productName, qty: v.qty, commission: v.commission }))
+    .sort((a, b) => b.commission - a.commission);
+}
+
 // ✅ Mesma lógica do buildCommissionAnalytics para classificar atribuição
 function classifyAttribution(raw: unknown): "direct" | "indirect" | "unknown" {
   const s = stripDiacritics(safeString(raw).toLowerCase().trim());
@@ -244,6 +270,9 @@ export default function CommissionsPage() {
 
   const [chartView, setChartView] = useState<ChartView>("week");
   const [drilledDownWeek, setDrilledDownWeek] = useState<TemporalChartData | null>(null);
+  const [dayProductsModal, setDayProductsModal] = useState<{ dayKey: string; label: string } | null>(
+    null,
+  );
   const [isPending, startTransition] = useTransition();
   const [activeTab, setActiveTab] = useState(0);
 
@@ -307,6 +336,7 @@ export default function CommissionsPage() {
         setAdInvestment("");
         setActiveTab(0);
         setDrilledDownWeek(null);
+        setDayProductsModal(null);
 
         await fetchShopee(start, end);
       } catch {
@@ -339,6 +369,7 @@ export default function CommissionsPage() {
       setAdInvestment("");
       setActiveTab(0);
       setDrilledDownWeek(null);
+      setDayProductsModal(null);
     } catch (e) {
       setShopeeError(e instanceof Error ? e.message : "Erro");
     } finally {
@@ -376,6 +407,11 @@ export default function CommissionsPage() {
   }, [rawData, dateFromApplied, dateToApplied]);
 
   const analytics = useMemo(() => buildCommissionAnalytics(filteredAppliedRows), [filteredAppliedRows]);
+
+  const dayModalProducts = useMemo(() => {
+    if (!dayProductsModal) return [];
+    return aggregateProductsForDay(filteredAppliedRows, dayProductsModal.dayKey);
+  }, [filteredAppliedRows, dayProductsModal]);
 
   // Sincroniza a comissão total atual com o servidor (push_user_state) pra
   // que o cron das 08:10 BRT consiga compor "Comissão total: R$ X" no push.
@@ -521,6 +557,7 @@ export default function CommissionsPage() {
 
         weekTemplate.push({
           label,
+          dayKey,
           pedidos: dayAgg?.orderIds.size || 0,
           concluidos: dayAgg?.concluidos.size || 0,
           pendentes: dayAgg?.pendentes.size || 0,
@@ -566,6 +603,7 @@ export default function CommissionsPage() {
       setDateFromApplied("");
       setDateToApplied("");
       setDrilledDownWeek(null);
+      setDayProductsModal(null);
 
       Papa.parse<CommissionDataRow>(file, {
         worker: true,
@@ -598,6 +636,7 @@ export default function CommissionsPage() {
     setDateFromApplied(from);
     setDateToApplied(to);
     setDrilledDownWeek(null);
+    setDayProductsModal(null);
     setActiveTab(0);
     fetchShopee(from, to);
   }
@@ -615,11 +654,25 @@ export default function CommissionsPage() {
               startTransition(() => {
                 setChartView(view);
                 setDrilledDownWeek(null);
+                setDayProductsModal(null);
               });
             }}
             isDrilledDown={!!drilledDownWeek}
-            onBackClick={() => startTransition(() => setDrilledDownWeek(null))}
-            onBarClick={(data) => startTransition(() => setDrilledDownWeek(data))}
+            onBackClick={() =>
+              startTransition(() => {
+                setDrilledDownWeek(null);
+                setDayProductsModal(null);
+              })
+            }
+            onBarClick={(data) =>
+              startTransition(() => {
+                if (drilledDownWeek) {
+                  if (data.dayKey) setDayProductsModal({ dayKey: data.dayKey, label: data.label });
+                } else {
+                  setDrilledDownWeek(data);
+                }
+              })
+            }
           />
         ),
       },
@@ -988,6 +1041,13 @@ export default function CommissionsPage() {
           />
         </div>
       )}
+
+      <DayProductsModal
+        open={!!dayProductsModal}
+        onClose={() => setDayProductsModal(null)}
+        dayLabel={dayProductsModal?.label ?? ""}
+        products={dayModalProducts}
+      />
     </div>
   );
 }

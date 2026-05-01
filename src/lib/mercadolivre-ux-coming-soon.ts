@@ -1,8 +1,8 @@
 /**
  * Quando `true`, a UI de Mercado Livre / crossover mostra apenas o splash "Em Breve"
- * (nav, listas, grupos, config). Reative definindo como `false`.
+ * (nav, listas, grupos, config). Mantém `false` enquanto o fluxo ML estiver liberado.
  */
-export const MERCADOLIVRE_UX_COMING_SOON = true;
+export const MERCADOLIVRE_UX_COMING_SOON = false;
 
 export function isGruposVendaMlOfferBlocked(
   source: "shopee" | "ml" | "crossover" | "infoprodutor",

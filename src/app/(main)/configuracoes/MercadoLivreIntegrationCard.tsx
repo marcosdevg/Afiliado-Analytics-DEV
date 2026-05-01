@@ -11,6 +11,10 @@ import Toolist from "@/app/components/ui/Toolist";
 
 const LINKBUILDER = "https://www.mercadolivre.com.br/afiliados/linkbuilder#hub";
 
+/** Afiliado Analytics na Chrome Web Store (token ML no navegador). */
+const AFILIADO_ANALYTICS_CHROME_WEB_STORE_URL =
+  "https://chromewebstore.google.com/detail/afiliado-analytics/ogfmdnpbcglgppaakmiemaohgofailal";
+
 type MercadoLivreIntegrationCardProps = {
   initialClientId?: string;
   initialHasSecret?: boolean;
@@ -176,6 +180,15 @@ export default function MercadoLivreIntegrationCard({
               wide
               text="Abra a extensão no Mercado Livre e copie o token. Obrigatório para o servidor simular sua sessão de afiliado no Mercado Livre."
             />
+            <a
+              href={AFILIADO_ANALYTICS_CHROME_WEB_STORE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-shopee-orange hover:underline"
+            >
+              Abrir na Chrome Web Store
+              <ExternalLink className="h-3 w-3 shrink-0" />
+            </a>
           </div>
           <input
             id="ml-config-ext-session-token"
@@ -323,15 +336,26 @@ export default function MercadoLivreIntegrationCard({
           ) : null}
         </div>
 
-        <a
-          href={LINKBUILDER}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-shopee-orange hover:underline w-fit"
-        >
-          Download Extensão ML
-          <ExternalLink className="h-3 w-3" />
-        </a>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 pt-1">
+          <a
+            href={AFILIADO_ANALYTICS_CHROME_WEB_STORE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-shopee-orange hover:underline"
+          >
+            Instalar extensão Afiliado Analytics (Chrome)
+            <ExternalLink className="h-3 w-3 shrink-0" />
+          </a>
+          <a
+            href={LINKBUILDER}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-shopee-orange hover:underline"
+          >
+            Painel Afiliados — Mercado Livre
+            <ExternalLink className="h-3 w-3 shrink-0" />
+          </a>
+        </div>
       </div>
     </section>
   );

@@ -1131,27 +1131,31 @@ export default function GplCalculatorPage() {
                         </button>
                         {metaPeriodPopoverOpen ? (
                           <div
-                            className="absolute left-0 top-full z-[80] mt-1 w-[min(100vw-2rem,280px)] rounded-lg border border-sky-500/30 bg-[#0c111a] p-4 shadow-2xl space-y-3 backdrop-blur-sm"
+                            className="absolute left-0 top-full z-[80] mt-1 w-[min(100vw-2rem,280px)] rounded-lg border border-sky-500/30 bg-dark-card p-4 shadow-2xl space-y-3 backdrop-blur-sm"
                             role="dialog"
                             aria-label="Período Meta"
                           >
                             <div className="flex flex-col gap-2">
-                              <span className="text-[10px] uppercase tracking-wider font-bold text-sky-400/70">Início do Período</span>
+                              <span className="text-[10px] uppercase tracking-wider font-bold text-sky-500 light:text-sky-600">
+                                Início do Período
+                              </span>
                               <input
                                 type="date"
                                 value={metaTraficoStartDraft}
                                 min={effectiveRange?.min}
                                 onChange={(e) => setMetaTraficoStartDraft(e.target.value)}
-                                className="w-full bg-[#161d2a] border border-sky-500/20 focus:border-sky-500/60 rounded-md px-3 py-2 text-xs text-white outline-none transition-all"
+                                className="w-full rounded-md border border-sky-500/25 bg-dark-bg px-3 py-2 text-xs text-text-primary outline-none transition-all focus:border-sky-500/60"
                               />
-                              <span className="text-[10px] uppercase tracking-wider font-bold text-sky-400/70 pt-1">Fim do Período</span>
+                              <span className="text-[10px] uppercase tracking-wider font-bold text-sky-500 light:text-sky-600 pt-1">
+                                Fim do Período
+                              </span>
                               <input
                                 type="date"
                                 value={metaTraficoEndDraft}
                                 min={metaTraficoStartDraft || effectiveRange?.min}
                                 disabled={!metaTraficoStartDraft}
                                 onChange={(e) => setMetaTraficoEndDraft(e.target.value)}
-                                className="w-full bg-[#161d2a] border border-sky-500/20 focus:border-sky-500/60 rounded-md px-3 py-2 text-xs text-white outline-none transition-all disabled:opacity-30"
+                                className="w-full rounded-md border border-sky-500/25 bg-dark-bg px-3 py-2 text-xs text-text-primary outline-none transition-all focus:border-sky-500/60 disabled:opacity-30"
                               />
                             </div>
                             <div className="flex flex-col gap-1.5 pt-1">
