@@ -30,6 +30,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
+import { gateTendenciasShopee } from "@/lib/require-entitlements";
 
 export const dynamic = "force-dynamic";
 
@@ -73,9 +74,10 @@ function computeDiscountRate(min: number | null, max: number | null): number {
 
 export async function GET(req: Request) {
   try {
+    const gate = await gateTendenciasShopee();
+    if (!gate.allowed) return gate.response;
+
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
     const url = new URL(req.url);
     const tabRaw = url.searchParams.get("tab") ?? "score";

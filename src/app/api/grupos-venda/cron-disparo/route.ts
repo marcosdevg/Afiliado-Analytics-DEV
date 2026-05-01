@@ -15,7 +15,7 @@ import {
   resolveGruposVendaListaWebhookUrl,
 } from "@/lib/grupos-venda-webhook";
 import { effectiveListaOfferPromoPrice } from "@/lib/lista-ofertas-effective-promo";
-import { interleaveCrossover } from "@/lib/grupos-venda-crossover";
+import { interleaveCrossoverN } from "@/lib/grupos-venda-crossover";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 55;
@@ -68,7 +68,7 @@ async function runCronDisparo(opts?: CronRunOptions): Promise<CronResultBody> {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const sel = "id, user_id, instance_id, lista_id, lista_ofertas_id, lista_ofertas_ml_id, lista_ofertas_info_id, keywords, sub_id_1, sub_id_2, sub_id_3, proximo_indice, keyword_pool_indices, horario_inicio, horario_fim";
+  const sel = "id, user_id, instance_id, lista_id, lista_ofertas_id, lista_ofertas_ml_id, lista_ofertas_amazon_id, lista_ofertas_info_id, keywords, sub_id_1, sub_id_2, sub_id_3, proximo_indice, keyword_pool_indices, horario_inicio, horario_fim";
 
   let configQuery = supabase.from("grupos_venda_continuo").select(sel);
   if (opts?.singleConfigId && opts.manualUserId) {
@@ -98,6 +98,7 @@ async function runCronDisparo(opts?: CronRunOptions): Promise<CronResultBody> {
     const listaId = (cfg as { lista_id?: string | null }).lista_id ?? null;
     const listaOfertasId = (cfg as { lista_ofertas_id?: string | null }).lista_ofertas_id ?? null;
     const listaOfertasMlId = (cfg as { lista_ofertas_ml_id?: string | null }).lista_ofertas_ml_id ?? null;
+    const listaOfertasAmazonId = (cfg as { lista_ofertas_amazon_id?: string | null }).lista_ofertas_amazon_id ?? null;
     const listaOfertasInfoId = (cfg as { lista_ofertas_info_id?: string | null }).lista_ofertas_info_id ?? null;
     const keywords = (cfg.keywords as string[]) ?? [];
     const proximoIndice = Number(cfg.proximo_indice) ?? 0;
@@ -120,9 +121,12 @@ async function runCronDisparo(opts?: CronRunOptions): Promise<CronResultBody> {
       continue;
     }
 
-    const isListaOfertasMode = !!listaOfertasId || !!listaOfertasMlId;
-    const isListaInfoMode = !!listaOfertasInfoId;
-    if (!isListaOfertasMode && !isListaInfoMode && keywords.length === 0) {
+    const isListaMode =
+      !!listaOfertasId ||
+      !!listaOfertasMlId ||
+      !!listaOfertasAmazonId ||
+      !!listaOfertasInfoId;
+    if (!isListaMode && keywords.length === 0) {
       results.push({ userId, ok: false, error: "Sem keywords" });
       continue;
     }
@@ -141,7 +145,18 @@ async function runCronDisparo(opts?: CronRunOptions): Promise<CronResultBody> {
         continue;
       }
 
-      if (isListaInfoMode) {
+      if (isListaMode) {
+        // Crossover N-way: carrega cada fonte ativa em paralelo, normaliza pra
+        // QueueItem (shopee/ml/amazon/infoprodutor), intercala 1:1:1:1 com
+        // `interleaveCrossoverN` e usa `proximoIndice` pra avançar 1 item por tick.
+        type AffiliateOfferRow = {
+          product_name: string;
+          image_url: string;
+          price_original: number | null;
+          price_promo: number | null;
+          discount_rate: number | null;
+          converter_link: string;
+        };
         type InfoRow = {
           product_name: string;
           description: string | null;
@@ -150,152 +165,154 @@ async function runCronDisparo(opts?: CronRunOptions): Promise<CronResultBody> {
           price: number | string | null;
           price_old: number | string | null;
         };
-        const { data: itensInfo } = await supabase
-          .from("minha_lista_ofertas_info")
-          .select("id, product_name, description, image_url, link, price, price_old")
-          .eq("lista_id", listaOfertasInfoId)
-          .eq("user_id", userId)
-          .order("created_at", { ascending: true });
-        const infoItems = (itensInfo ?? []) as InfoRow[];
-        if (infoItems.length === 0) {
-          results.push({ userId, ok: false, error: "Lista Infoprodutor vazia" });
-          continue;
-        }
-        const idx = proximoIndice % infoItems.length;
-        const nextIndex = (proximoIndice + 1) % infoItems.length;
-        const item = infoItems[idx];
-        const link = item.link?.trim() || "";
-        if (!link) {
-          results.push({ userId, ok: false, error: "Produto sem link" });
-          await supabase.from("grupos_venda_continuo").update({ proximo_indice: nextIndex, updated_at: new Date().toISOString() }).eq("id", cfg.id);
-          continue;
-        }
-        const preco =
-          item.price == null || item.price === ""
-            ? null
-            : Number.isFinite(Number(item.price))
-              ? Number(item.price)
-              : null;
-        const precoAntigo =
-          item.price_old == null || item.price_old === ""
-            ? null
-            : Number.isFinite(Number(item.price_old))
-              ? Number(item.price_old)
-              : null;
-        const payloadBody = buildInfoprodutorWebhookPayload({
-          instanceName,
-          hash,
-          groupIds,
-          nomeProduto: item.product_name ?? "",
-          descricaoLivre: item.description ?? "",
-          imageUrl: item.image_url ?? "",
-          link,
-          preco,
-          precoAntigo,
-        });
-        const whRes = await fetch(GRUPOS_VENDA_WEBHOOK_DEFAULT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payloadBody),
-        });
-        if (!whRes.ok) {
-          results.push({ userId, ok: false, error: `Webhook ${whRes.status}` });
-        } else {
-          results.push({ userId, keyword: (item.product_name ?? "").slice(0, 30), ok: true });
-        }
-        await supabase
-          .from("grupos_venda_continuo")
-          .update({
-            proximo_indice: nextIndex,
-            ultimo_disparo_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", cfg.id);
-        continue;
-      }
+        type QueueItem =
+          | { source: "shopee" | "ml" | "amazon"; row: AffiliateOfferRow }
+          | { source: "infoprodutor"; row: InfoRow };
 
-      if (isListaOfertasMode) {
-        type ListaRow = {
-          product_name: string;
-          image_url: string;
-          price_original: number | null;
-          price_promo: number | null;
-          discount_rate: number | null;
-          converter_link: string;
+        const loadAffiliate = async (
+          table: "minha_lista_ofertas" | "minha_lista_ofertas_ml" | "minha_lista_ofertas_amazon",
+          fk: string,
+        ): Promise<AffiliateOfferRow[]> => {
+          const { data: items } = await supabase
+            .from(table)
+            .select("product_name, image_url, price_original, price_promo, discount_rate, converter_link")
+            .eq("lista_id", fk)
+            .eq("user_id", userId)
+            .order("created_at", { ascending: true });
+          return (items ?? []) as AffiliateOfferRow[];
         };
-        const shopeeItems: ListaRow[] = [];
-        const mlItems: ListaRow[] = [];
-        if (listaOfertasId) {
-          const { data: itensS } = await supabase
-            .from("minha_lista_ofertas")
-            .select("id, product_name, image_url, price_original, price_promo, discount_rate, converter_link")
-            .eq("lista_id", listaOfertasId)
-            .eq("user_id", userId)
-            .order("created_at", { ascending: true });
-          shopeeItems.push(...((itensS ?? []) as ListaRow[]));
-        }
-        if (listaOfertasMlId) {
-          const { data: itensM } = await supabase
-            .from("minha_lista_ofertas_ml")
-            .select("id, product_name, image_url, price_original, price_promo, discount_rate, converter_link")
-            .eq("lista_id", listaOfertasMlId)
-            .eq("user_id", userId)
-            .order("created_at", { ascending: true });
-          mlItems.push(...((itensM ?? []) as ListaRow[]));
-        }
-        // Crossover: alterna 1 Shopee, 1 ML, 1 Shopee, 1 ML… O `proximoIndice`
-        // do `grupos_venda_continuo` percorre essa fila intercalada, então cada
-        // tick de 10 min envia o próximo item — Shopee/ML/Shopee/ML — sem
-        // precisar de outro estado.
-        const items: ListaRow[] =
-          shopeeItems.length > 0 && mlItems.length > 0
-            ? interleaveCrossover(shopeeItems, mlItems)
-            : [...shopeeItems, ...mlItems];
-        if (items.length === 0) {
-          results.push({ userId, ok: false, error: "Lista de ofertas vazia" });
+
+        const [shopeeRows, mlRows, amazonRows, infoRows] = await Promise.all([
+          listaOfertasId ? loadAffiliate("minha_lista_ofertas", listaOfertasId) : Promise.resolve([] as AffiliateOfferRow[]),
+          listaOfertasMlId ? loadAffiliate("minha_lista_ofertas_ml", listaOfertasMlId) : Promise.resolve([] as AffiliateOfferRow[]),
+          listaOfertasAmazonId ? loadAffiliate("minha_lista_ofertas_amazon", listaOfertasAmazonId) : Promise.resolve([] as AffiliateOfferRow[]),
+          listaOfertasInfoId
+            ? supabase
+                .from("minha_lista_ofertas_info")
+                .select("product_name, description, image_url, link, price, price_old")
+                .eq("lista_id", listaOfertasInfoId)
+                .eq("user_id", userId)
+                .order("created_at", { ascending: true })
+                .then((r) => (r.data ?? []) as InfoRow[])
+            : Promise.resolve([] as InfoRow[]),
+        ]);
+
+        const shopeeQ: QueueItem[] = shopeeRows.map((row) => ({ source: "shopee", row }));
+        const mlQ: QueueItem[] = mlRows.map((row) => ({ source: "ml", row }));
+        const amazonQ: QueueItem[] = amazonRows.map((row) => ({ source: "amazon", row }));
+        const infoQ: QueueItem[] = infoRows.map((row) => ({ source: "infoprodutor", row }));
+
+        const queue = interleaveCrossoverN(shopeeQ, mlQ, amazonQ, infoQ);
+        if (queue.length === 0) {
+          results.push({ userId, ok: false, error: "Lista vazia" });
           continue;
         }
-        const idx = proximoIndice % items.length;
-        const nextIndex = (proximoIndice + 1) % items.length;
-        const item = items[idx];
-        const linkAfiliado = item.converter_link?.trim() || "";
-        if (!linkAfiliado) {
-          results.push({ userId, ok: false, error: "Produto sem link" });
-          await supabase.from("grupos_venda_continuo").update({ proximo_indice: nextIndex, updated_at: new Date().toISOString() }).eq("id", cfg.id);
-          continue;
-        }
-        const nomeProduto = item.product_name ?? "";
-        const rate = item.discount_rate ?? 0;
-        const precoPorResolved =
-          effectiveListaOfferPromoPrice(item.price_original, item.price_promo, item.discount_rate) ??
-          item.price_promo ??
-          0;
-        const precoPor = precoPorResolved || 0;
-        const precoRiscado = (item.price_original ?? precoPor) || 0;
-        const payloadBody = buildListaOfferWebhookPayload({
-          instanceName,
-          hash,
-          groupIds,
-          nomeProduto,
-          imageUrl: item.image_url ?? "",
-          precoPor,
-          precoRiscado,
-          discountRate: rate,
-          linkAfiliado,
-        });
 
-        const listaWebhookUrl = resolveGruposVendaListaWebhookUrl(!!listaOfertasId && !!listaOfertasMlId);
-        const whRes = await fetch(listaWebhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payloadBody),
-        });
+        const idx = proximoIndice % queue.length;
+        const nextIndex = (proximoIndice + 1) % queue.length;
+        const item = queue[idx];
 
-        if (!whRes.ok) {
-          results.push({ userId, ok: false, error: `Webhook ${whRes.status}` });
-        } else {
-          results.push({ userId, keyword: nomeProduto.slice(0, 30), ok: true });
+        // Crossover real = 2+ fontes com itens. Define qual webhook usar pra
+        // ofertas de afiliado (Shopee/ML/Amazon); Infoprodutor sempre vai pro default.
+        const activeSources = [
+          shopeeRows.length > 0,
+          mlRows.length > 0,
+          amazonRows.length > 0,
+          infoRows.length > 0,
+        ].filter(Boolean).length;
+        const isCrossover = activeSources >= 2;
+        const listaWebhookUrl = resolveGruposVendaListaWebhookUrl(isCrossover);
+
+        let webhookOk = false;
+        let label = "";
+        try {
+          if (item.source === "infoprodutor") {
+            const row = item.row;
+            const link = row.link?.trim() || "";
+            if (!link) {
+              results.push({ userId, ok: false, error: "Produto sem link" });
+              await supabase
+                .from("grupos_venda_continuo")
+                .update({ proximo_indice: nextIndex, updated_at: new Date().toISOString() })
+                .eq("id", cfg.id);
+              continue;
+            }
+            const preco =
+              row.price == null || row.price === ""
+                ? null
+                : Number.isFinite(Number(row.price))
+                  ? Number(row.price)
+                  : null;
+            const precoAntigo =
+              row.price_old == null || row.price_old === ""
+                ? null
+                : Number.isFinite(Number(row.price_old))
+                  ? Number(row.price_old)
+                  : null;
+            const payloadBody = buildInfoprodutorWebhookPayload({
+              instanceName,
+              hash,
+              groupIds,
+              nomeProduto: row.product_name ?? "",
+              descricaoLivre: row.description ?? "",
+              imageUrl: row.image_url ?? "",
+              link,
+              preco,
+              precoAntigo,
+            });
+            const whRes = await fetch(GRUPOS_VENDA_WEBHOOK_DEFAULT, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payloadBody),
+            });
+            webhookOk = whRes.ok;
+            label = (row.product_name ?? "").slice(0, 30);
+            if (!webhookOk) results.push({ userId, ok: false, error: `Webhook ${whRes.status}` });
+          } else {
+            // shopee | ml | amazon
+            const row = item.row;
+            const linkAfiliado = row.converter_link?.trim() || "";
+            if (!linkAfiliado) {
+              results.push({ userId, ok: false, error: "Produto sem link" });
+              await supabase
+                .from("grupos_venda_continuo")
+                .update({ proximo_indice: nextIndex, updated_at: new Date().toISOString() })
+                .eq("id", cfg.id);
+              continue;
+            }
+            const rate = row.discount_rate ?? 0;
+            const precoPorResolved =
+              effectiveListaOfferPromoPrice(row.price_original, row.price_promo, row.discount_rate) ??
+              row.price_promo ??
+              0;
+            const precoPor = precoPorResolved || 0;
+            const precoRiscado = (row.price_original ?? precoPor) || 0;
+            const payloadBody = buildListaOfferWebhookPayload({
+              instanceName,
+              hash,
+              groupIds,
+              nomeProduto: row.product_name ?? "",
+              imageUrl: row.image_url ?? "",
+              precoPor,
+              precoRiscado,
+              discountRate: rate,
+              linkAfiliado,
+            });
+            const whRes = await fetch(listaWebhookUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payloadBody),
+            });
+            webhookOk = whRes.ok;
+            label = (row.product_name ?? "").slice(0, 30);
+            if (!webhookOk) results.push({ userId, ok: false, error: `Webhook ${whRes.status}` });
+          }
+        } catch (e) {
+          results.push({ userId, ok: false, error: e instanceof Error ? e.message : "Erro disparo" });
         }
+
+        if (webhookOk) results.push({ userId, keyword: label, ok: true });
+
         await supabase
           .from("grupos_venda_continuo")
           .update({

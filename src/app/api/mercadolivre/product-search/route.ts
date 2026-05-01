@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase-server";
 import { fetchMlSiteCategoryWithSession, fetchMlSiteSearchWithSession } from "@/lib/mercadolivre/site-search";
 import { parseMlExtensionSessionToCookieHeader } from "@/lib/mercadolivre/ml-session-cookie";
 import { isMlListaCategorySlug } from "@/lib/mercadolivre/ml-lista-category-slugs";
+import { gateMercadoLivre } from "@/lib/require-entitlements";
 
 export const dynamic = "force-dynamic";
 /** Listagem + PDPs em lote podem passar do default em serverless. */
@@ -88,11 +88,8 @@ function badTokenResponse(reason: "missing" | "invalid", forPost: boolean): Next
  */
 export async function GET(req: Request) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    const gate = await gateMercadoLivre();
+    if (!gate.allowed) return gate.response;
 
     const url = new URL(req.url);
     const q = (url.searchParams.get("q") ?? url.searchParams.get("keyword") ?? "").trim();
@@ -122,11 +119,8 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    const gate = await gateMercadoLivre();
+    if (!gate.allowed) return gate.response;
 
     let body: SearchPayload = {};
     try {

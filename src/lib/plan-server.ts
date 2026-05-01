@@ -9,6 +9,11 @@ import {
   type PlanEntitlements,
   type PlanTier,
 } from "./plan-entitlements";
+import {
+  isAfiliadoCoinsKiwifySubscriptionRow,
+  resolveTierFromKiwifyIds,
+  subscriptionBillingIsQuarterlyFromCheckoutSlug,
+} from "./kiwify-plan-catalog";
 import { ensureAfiliadoMonthlyProCoins } from "./afiliado-coins-server";
 import { normalizeAfiliadoCoins } from "./afiliado-coins";
 
@@ -28,6 +33,108 @@ export function utcTodayYmd(): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
+function tierMatchesProfileSubscription(
+  resolved: PlanTier,
+  profileTier: PlanTier
+): boolean {
+  if (resolved === profileTier) return true;
+  if (profileTier === "legacy" && resolved === "inicial") return true;
+  return false;
+}
+
+/** Interpreta `subscriptions.frequency` (payload Kiwify). */
+function billingQuarterlyFromFrequency(
+  freq: string | null | undefined
+): boolean | null {
+  const f = (freq ?? "").toLowerCase().trim();
+  if (!f) return null;
+  if (f.includes("quarter") || f.includes("trim") || f.includes("trimest")) {
+    return true;
+  }
+  if (
+    f.includes("month") ||
+    f.includes("mensal") ||
+    f.includes("mês") ||
+    (f.includes("mes") && !f.includes("trimest"))
+  ) {
+    return false;
+  }
+  return null;
+}
+
+/**
+ * Para o plano ativo do perfil: `true` = assinatura trimestral, `false` = mensal,
+ * `null` = não deu pra inferir (não trava CTA por período — ex.: slug antigo).
+ */
+export async function getActiveSubscriptionBillingQuarterlyForUser(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean | null> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("email, plan_tier")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!profile?.email) return null;
+  const tier = profile.plan_tier as PlanTier;
+  if (tier === "staff") return null;
+
+  const now = new Date().toISOString();
+  const { data: subs, error } = await supabase
+    .from("subscriptions")
+    .select(
+      "checkout_url, status, access_until, plan_id, product_id, frequency, user_id, email"
+    )
+    .eq("email", profile.email);
+
+  if (error || !subs?.length) return null;
+
+  const planRows = subs.filter(
+    (s) =>
+      !isAfiliadoCoinsKiwifySubscriptionRow({
+        checkout_url: s.checkout_url,
+        product_id: s.product_id,
+      })
+  );
+
+  const validSubs = planRows.filter((s) => {
+    const au = s.access_until ? new Date(s.access_until).toISOString() : null;
+    const notRefunded = s.status !== "refunded";
+    const notExpired = au ? au >= now : false;
+    const okStatus =
+      s.status === "active" ||
+      s.status === "past_due" ||
+      s.status === "canceled";
+    return notRefunded && notExpired && okStatus;
+  });
+
+  const matching = validSubs.filter((s) =>
+    tierMatchesProfileSubscription(
+      resolveTierFromKiwifyIds({
+        checkoutLink: s.checkout_url,
+        planId: s.plan_id,
+        productId: s.product_id,
+      }),
+      tier
+    )
+  );
+
+  if (matching.length === 0) return null;
+
+  matching.sort((a, b) => {
+    const ta = a.access_until ? new Date(a.access_until).getTime() : 0;
+    const tb = b.access_until ? new Date(b.access_until).getTime() : 0;
+    return tb - ta;
+  });
+
+  const row = matching[0]!;
+  const fromFreq = billingQuarterlyFromFrequency(row.frequency);
+  if (fromFreq !== null) return fromFreq;
+
+  return subscriptionBillingIsQuarterlyFromCheckoutSlug(row.checkout_url);
+}
+
 export async function getPlanTierForUser(
   supabase: SupabaseClient,
   userId: string
@@ -38,8 +145,17 @@ export async function getPlanTierForUser(
     .eq("id", userId)
     .single();
   const tier = data?.plan_tier;
-  if (tier === "pro" || tier === "padrao" || tier === "legacy" || tier === "staff" || tier === "trial") return tier;
-  return "padrao";
+  if (
+    tier === "pro" ||
+    tier === "padrao" ||
+    tier === "inicial" ||
+    tier === "legacy" ||
+    tier === "staff" ||
+    tier === "trial"
+  ) {
+    return tier;
+  }
+  return "inicial";
 }
 
 export async function getEntitlementsForUser(

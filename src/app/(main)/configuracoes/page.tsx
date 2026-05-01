@@ -4,6 +4,12 @@ import { redirect } from "next/navigation";
 import { createClient } from "../../../../utils/supabase/server";
 import ChangePasswordClient from "../../components/account/ChangePasswordClient";
 import ConfiguracoesClient from "./ConfiguracoesClient";
+import { subscriptionToneForPlanTier } from "@/lib/plan-entitlements";
+import {
+  getActiveSubscriptionBillingQuarterlyForUser,
+  getEntitlementsForUser,
+  getPlanTierForUser,
+} from "@/lib/plan-server";
 
 const kiwifyLoginUrl = "https://dashboard.kiwify.com/login?lang=pt";
 const whatsappUrl = "https://wa.me/5579999144028";
@@ -47,19 +53,27 @@ export default async function ConfiguracoesPage({
     metaLast4 = metaRow.meta_access_token_last4;
   }
 
+  // Entitlements: cards "Integração ML", "Meta Ads" e "Infoprodutor" só
+  // aparecem pra quem tem o feature flag ativo (Padrão+). Inicial só vê Shopee.
+  const entitlements = await getEntitlementsForUser(supabase, user.id);
+  const planTier = await getPlanTierForUser(supabase, user.id);
+  const currentPlanToneForPricing = subscriptionToneForPlanTier(planTier);
+  const userSubscriptionBillingQuarterly =
+    await getActiveSubscriptionBillingQuarterlyForUser(supabase, user.id);
+
   return (
     <div className="bg-dark-bg min-h-[calc(100vh-4rem)] text-text-secondary">
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-text-primary font-heading">
+        <div className="mb-6 flex min-w-0 flex-row items-center justify-between gap-3">
+          <h1 className="min-w-0 flex-1 truncate text-2xl font-bold text-text-primary font-heading sm:text-3xl">
             Minha Conta
           </h1>
           <Link
             href="/dashboard"
-            className="flex items-center gap-2 text-sm font-medium text-shopee-orange transition-opacity hover:opacity-90"
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-shopee-orange px-3 py-2 text-sm font-semibold text-white shadow-sm ring-1 ring-black/5 transition hover:bg-shopee-orange/90 hover:text-white focus-visible:outline focus-visible:ring-2 focus-visible:ring-shopee-orange/40 sm:px-4 sm:py-2.5"
           >
-            <ArrowLeft className="h-4 w-4" />
-            Voltar para o Dashboard
+            <ArrowLeft className="h-4 w-4 shrink-0 text-white" aria-hidden />
+            Voltar
           </Link>
         </div>
 
@@ -74,6 +88,12 @@ export default async function ConfiguracoesPage({
           initialMlSecretLast4={profile.mercadolivre_client_secret_last4 ?? null}
           metaHasToken={metaHasToken}
           metaLast4={metaLast4}
+          canUseMercadoLivre={entitlements.mercadoLivre}
+          canUseAmazon={entitlements.amazon}
+          canUseMetaAds={entitlements.criarCampanhaMeta || entitlements.ati}
+          canUseInfoprodutor={entitlements.infoprodutor}
+          currentPlanToneForPricing={currentPlanToneForPricing}
+          userSubscriptionBillingQuarterly={userSubscriptionBillingQuarterly}
         />
 
         <div className="mt-8 mb-8 rounded-lg border border-dark-border bg-dark-card p-6 shadow-sm">

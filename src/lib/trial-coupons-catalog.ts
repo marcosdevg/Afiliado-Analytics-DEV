@@ -17,9 +17,10 @@ export type TrialCouponCatalogEntry = {
 };
 
 export const TRIAL_COUPONS_CATALOG: TrialCouponCatalogEntry[] = [
+  { cupom: "7DAYSFREE", days: 7, ativo: true, quantidade: 99999 },
   { cupom: "1DAYFREE", days: 1, ativo: true, quantidade: 99999 },
   { cupom: "BRENDA3DAYS", days: 3, ativo: true, quantidade: 99999 },
 ];
 
 /** Cupom exibido por padrão no modal de cadastro gratuito. */
-export const DEFAULT_TRIAL_COUPON_CODE = "1DAYFREE";
+export const DEFAULT_TRIAL_COUPON_CODE = "7DAYSFREE";

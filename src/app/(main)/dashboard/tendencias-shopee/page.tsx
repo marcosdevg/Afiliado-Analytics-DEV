@@ -1,6 +1,7 @@
 import { createClient } from "../../../../../utils/supabase/server";
 import { redirect } from "next/navigation";
 import TendenciasShopeeClient from "./TendenciasShopeeClient";
+import ProFeatureGate from "../ProFeatureGate";
 
 export default async function TendenciasShopeePage() {
   const supabase = await createClient();
@@ -26,10 +27,15 @@ export default async function TendenciasShopeePage() {
     profile?.shopee_app_id && profile?.shopee_api_key_last4,
   );
 
+  // Tendências Shopee é Padrão+ (Inicial não acessa). O gate client-side
+  // renderiza o upsell sem expor o conteúdo abaixo, e a API /api/shopee-trends
+  // refaz o gate server-side via gateTendenciasShopee.
   return (
-    <TendenciasShopeeClient
-      hasShopeeCredentials={hasShopeeCredentials}
-      userEmail={user.email ?? ""}
-    />
+    <ProFeatureGate feature="tendenciasShopee">
+      <TendenciasShopeeClient
+        hasShopeeCredentials={hasShopeeCredentials}
+        userEmail={user.email ?? ""}
+      />
+    </ProFeatureGate>
   );
 }

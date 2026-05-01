@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase-server";
 import { parseMlExtensionSessionToCookieHeader } from "@/lib/mercadolivre/ml-session-cookie";
 import { createMercadoLivreAffiliateShortLink } from "@/lib/mercadolivre/ml-create-affiliate-link";
 import { looksLikeMercadoLivreProductUrl } from "@/lib/mercadolivre/extract-mlb-id";
+import { gateMercadoLivre } from "@/lib/require-entitlements";
 
 export const dynamic = "force-dynamic";
 
@@ -22,11 +23,9 @@ function normalizeAffiliateTag(raw: unknown): string | undefined {
 
 export async function POST(req: Request) {
   try {
+    const gate = await gateMercadoLivre();
+    if (!gate.allowed) return gate.response;
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
     const rawTok = String(body?.mlSessionToken ?? body?.ml_session_token ?? "").trim();

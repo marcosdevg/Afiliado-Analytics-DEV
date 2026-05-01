@@ -15,6 +15,7 @@ import {
   Megaphone,
   ShoppingBag,
   Handshake,
+  Package,
   MessageCircle,
   ArrowLeftRight,
   ListChecks,
@@ -46,7 +47,11 @@ type ProSidebarFeature =
   | "criarCampanhaMeta"
   | "geradorCriativos"
   | "espelhamentogrupos"
-  | "especialistagenerate";
+  | "especialistagenerate"
+  | "infoprodutor"
+  | "tendenciasShopee"
+  | "mercadoLivre"
+  | "amazon";
 
 type NavItem = {
   title: string;
@@ -83,6 +88,8 @@ const navSections: NavSection[] = [
           title: "Tendências Shopee",
           href: "/dashboard/tendencias-shopee",
           icon: <Flame className="h-4 w-4" />,
+          proOnly: true,
+          proFeature: "tendenciasShopee",
         },
         {
           title: "Análise de Cliques",
@@ -158,6 +165,15 @@ const navSections: NavSection[] = [
           title: "Gerador de Links ML",
           href: "/dashboard/minha-lista-ofertas-ml",
           icon: <Handshake className="h-4 w-4" />,
+          proOnly: true,
+          proFeature: "mercadoLivre",
+        },
+        {
+          title: "Gerador de Links Amazon",
+          href: "/dashboard/minha-lista-ofertas-amazon",
+          icon: <Package className="h-4 w-4" />,
+          proOnly: true,
+          proFeature: "amazon",
         },
       ],
     },
@@ -220,6 +236,8 @@ const navSections: NavSection[] = [
       title: "Infoprodutor",
       href: "/dashboard/infoprodutor",
       icon: <ShoppingCart className="h-4 w-4" />,
+      proOnly: true,
+      proFeature: "infoprodutor",
     },
   },
 ];

@@ -33,6 +33,7 @@ import {
   pickProductFromPool,
   searchShopeeProducts,
 } from "@/lib/telegram/shopee-search";
+import { interleaveCrossoverN } from "@/lib/grupos-venda-crossover";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,7 +80,7 @@ async function runCronDisparoTelegram(opts?: CronRunOptions): Promise<CronResult
   );
 
   const sel =
-    "id, user_id, bot_id, lista_id, lista_ofertas_id, lista_ofertas_ml_id, lista_ofertas_info_id, keywords, sub_id_1, sub_id_2, sub_id_3, proximo_indice, keyword_pool_indices, horario_inicio, horario_fim";
+    "id, user_id, bot_id, lista_id, lista_ofertas_id, lista_ofertas_ml_id, lista_ofertas_amazon_id, lista_ofertas_info_id, keywords, sub_id_1, sub_id_2, sub_id_3, proximo_indice, keyword_pool_indices, horario_inicio, horario_fim";
 
   let configQuery = supabase.from("telegram_grupos_venda_continuo").select(sel);
   if (opts?.singleConfigId && opts.manualUserId) {
@@ -108,6 +109,7 @@ async function runCronDisparoTelegram(opts?: CronRunOptions): Promise<CronResult
     lista_id: string | null;
     lista_ofertas_id: string | null;
     lista_ofertas_ml_id: string | null;
+    lista_ofertas_amazon_id: string | null;
     lista_ofertas_info_id: string | null;
     keywords: string[];
     sub_id_1: string;
@@ -123,6 +125,7 @@ async function runCronDisparoTelegram(opts?: CronRunOptions): Promise<CronResult
     const listaId = cfg.lista_id;
     const listaOfertasId = cfg.lista_ofertas_id;
     const listaOfertasMlId = cfg.lista_ofertas_ml_id;
+    const listaOfertasAmazonId = cfg.lista_ofertas_amazon_id;
     const listaOfertasInfoId = cfg.lista_ofertas_info_id;
     const keywords = Array.isArray(cfg.keywords) ? cfg.keywords : [];
     const proximoIndice = Number(cfg.proximo_indice) || 0;
@@ -145,7 +148,7 @@ async function runCronDisparoTelegram(opts?: CronRunOptions): Promise<CronResult
       continue;
     }
 
-    const isListaOfertasMode = !!listaOfertasId || !!listaOfertasMlId;
+    const isListaOfertasMode = !!listaOfertasId || !!listaOfertasMlId || !!listaOfertasAmazonId;
     const isListaInfoMode = !!listaOfertasInfoId;
     if (!isListaOfertasMode && !isListaInfoMode && keywords.length === 0) {
       results.push({ userId, ok: false, error: "Sem keywords" });
@@ -180,82 +183,8 @@ async function runCronDisparoTelegram(opts?: CronRunOptions): Promise<CronResult
         continue;
       }
 
-      // ── Modo Infoprodutor ────────────────────────────────────────────────────
-      if (isListaInfoMode) {
-        type InfoRow = {
-          product_name: string;
-          description: string | null;
-          image_url: string | null;
-          link: string;
-          price: number | string | null;
-          price_old: number | string | null;
-        };
-        const { data: itensInfo } = await supabase
-          .from("minha_lista_ofertas_info")
-          .select("id, product_name, description, image_url, link, price, price_old")
-          .eq("lista_id", listaOfertasInfoId)
-          .eq("user_id", userId)
-          .order("created_at", { ascending: true });
-        const infoItems = (itensInfo ?? []) as InfoRow[];
-        if (infoItems.length === 0) {
-          results.push({ userId, ok: false, error: "Lista Infoprodutor vazia" });
-          continue;
-        }
-        const idx = proximoIndice % infoItems.length;
-        const nextIndex = (proximoIndice + 1) % infoItems.length;
-        const item = infoItems[idx];
-        const link = item.link?.trim() || "";
-        if (!link) {
-          results.push({ userId, ok: false, error: "Produto sem link" });
-          await supabase
-            .from("telegram_grupos_venda_continuo")
-            .update({ proximo_indice: nextIndex, updated_at: new Date().toISOString() })
-            .eq("id", cfg.id);
-          continue;
-        }
-        const preco =
-          item.price == null || item.price === "" ? null : Number.isFinite(Number(item.price)) ? Number(item.price) : null;
-        const precoAntigo =
-          item.price_old == null || item.price_old === ""
-            ? null
-            : Number.isFinite(Number(item.price_old))
-              ? Number(item.price_old)
-              : null;
-
-        const text = buildInfoprodutorMessage({
-          nomeProduto: item.product_name ?? "",
-          descricaoLivre: item.description ?? "",
-          link,
-          preco,
-          precoAntigo,
-        });
-        const sendResults = await sendPayloadToChats(botToken, chatIds, {
-          text,
-          imageUrl: item.image_url?.trim() || undefined,
-        });
-        const sent = sendResults.filter((r) => r.ok).length;
-        const failed = sendResults.length - sent;
-        results.push({
-          userId,
-          keyword: (item.product_name ?? "").slice(0, 30),
-          ok: sent > 0,
-          sent,
-          failed,
-        });
-
-        await supabase
-          .from("telegram_grupos_venda_continuo")
-          .update({
-            proximo_indice: nextIndex,
-            ultimo_disparo_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", cfg.id);
-        continue;
-      }
-
-      // ── Modo lista de ofertas Shopee/ML ─────────────────────────────────────
-      if (isListaOfertasMode) {
+      // ── Modo lista (Shopee + ML + Amazon + Info, com crossover N-way) ──────
+      if (isListaOfertasMode || isListaInfoMode) {
         type ListaRow = {
           product_name: string;
           image_url: string;
@@ -264,74 +193,119 @@ async function runCronDisparoTelegram(opts?: CronRunOptions): Promise<CronResult
           discount_rate: number | null;
           converter_link: string;
         };
-        const items: ListaRow[] = [];
-        if (listaOfertasId) {
-          const { data: itensS } = await supabase
-            .from("minha_lista_ofertas")
-            .select(
-              "id, product_name, image_url, price_original, price_promo, discount_rate, converter_link"
-            )
-            .eq("lista_id", listaOfertasId)
+        type InfoRow = {
+          product_name: string;
+          description: string | null;
+          image_url: string | null;
+          link: string;
+          price: number | string | null;
+          price_old: number | string | null;
+        };
+        type QueueItem =
+          | { source: "lista"; row: ListaRow }
+          | { source: "info"; row: InfoRow };
+
+        const fetchLista = async (table: string, listaId: string): Promise<ListaRow[]> => {
+          const { data } = await supabase
+            .from(table)
+            .select("id, product_name, image_url, price_original, price_promo, discount_rate, converter_link")
+            .eq("lista_id", listaId)
             .eq("user_id", userId)
             .order("created_at", { ascending: true });
-          items.push(...((itensS ?? []) as ListaRow[]));
-        }
-        if (listaOfertasMlId) {
-          const { data: itensM } = await supabase
-            .from("minha_lista_ofertas_ml")
-            .select(
-              "id, product_name, image_url, price_original, price_promo, discount_rate, converter_link"
-            )
-            .eq("lista_id", listaOfertasMlId)
-            .eq("user_id", userId)
-            .order("created_at", { ascending: true });
-          items.push(...((itensM ?? []) as ListaRow[]));
-        }
-        if (items.length === 0) {
+          return (data ?? []) as ListaRow[];
+        };
+        const [shopeeItems, mlItems, amazonItems, infoItemsRaw] = await Promise.all([
+          listaOfertasId ? fetchLista("minha_lista_ofertas", listaOfertasId) : Promise.resolve([] as ListaRow[]),
+          listaOfertasMlId ? fetchLista("minha_lista_ofertas_ml", listaOfertasMlId) : Promise.resolve([] as ListaRow[]),
+          listaOfertasAmazonId ? fetchLista("minha_lista_ofertas_amazon", listaOfertasAmazonId) : Promise.resolve([] as ListaRow[]),
+          listaOfertasInfoId
+            ? supabase
+                .from("minha_lista_ofertas_info")
+                .select("id, product_name, description, image_url, link, price, price_old")
+                .eq("lista_id", listaOfertasInfoId)
+                .eq("user_id", userId)
+                .order("created_at", { ascending: true })
+                .then((r) => (r.data ?? []) as InfoRow[])
+            : Promise.resolve([] as InfoRow[]),
+        ]);
+
+        const shopeeQ: QueueItem[] = shopeeItems.map((row) => ({ source: "lista", row }));
+        const mlQ: QueueItem[] = mlItems.map((row) => ({ source: "lista", row }));
+        const amazonQ: QueueItem[] = amazonItems.map((row) => ({ source: "lista", row }));
+        const infoQ: QueueItem[] = infoItemsRaw.map((row) => ({ source: "info", row }));
+
+        const queue = interleaveCrossoverN<QueueItem>(shopeeQ, mlQ, amazonQ, infoQ);
+        if (queue.length === 0) {
           results.push({ userId, ok: false, error: "Lista de ofertas vazia" });
           continue;
         }
-        const idx = proximoIndice % items.length;
-        const nextIndex = (proximoIndice + 1) % items.length;
-        const item = items[idx];
-        const linkAfiliado = item.converter_link?.trim() || "";
-        if (!linkAfiliado) {
-          results.push({ userId, ok: false, error: "Produto sem link" });
-          await supabase
-            .from("telegram_grupos_venda_continuo")
-            .update({ proximo_indice: nextIndex, updated_at: new Date().toISOString() })
-            .eq("id", cfg.id);
-          continue;
-        }
-        const nomeProduto = item.product_name ?? "";
-        const rate = item.discount_rate ?? 0;
-        const precoPorResolved =
-          effectiveListaOfferPromoPrice(item.price_original, item.price_promo, item.discount_rate) ??
-          item.price_promo ??
-          0;
-        const precoPor = precoPorResolved || 0;
-        const precoRiscado = (item.price_original ?? precoPor) || 0;
 
-        const text = buildListaOfferMessage({
-          nomeProduto,
-          precoPor,
-          precoRiscado,
-          discountRate: rate,
-          linkAfiliado,
-        });
-        const sendResults = await sendPayloadToChats(botToken, chatIds, {
-          text,
-          imageUrl: item.image_url?.trim() || undefined,
-        });
+        const idx = proximoIndice % queue.length;
+        const nextIndex = (proximoIndice + 1) % queue.length;
+        const item = queue[idx];
+
+        let text = "";
+        let imageUrl: string | undefined;
+        let nomeKeyword = "";
+
+        if (item.source === "info") {
+          const r = item.row;
+          const link = r.link?.trim() || "";
+          if (!link) {
+            results.push({ userId, ok: false, error: "Produto sem link" });
+            await supabase
+              .from("telegram_grupos_venda_continuo")
+              .update({ proximo_indice: nextIndex, updated_at: new Date().toISOString() })
+              .eq("id", cfg.id);
+            continue;
+          }
+          const preco = r.price == null || r.price === "" ? null : Number.isFinite(Number(r.price)) ? Number(r.price) : null;
+          const precoAntigo = r.price_old == null || r.price_old === ""
+            ? null
+            : Number.isFinite(Number(r.price_old)) ? Number(r.price_old) : null;
+          text = buildInfoprodutorMessage({
+            nomeProduto: r.product_name ?? "",
+            descricaoLivre: r.description ?? "",
+            link,
+            preco,
+            precoAntigo,
+          });
+          imageUrl = r.image_url?.trim() || undefined;
+          nomeKeyword = (r.product_name ?? "").slice(0, 30);
+        } else {
+          const r = item.row;
+          const linkAfiliado = r.converter_link?.trim() || "";
+          if (!linkAfiliado) {
+            results.push({ userId, ok: false, error: "Produto sem link" });
+            await supabase
+              .from("telegram_grupos_venda_continuo")
+              .update({ proximo_indice: nextIndex, updated_at: new Date().toISOString() })
+              .eq("id", cfg.id);
+            continue;
+          }
+          const nomeProduto = r.product_name ?? "";
+          const rate = r.discount_rate ?? 0;
+          const precoPorResolved =
+            effectiveListaOfferPromoPrice(r.price_original, r.price_promo, r.discount_rate) ??
+            r.price_promo ??
+            0;
+          const precoPor = precoPorResolved || 0;
+          const precoRiscado = (r.price_original ?? precoPor) || 0;
+          text = buildListaOfferMessage({
+            nomeProduto,
+            precoPor,
+            precoRiscado,
+            discountRate: rate,
+            linkAfiliado,
+          });
+          imageUrl = r.image_url?.trim() || undefined;
+          nomeKeyword = nomeProduto.slice(0, 30);
+        }
+
+        const sendResults = await sendPayloadToChats(botToken, chatIds, { text, imageUrl });
         const sent = sendResults.filter((r) => r.ok).length;
         const failed = sendResults.length - sent;
-        results.push({
-          userId,
-          keyword: nomeProduto.slice(0, 30),
-          ok: sent > 0,
-          sent,
-          failed,
-        });
+        results.push({ userId, keyword: nomeKeyword, ok: sent > 0, sent, failed });
 
         await supabase
           .from("telegram_grupos_venda_continuo")

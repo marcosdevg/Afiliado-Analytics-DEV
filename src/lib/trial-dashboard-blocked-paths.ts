@@ -6,13 +6,13 @@
 export const TRIAL_BLOCKED_DASHBOARD_PREFIXES: string[] = [
   "/dashboard/gpl",
   "/dashboard/ati",
-  "/dashboard/grupos-venda",
   "/dashboard/espelhamento-grupos",
   "/dashboard/meta-ads",
   "/dashboard/video-editor",
   "/dashboard/gerador-especialista",
-  "/dashboard/minha-lista-ofertas",
   "/dashboard/minha-lista-ofertas-ml",
+  "/dashboard/minha-lista-ofertas-amazon",
+  "/dashboard/tendencias-shopee",
   "/dashboard/admin",
   "/dashboard/infoprodutor",
 ];

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { MinhaListaOfertasMlListsPanel } from "@/app/components/minha-lista-ofertas/MinhaListaOfertasMlListsPanel";
+import { MinhaListaOfertasAmazonListsPanel } from "@/app/components/minha-lista-ofertas/MinhaListaOfertasAmazonListsPanel";
 import { GeradorPaginationBar } from "@/app/components/shopee/GeradorPaginationBar";
 import {
   ShoppingBag,
@@ -20,11 +21,14 @@ import {
   ArrowUp,
   ArrowDown,
   Check,
+  Lock,
 } from "lucide-react";
 import { Reorder } from "framer-motion";
 import ConfirmModal from "@/app/components/ui/ConfirmModal";
 import { effectiveListaOfferPromoPrice } from "@/lib/lista-ofertas-effective-promo";
 import { MERCADOLIVRE_UX_COMING_SOON } from "@/lib/mercadolivre-ux-coming-soon";
+import { usePlanEntitlements } from "../PlanEntitlementsContext";
+import ProFeatureGate from "../ProFeatureGate";
 import MlEmBreveSplash from "@/app/components/ml/MlEmBreveSplash";
 
 type Lista = {
@@ -60,9 +64,16 @@ function displayPrecoPorLista(item: Item): string {
   return por != null ? formatCurrency(por) : "—";
 }
 
-type ListaStore = "shopee" | "ml";
+type ListaStore = "shopee" | "ml" | "amazon";
 
 export default function MinhaListaOfertasPage() {
+  // Inicial não tem ML/Amazon — tabs continuam VISÍVEIS com cadeado (gatilho
+  // de upgrade). O conteúdo ML/Amazon é envolto em ProFeatureGate, que mostra
+  // o upsell do plano Padrão.
+  const { entitlements } = usePlanEntitlements();
+  const canUseMl = Boolean(entitlements?.mercadoLivre);
+  const canUseAmazon = Boolean(entitlements?.amazon);
+
   const [listaStore, setListaStore] = useState<ListaStore>("shopee");
   const [listas, setListas] = useState<Lista[]>([]);
   const [itemsByLista, setItemsByLista] = useState<Record<string, Item[]>>({});
@@ -338,7 +349,9 @@ export default function MinhaListaOfertasPage() {
               href={
                 listaStore === "shopee"
                   ? "/dashboard/gerador-links-shopee"
-                  : "/dashboard/minha-lista-ofertas-ml"
+                  : listaStore === "ml"
+                    ? "/dashboard/minha-lista-ofertas-ml"
+                    : "/dashboard/minha-lista-ofertas-amazon"
               }
               className="p-2 rounded-lg border border-dark-border bg-dark-card text-text-secondary hover:text-shopee-orange hover:border-shopee-orange/50 transition-colors"
               title="Voltar"
@@ -348,12 +361,19 @@ export default function MinhaListaOfertasPage() {
           )}
           {listaStore === "shopee" ? (
             <img src="/shop.webp" alt="Shopee" className="w-12 object-contain" />
-          ) : (
+          ) : listaStore === "ml" ? (
             <img src="/ml.png" alt="Mercado Livre" className="w-12 h-12 object-contain" />
+          ) : (
+            <img src="/amazonlogo.webp" alt="Amazon" className="w-12 h-12 object-contain" />
           )}
           <h1 className="text-xl font-semibold">Minha Lista de Ofertas</h1>
         </div>
 
+        {/*
+          Tabs Mercado Livre / Amazon ficam SEMPRE visíveis como gatilho de
+          venda; pra Inicial vão com cadeado e ao clicar mostram o
+          ProFeatureGate (upsell do Padrão).
+        */}
         <div
           className="mb-6 flex rounded-xl border border-dark-border bg-dark-card p-1"
           role="tablist"
@@ -377,13 +397,28 @@ export default function MinhaListaOfertasPage() {
             role="tab"
             aria-selected={listaStore === "ml"}
             onClick={() => setListaStore("ml")}
-            className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+            className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
               listaStore === "ml"
                 ? "bg-[#e24c30] text-white shadow"
                 : "text-text-secondary hover:text-text-primary"
-            }`}
+            } ${!canUseMl ? "opacity-70" : ""}`}
           >
-            Mercado Livre
+            <span>Mercado Livre</span>
+            {!canUseMl && <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={listaStore === "amazon"}
+            onClick={() => setListaStore("amazon")}
+            className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+              listaStore === "amazon"
+                ? "bg-amber-500 text-black shadow"
+                : "text-text-secondary hover:text-text-primary"
+            } ${!canUseAmazon ? "opacity-70" : ""}`}
+          >
+            <span>Amazon</span>
+            {!canUseAmazon && <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
           </button>
         </div>
 
@@ -393,8 +428,15 @@ export default function MinhaListaOfertasPage() {
               <MlEmBreveSplash showBack={false} compact />
             </div>
           ) : (
-            <MinhaListaOfertasMlListsPanel />
+            // Pra Inicial, ProFeatureGate exibe o upsell do plano Padrão.
+            <ProFeatureGate feature="mercadoLivre">
+              <MinhaListaOfertasMlListsPanel />
+            </ProFeatureGate>
           )
+        ) : listaStore === "amazon" ? (
+          <ProFeatureGate feature="amazon">
+            <MinhaListaOfertasAmazonListsPanel />
+          </ProFeatureGate>
         ) : (
           <div className="rounded-xl border border-[#2c2c32] bg-[#27272a] overflow-hidden">
             <div className="px-3 sm:px-5 py-4 border-b border-[#2c2c32] flex flex-wrap items-center justify-between gap-3">

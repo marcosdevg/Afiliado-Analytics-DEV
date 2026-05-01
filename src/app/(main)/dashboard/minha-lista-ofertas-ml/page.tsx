@@ -44,6 +44,7 @@ import { mlEstCommissionFromPromoPrice } from "@/lib/mercadolivre/ml-lista-autom
 import { useMlAffiliateLocalSettings } from "@/lib/mercadolivre/use-ml-affiliate-local-settings";
 import { MERCADOLIVRE_UX_COMING_SOON } from "@/lib/mercadolivre-ux-coming-soon";
 import MlEmBreveSplash from "@/app/components/ml/MlEmBreveSplash";
+import ProFeatureGate from "../ProFeatureGate";
 
 type Lista = { id: string; nome: string; totalItens: number; createdAt?: string };
 
@@ -478,6 +479,14 @@ function fallbackNameFromProductUrl(url: string, lineIndex: number): string {
 }
 
 export default function MinhaListaOfertasMlPage() {
+  return (
+    <ProFeatureGate feature="mercadoLivre">
+      <MinhaListaOfertasMlPageInner />
+    </ProFeatureGate>
+  );
+}
+
+function MinhaListaOfertasMlPageInner() {
   const [listas, setListas] = useState<Lista[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -1587,7 +1596,7 @@ export default function MinhaListaOfertasMlPage() {
       </header>
 
       {(!mlSessionToken.trim() || !mlAffiliateTag.trim()) && (
-        <div className="px-3 sm:px-4 py-3 border-b border-amber-500/35 bg-amber-950/35 text-[11px] text-amber-100/95 leading-relaxed flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="px-3 sm:px-4 py-3 border-b border-amber-500/35 bg-amber-950/35 text-[11px] text-amber-100/95 leading-relaxed flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 light:border-orange-200/80 light:bg-orange-100/70 light:text-amber-950">
           <p className="min-w-0">
             Instale a extensão do Afiliado Analytics e salve a<span className="font-semibold">etiqueta</span> e{" "}
             <span className="font-semibold">token</span> em Minha Conta para buscar e converter no ML.
@@ -1597,13 +1606,13 @@ export default function MinhaListaOfertasMlPage() {
               href="https://codenxt.online/extensao"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center rounded-lg bg-amber-500/25 hover:bg-amber-500/35 border border-amber-400/40 px-3 py-1.5 text-[11px] font-semibold text-amber-50 no-underline transition"
+              className="inline-flex items-center justify-center rounded-lg bg-amber-500/25 hover:bg-amber-500/35 border border-amber-400/40 px-3 py-1.5 text-[11px] font-semibold text-amber-50 no-underline transition light:bg-orange-200/90 light:hover:bg-orange-200 light:border-orange-300/70 light:text-amber-950"
             >
               Baixar extensão
             </a>
             <Link
               href="/configuracoes?ml=1"
-              className="inline-flex items-center justify-center rounded-lg bg-[#222228] hover:bg-[#2a2a30] border border-[#3e3e46] px-3 py-1.5 text-[11px] font-semibold text-[#f0f0f2] no-underline transition"
+              className="inline-flex items-center justify-center rounded-lg bg-[#222228] hover:bg-[#2a2a30] border border-[#3e3e46] px-3 py-1.5 text-[11px] font-semibold text-[#f0f0f2] no-underline transition light:bg-white light:hover:bg-orange-50 light:border-orange-200/90 light:text-zinc-800"
             >
               Minha Conta
             </Link>

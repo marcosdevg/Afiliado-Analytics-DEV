@@ -139,7 +139,7 @@ async function recomputeProfileStatus(supabase: ReturnType<typeof admin>, email:
       .sort()
       .slice(-1)[0] || null
 
-  let planTier: PlanTier = "padrao"
+  let planTier: PlanTier = "inicial"
   if (anyValid) {
     const tiers = validSubs.map((s) =>
       resolveTierFromKiwifyIds({

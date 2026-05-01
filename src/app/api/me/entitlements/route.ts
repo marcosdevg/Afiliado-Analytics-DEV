@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "../../../../../utils/supabase/server";
 import {
+  getActiveSubscriptionBillingQuarterlyForUser,
   getPlanTierForUser,
   getUsageSnapshot,
   reconcileCaptureSitesForPlan,
@@ -23,6 +24,8 @@ export async function GET() {
   const entitlements = getEntitlementsForTier(tier);
   await reconcileCaptureSitesForPlan(supabase, user.id);
   const usage = await getUsageSnapshot(supabase, user.id);
+  const billingQuarterly =
+    await getActiveSubscriptionBillingQuarterlyForUser(supabase, user.id);
 
-  return NextResponse.json({ tier, entitlements, usage });
+  return NextResponse.json({ tier, entitlements, usage, billingQuarterly });
 }

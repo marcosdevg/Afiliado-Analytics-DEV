@@ -22,6 +22,7 @@ type ContinuoRow = {
   bot_id: string;
   lista_ofertas_id?: string | null;
   lista_ofertas_ml_id?: string | null;
+  lista_ofertas_amazon_id?: string | null;
   lista_ofertas_info_id?: string | null;
   keywords: string[];
   sub_id_1: string;
@@ -46,7 +47,7 @@ export async function GET() {
     const { data: rows, error } = await supabase
       .from("telegram_grupos_venda_continuo")
       .select(
-        "id, lista_id, bot_id, lista_ofertas_id, lista_ofertas_ml_id, lista_ofertas_info_id, keywords, sub_id_1, sub_id_2, sub_id_3, ativo, proximo_indice, ultimo_disparo_at, updated_at, horario_inicio, horario_fim"
+        "id, lista_id, bot_id, lista_ofertas_id, lista_ofertas_ml_id, lista_ofertas_amazon_id, lista_ofertas_info_id, keywords, sub_id_1, sub_id_2, sub_id_3, ativo, proximo_indice, ultimo_disparo_at, updated_at, horario_inicio, horario_fim"
       )
       .eq("user_id", user.id)
       .order("updated_at", { ascending: false });
@@ -100,6 +101,17 @@ export async function GET() {
         listasOfertasMlMap[l.id] = l.nome ?? "";
       });
     }
+    const listaOfertasAmazonIds = [...new Set(list.map((r) => r.lista_ofertas_amazon_id).filter(Boolean))] as string[];
+    const listasOfertasAmazonMap: Record<string, string> = {};
+    if (listaOfertasAmazonIds.length > 0) {
+      const { data: listasAmazon } = await supabase
+        .from("listas_ofertas_amazon")
+        .select("id, nome")
+        .in("id", listaOfertasAmazonIds);
+      (listasAmazon ?? []).forEach((l: { id: string; nome: string }) => {
+        listasOfertasAmazonMap[l.id] = l.nome ?? "";
+      });
+    }
     const listaOfertasInfoIds = [...new Set(list.map((r) => r.lista_ofertas_info_id).filter(Boolean))] as string[];
     const listasOfertasInfoMap: Record<string, string> = {};
     if (listaOfertasInfoIds.length > 0) {
@@ -127,6 +139,9 @@ export async function GET() {
         listaOfertasNome: (r.lista_ofertas_id && listasOfertasMap[r.lista_ofertas_id]) || null,
         listaOfertasMlId: r.lista_ofertas_ml_id ?? null,
         listaOfertasMlNome: (r.lista_ofertas_ml_id && listasOfertasMlMap[r.lista_ofertas_ml_id]) || null,
+        listaOfertasAmazonId: r.lista_ofertas_amazon_id ?? null,
+        listaOfertasAmazonNome:
+          (r.lista_ofertas_amazon_id && listasOfertasAmazonMap[r.lista_ofertas_amazon_id]) || null,
         listaOfertasInfoId: r.lista_ofertas_info_id ?? null,
         listaOfertasInfoNome:
           (r.lista_ofertas_info_id && listasOfertasInfoMap[r.lista_ofertas_info_id]) || null,
@@ -167,6 +182,8 @@ export async function POST(req: Request) {
       typeof body.listaOfertasId === "string" ? body.listaOfertasId.trim() || null : null;
     const listaOfertasMlId =
       typeof body.listaOfertasMlId === "string" ? body.listaOfertasMlId.trim() || null : null;
+    const listaOfertasAmazonId =
+      typeof body.listaOfertasAmazonId === "string" ? body.listaOfertasAmazonId.trim() || null : null;
     const listaOfertasInfoId =
       typeof body.listaOfertasInfoId === "string" ? body.listaOfertasInfoId.trim() || null : null;
     const ativo = body.ativo === true || body.ativo === "true";
@@ -211,115 +228,50 @@ export async function POST(req: Request) {
     if (!listaId) {
       return NextResponse.json({ error: "Lista de grupos é obrigatória." }, { status: 400 });
     }
+    // Crossover N-way: qualquer combinação de Shopee/ML/Amazon/Infoprodutor.
     const isListaShopee = !!listaOfertasId;
     const isListaMl = !!listaOfertasMlId;
+    const isListaAmazon = !!listaOfertasAmazonId;
     const isListaInfo = !!listaOfertasInfoId;
-    const isCrossover = isListaShopee && isListaMl;
-    const isListaOfertasMode = isListaShopee || isListaMl || isListaInfo;
+    const activeSources = [isListaShopee, isListaMl, isListaAmazon, isListaInfo].filter(Boolean).length;
+    const isListaOfertasMode = activeSources > 0;
     if (!isListaOfertasMode && keywords.length === 0) {
       return NextResponse.json(
         { error: "Informe ao menos uma keyword ou selecione uma lista de ofertas." },
         { status: 400 }
       );
     }
+    if (isListaShopee) {
+      const { data: listaOferta } = await supabase
+        .from("listas_ofertas").select("id").eq("id", listaOfertasId).eq("user_id", user.id).single();
+      if (!listaOferta) return NextResponse.json({ error: "Lista de ofertas Shopee não encontrada." }, { status: 404 });
+      const { count } = await supabase
+        .from("minha_lista_ofertas").select("id", { count: "exact", head: true }).eq("lista_id", listaOfertasId).eq("user_id", user.id);
+      if (!count || count < 1) return NextResponse.json({ error: "A lista Shopee está vazia." }, { status: 400 });
+    }
+    if (isListaMl) {
+      const { data: listaMl } = await supabase
+        .from("listas_ofertas_ml").select("id").eq("id", listaOfertasMlId).eq("user_id", user.id).single();
+      if (!listaMl) return NextResponse.json({ error: "Lista Mercado Livre não encontrada." }, { status: 404 });
+      const { count } = await supabase
+        .from("minha_lista_ofertas_ml").select("id", { count: "exact", head: true }).eq("lista_id", listaOfertasMlId).eq("user_id", user.id);
+      if (!count || count < 1) return NextResponse.json({ error: "A lista Mercado Livre está vazia." }, { status: 400 });
+    }
+    if (isListaAmazon) {
+      const { data: listaAmazon } = await supabase
+        .from("listas_ofertas_amazon").select("id").eq("id", listaOfertasAmazonId).eq("user_id", user.id).single();
+      if (!listaAmazon) return NextResponse.json({ error: "Lista Amazon não encontrada." }, { status: 404 });
+      const { count } = await supabase
+        .from("minha_lista_ofertas_amazon").select("id", { count: "exact", head: true }).eq("lista_id", listaOfertasAmazonId).eq("user_id", user.id);
+      if (!count || count < 1) return NextResponse.json({ error: "A lista Amazon está vazia." }, { status: 400 });
+    }
     if (isListaInfo) {
       const { data: listaInfo } = await supabase
-        .from("listas_ofertas_info")
-        .select("id")
-        .eq("id", listaOfertasInfoId)
-        .eq("user_id", user.id)
-        .single();
-      if (!listaInfo) {
-        return NextResponse.json({ error: "Lista do Infoprodutor não encontrada." }, { status: 404 });
-      }
+        .from("listas_ofertas_info").select("id").eq("id", listaOfertasInfoId).eq("user_id", user.id).single();
+      if (!listaInfo) return NextResponse.json({ error: "Lista do Infoprodutor não encontrada." }, { status: 404 });
       const { count } = await supabase
-        .from("minha_lista_ofertas_info")
-        .select("id", { count: "exact", head: true })
-        .eq("lista_id", listaOfertasInfoId)
-        .eq("user_id", user.id);
-      if (!count || count < 1) {
-        return NextResponse.json(
-          { error: "A lista do Infoprodutor está vazia. Adicione produtos primeiro." },
-          { status: 400 }
-        );
-      }
-    } else if (isCrossover) {
-      const { data: listaOferta } = await supabase
-        .from("listas_ofertas")
-        .select("id")
-        .eq("id", listaOfertasId)
-        .eq("user_id", user.id)
-        .single();
-      if (!listaOferta) {
-        return NextResponse.json({ error: "Lista de ofertas Shopee não encontrada." }, { status: 404 });
-      }
-      const { count: c1 } = await supabase
-        .from("minha_lista_ofertas")
-        .select("id", { count: "exact", head: true })
-        .eq("lista_id", listaOfertasId)
-        .eq("user_id", user.id);
-      if (!c1 || c1 < 1) {
-        return NextResponse.json({ error: "A lista Shopee está vazia." }, { status: 400 });
-      }
-      const { data: listaMl } = await supabase
-        .from("listas_ofertas_ml")
-        .select("id")
-        .eq("id", listaOfertasMlId)
-        .eq("user_id", user.id)
-        .single();
-      if (!listaMl) {
-        return NextResponse.json({ error: "Lista Mercado Livre não encontrada." }, { status: 404 });
-      }
-      const { count: c2 } = await supabase
-        .from("minha_lista_ofertas_ml")
-        .select("id", { count: "exact", head: true })
-        .eq("lista_id", listaOfertasMlId)
-        .eq("user_id", user.id);
-      if (!c2 || c2 < 1) {
-        return NextResponse.json({ error: "A lista ML está vazia." }, { status: 400 });
-      }
-    } else if (isListaShopee) {
-      const { data: listaOferta } = await supabase
-        .from("listas_ofertas")
-        .select("id")
-        .eq("id", listaOfertasId)
-        .eq("user_id", user.id)
-        .single();
-      if (!listaOferta) {
-        return NextResponse.json({ error: "Lista de ofertas não encontrada." }, { status: 404 });
-      }
-      const { count } = await supabase
-        .from("minha_lista_ofertas")
-        .select("id", { count: "exact", head: true })
-        .eq("lista_id", listaOfertasId)
-        .eq("user_id", user.id);
-      if (!count || count < 1) {
-        return NextResponse.json(
-          { error: "A lista de ofertas está vazia. Adicione produtos à lista primeiro." },
-          { status: 400 }
-        );
-      }
-    } else if (isListaMl) {
-      const { data: listaMl } = await supabase
-        .from("listas_ofertas_ml")
-        .select("id")
-        .eq("id", listaOfertasMlId)
-        .eq("user_id", user.id)
-        .single();
-      if (!listaMl) {
-        return NextResponse.json({ error: "Lista Mercado Livre não encontrada." }, { status: 404 });
-      }
-      const { count } = await supabase
-        .from("minha_lista_ofertas_ml")
-        .select("id", { count: "exact", head: true })
-        .eq("lista_id", listaOfertasMlId)
-        .eq("user_id", user.id);
-      if (!count || count < 1) {
-        return NextResponse.json(
-          { error: "A lista ML está vazia. Adicione produtos primeiro." },
-          { status: 400 }
-        );
-      }
+        .from("minha_lista_ofertas_info").select("id", { count: "exact", head: true }).eq("lista_id", listaOfertasInfoId).eq("user_id", user.id);
+      if (!count || count < 1) return NextResponse.json({ error: "A lista do Infoprodutor está vazia. Adicione produtos primeiro." }, { status: 400 });
     }
 
     // Resolve a lista de grupos Telegram → bot_id
@@ -360,6 +312,7 @@ export async function POST(req: Request) {
       keywords: isListaOfertasMode ? [] : keywords,
       lista_ofertas_id: listaOfertasId || null,
       lista_ofertas_ml_id: listaOfertasMlId || null,
+      lista_ofertas_amazon_id: listaOfertasAmazonId || null,
       lista_ofertas_info_id: listaOfertasInfoId || null,
       sub_id_1: subId1,
       sub_id_2: subId2,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
 import { effectiveListaOfferPromoPrice } from "@/lib/lista-ofertas-effective-promo";
+import { gateMercadoLivre } from "@/lib/require-entitlements";
 
 export const dynamic = "force-dynamic";
 
@@ -21,9 +22,10 @@ function mapItem(r: Record<string, unknown>) {
 
 export async function GET(req: Request) {
   try {
+    const gate = await gateMercadoLivre();
+    if (!gate.allowed) return gate.response;
+    const user = { id: gate.userId };
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
     const url = new URL(req.url);
     const listaId = url.searchParams.get("lista_id")?.trim();
@@ -60,9 +62,10 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    const gate = await gateMercadoLivre();
+    if (!gate.allowed) return gate.response;
+    const user = { id: gate.userId };
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
     const listaId = (body?.listaId ?? body?.lista_id ?? "").toString().trim();
@@ -110,11 +113,10 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
+    const gate = await gateMercadoLivre();
+    if (!gate.allowed) return gate.response;
+    const user = { id: gate.userId };
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
     const itemIds = body?.itemIds || body?.item_ids;
@@ -176,9 +178,10 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    const gate = await gateMercadoLivre();
+    if (!gate.allowed) return gate.response;
+    const user = { id: gate.userId };
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
     const url = new URL(req.url);
     const id = url.searchParams.get("id")?.trim();

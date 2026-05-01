@@ -385,6 +385,20 @@ html.light [class~="bg-[#F97316]"] .text-white {
   color: #FFFFFF !important;
 }
 
+/* ── Pricing / upgrade: gradientes em classe arbitrária (bg-[linear-gradient(...)])
+ * Não usam bg-gradient-to-*, então as exceções acima não pegam. Mantém branco no claro.
+ */
+html.light [class*="linear-gradient(135deg,#e24c30"][class*="text-[#fff]"],
+html.light [class*="linear-gradient(135deg,#e24c30"].text-white {
+  color: #FFFFFF !important;
+}
+
+/* Trial card (verde): mesmo padrão */
+html.light [class*="linear-gradient(180deg,rgba(16,185,129"][class*="text-[#fff]"],
+html.light [class*="linear-gradient(180deg,rgba(16,185,129"].text-white {
+  color: #FFFFFF !important;
+}
+
 /* —— Placeholders escuros → cinza médio no claro —— */
 html.light .placeholder\:text-\[\#6b6b72\]::placeholder,
 html.light .placeholder\:text-\[\#7a7a82\]::placeholder,

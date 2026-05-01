@@ -22,13 +22,13 @@ export async function GET() {
 
     const { data: rows, error } = await supabase
       .from("grupos_venda_continuo")
-      .select("id, lista_id, instance_id, lista_ofertas_id, lista_ofertas_ml_id, lista_ofertas_info_id, keywords, sub_id_1, sub_id_2, sub_id_3, ativo, proximo_indice, ultimo_disparo_at, updated_at, horario_inicio, horario_fim")
+      .select("id, lista_id, instance_id, lista_ofertas_id, lista_ofertas_ml_id, lista_ofertas_amazon_id, lista_ofertas_info_id, keywords, sub_id_1, sub_id_2, sub_id_3, ativo, proximo_indice, ultimo_disparo_at, updated_at, horario_inicio, horario_fim")
       .eq("user_id", user.id)
       .order("updated_at", { ascending: false });
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    type Row = { id: string; lista_id: string | null; instance_id: string; lista_ofertas_id?: string | null; lista_ofertas_ml_id?: string | null; lista_ofertas_info_id?: string | null; keywords: string[]; sub_id_1: string; sub_id_2: string; sub_id_3: string; ativo: boolean; proximo_indice: number; ultimo_disparo_at: string | null; updated_at: string; horario_inicio: string | null; horario_fim: string | null };
+    type Row = { id: string; lista_id: string | null; instance_id: string; lista_ofertas_id?: string | null; lista_ofertas_ml_id?: string | null; lista_ofertas_amazon_id?: string | null; lista_ofertas_info_id?: string | null; keywords: string[]; sub_id_1: string; sub_id_2: string; sub_id_3: string; ativo: boolean; proximo_indice: number; ultimo_disparo_at: string | null; updated_at: string; horario_inicio: string | null; horario_fim: string | null };
     const list = (rows ?? []) as Row[];
     const listaIds = [...new Set(list.map((r) => r.lista_id).filter(Boolean))] as string[];
     const listasMap: Record<string, string> = {};
@@ -48,6 +48,12 @@ export async function GET() {
       const { data: listasMl } = await supabase.from("listas_ofertas_ml").select("id, nome").in("id", listaOfertasMlIds);
       (listasMl ?? []).forEach((l: { id: string; nome: string }) => { listasOfertasMlMap[l.id] = l.nome ?? ""; });
     }
+    const listaOfertasAmazonIds = [...new Set(list.map((r) => r.lista_ofertas_amazon_id).filter(Boolean))] as string[];
+    const listasOfertasAmazonMap: Record<string, string> = {};
+    if (listaOfertasAmazonIds.length > 0) {
+      const { data: listasAmazon } = await supabase.from("listas_ofertas_amazon").select("id, nome").in("id", listaOfertasAmazonIds);
+      (listasAmazon ?? []).forEach((l: { id: string; nome: string }) => { listasOfertasAmazonMap[l.id] = l.nome ?? ""; });
+    }
     const listaOfertasInfoIds = [...new Set(list.map((r) => r.lista_ofertas_info_id).filter(Boolean))] as string[];
     const listasOfertasInfoMap: Record<string, string> = {};
     if (listaOfertasInfoIds.length > 0) {
@@ -60,6 +66,7 @@ export async function GET() {
       const idx = r.proximo_indice ?? 0;
       const listaOfertasId = r.lista_ofertas_id ?? null;
       const listaOfertasMlId = r.lista_ofertas_ml_id ?? null;
+      const listaOfertasAmazonId = r.lista_ofertas_amazon_id ?? null;
       const listaOfertasInfoId = r.lista_ofertas_info_id ?? null;
       return {
         id: r.id,
@@ -69,6 +76,8 @@ export async function GET() {
         listaOfertasNome: (listaOfertasId && listasOfertasMap[listaOfertasId]) || null,
         listaOfertasMlId,
         listaOfertasMlNome: (listaOfertasMlId && listasOfertasMlMap[listaOfertasMlId]) || null,
+        listaOfertasAmazonId,
+        listaOfertasAmazonNome: (listaOfertasAmazonId && listasOfertasAmazonMap[listaOfertasAmazonId]) || null,
         listaOfertasInfoId,
         listaOfertasInfoNome: (listaOfertasInfoId && listasOfertasInfoMap[listaOfertasInfoId]) || null,
         instanceId: r.instance_id,
@@ -105,6 +114,7 @@ export async function POST(req: Request) {
     const listaId = typeof body.listaId === "string" ? body.listaId.trim() : "";
     const listaOfertasId = typeof body.listaOfertasId === "string" ? body.listaOfertasId.trim() || null : null;
     const listaOfertasMlId = typeof body.listaOfertasMlId === "string" ? body.listaOfertasMlId.trim() || null : null;
+    const listaOfertasAmazonId = typeof body.listaOfertasAmazonId === "string" ? body.listaOfertasAmazonId.trim() || null : null;
     const listaOfertasInfoId = typeof body.listaOfertasInfoId === "string" ? body.listaOfertasInfoId.trim() || null : null;
     const ativo = body.ativo === true || body.ativo === "true";
     const keywordsRaw = body.keywords;
@@ -154,12 +164,41 @@ export async function POST(req: Request) {
     }
 
     if (!listaId) return NextResponse.json({ error: "Lista de grupos é obrigatória." }, { status: 400 });
+    // Crossover N-way: qualquer combinação ≥ 2 fontes vira crossover
+    // (Shopee, ML, Amazon, Infoprodutor). O cron/disparar intercala via
+    // `interleaveCrossoverN` e `proximo_indice` percorre a fila resultante.
     const isListaShopee = !!listaOfertasId;
     const isListaMl = !!listaOfertasMlId;
+    const isListaAmazon = !!listaOfertasAmazonId;
     const isListaInfo = !!listaOfertasInfoId;
-    const isCrossover = isListaShopee && isListaMl;
-    const isListaOfertasMode = isListaShopee || isListaMl || isListaInfo;
-    if (!isListaOfertasMode && keywords.length === 0) return NextResponse.json({ error: "Informe ao menos uma keyword ou selecione uma lista de ofertas." }, { status: 400 });
+    const activeSources = [isListaShopee, isListaMl, isListaAmazon, isListaInfo].filter(Boolean).length;
+    const isListaOfertasMode = activeSources > 0;
+    if (!isListaOfertasMode && keywords.length === 0) {
+      return NextResponse.json(
+        { error: "Informe ao menos uma keyword ou selecione uma lista de ofertas." },
+        { status: 400 },
+      );
+    }
+
+    // Validações de cada fonte ativa: a lista existe + não está vazia.
+    if (isListaShopee) {
+      const { data: listaOferta } = await supabase.from("listas_ofertas").select("id").eq("id", listaOfertasId).eq("user_id", user.id).single();
+      if (!listaOferta) return NextResponse.json({ error: "Lista de ofertas Shopee não encontrada." }, { status: 404 });
+      const { count } = await supabase.from("minha_lista_ofertas").select("id", { count: "exact", head: true }).eq("lista_id", listaOfertasId).eq("user_id", user.id);
+      if (!count || count < 1) return NextResponse.json({ error: "A lista Shopee está vazia." }, { status: 400 });
+    }
+    if (isListaMl) {
+      const { data: listaMl } = await supabase.from("listas_ofertas_ml").select("id").eq("id", listaOfertasMlId).eq("user_id", user.id).single();
+      if (!listaMl) return NextResponse.json({ error: "Lista Mercado Livre não encontrada." }, { status: 404 });
+      const { count } = await supabase.from("minha_lista_ofertas_ml").select("id", { count: "exact", head: true }).eq("lista_id", listaOfertasMlId).eq("user_id", user.id);
+      if (!count || count < 1) return NextResponse.json({ error: "A lista Mercado Livre está vazia." }, { status: 400 });
+    }
+    if (isListaAmazon) {
+      const { data: listaAmazon } = await supabase.from("listas_ofertas_amazon").select("id").eq("id", listaOfertasAmazonId).eq("user_id", user.id).single();
+      if (!listaAmazon) return NextResponse.json({ error: "Lista Amazon não encontrada." }, { status: 404 });
+      const { count } = await supabase.from("minha_lista_ofertas_amazon").select("id", { count: "exact", head: true }).eq("lista_id", listaOfertasAmazonId).eq("user_id", user.id);
+      if (!count || count < 1) return NextResponse.json({ error: "A lista Amazon está vazia." }, { status: 400 });
+    }
     if (isListaInfo) {
       const { data: listaInfo } = await supabase
         .from("listas_ofertas_info")
@@ -174,25 +213,6 @@ export async function POST(req: Request) {
         .eq("lista_id", listaOfertasInfoId)
         .eq("user_id", user.id);
       if (!count || count < 1) return NextResponse.json({ error: "A lista do Infoprodutor está vazia. Adicione produtos primeiro." }, { status: 400 });
-    } else if (isCrossover) {
-      const { data: listaOferta } = await supabase.from("listas_ofertas").select("id").eq("id", listaOfertasId).eq("user_id", user.id).single();
-      if (!listaOferta) return NextResponse.json({ error: "Lista de ofertas Shopee não encontrada." }, { status: 404 });
-      const { count: c1 } = await supabase.from("minha_lista_ofertas").select("id", { count: "exact", head: true }).eq("lista_id", listaOfertasId).eq("user_id", user.id);
-      if (!c1 || c1 < 1) return NextResponse.json({ error: "A lista Shopee está vazia." }, { status: 400 });
-      const { data: listaMl } = await supabase.from("listas_ofertas_ml").select("id").eq("id", listaOfertasMlId).eq("user_id", user.id).single();
-      if (!listaMl) return NextResponse.json({ error: "Lista Mercado Livre não encontrada." }, { status: 404 });
-      const { count: c2 } = await supabase.from("minha_lista_ofertas_ml").select("id", { count: "exact", head: true }).eq("lista_id", listaOfertasMlId).eq("user_id", user.id);
-      if (!c2 || c2 < 1) return NextResponse.json({ error: "A lista ML está vazia." }, { status: 400 });
-    } else if (isListaShopee) {
-      const { data: listaOferta } = await supabase.from("listas_ofertas").select("id").eq("id", listaOfertasId).eq("user_id", user.id).single();
-      if (!listaOferta) return NextResponse.json({ error: "Lista de ofertas não encontrada." }, { status: 404 });
-      const { count } = await supabase.from("minha_lista_ofertas").select("id", { count: "exact", head: true }).eq("lista_id", listaOfertasId).eq("user_id", user.id);
-      if (!count || count < 1) return NextResponse.json({ error: "A lista de ofertas está vazia. Adicione produtos à lista primeiro." }, { status: 400 });
-    } else if (isListaMl) {
-      const { data: listaMl } = await supabase.from("listas_ofertas_ml").select("id").eq("id", listaOfertasMlId).eq("user_id", user.id).single();
-      if (!listaMl) return NextResponse.json({ error: "Lista Mercado Livre não encontrada." }, { status: 404 });
-      const { count } = await supabase.from("minha_lista_ofertas_ml").select("id", { count: "exact", head: true }).eq("lista_id", listaOfertasMlId).eq("user_id", user.id);
-      if (!count || count < 1) return NextResponse.json({ error: "A lista ML está vazia. Adicione produtos primeiro." }, { status: 400 });
     }
 
     const { data: lista } = await supabase
@@ -220,6 +240,7 @@ export async function POST(req: Request) {
       keywords: isListaOfertasMode ? [] : keywords,
       lista_ofertas_id: listaOfertasId || null,
       lista_ofertas_ml_id: listaOfertasMlId || null,
+      lista_ofertas_amazon_id: listaOfertasAmazonId || null,
       lista_ofertas_info_id: listaOfertasInfoId || null,
       sub_id_1: subId1,
       sub_id_2: subId2,

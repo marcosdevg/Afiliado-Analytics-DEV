@@ -15,22 +15,26 @@ type PlanCtx = {
   tier: PlanTier;
   entitlements: PlanEntitlements | null;
   usage: PlanUsageSnapshot | null;
+  /** Mensal vs trimestral na assinatura Kiwify ativa (para modal de preços). */
+  billingQuarterly: boolean | null;
   loading: boolean;
   refresh: () => void;
 };
 
 const Ctx = createContext<PlanCtx>({
-  tier: "padrao",
+  tier: "inicial",
   entitlements: null,
   usage: null,
+  billingQuarterly: null,
   loading: true,
   refresh: () => {},
 });
 
 export function PlanEntitlementsProvider({ children }: { children: ReactNode }) {
-  const [tier, setTier] = useState<PlanTier>("padrao");
+  const [tier, setTier] = useState<PlanTier>("inicial");
   const [entitlements, setEntitlements] = useState<PlanEntitlements | null>(null);
   const [usage, setUsage] = useState<PlanUsageSnapshot | null>(null);
+  const [billingQuarterly, setBillingQuarterly] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
 
@@ -43,9 +47,14 @@ export function PlanEntitlementsProvider({ children }: { children: ReactNode }) 
       .then((r) => r.json())
       .then((data) => {
         if (!alive) return;
-        setTier(data.tier ?? "padrao");
+        setTier(data.tier ?? "inicial");
         setEntitlements(data.entitlements ?? null);
         setUsage(data.usage ?? null);
+        setBillingQuarterly(
+          typeof data.billingQuarterly === "boolean"
+            ? data.billingQuarterly
+            : null
+        );
       })
       .catch(() => {})
       .finally(() => {
@@ -59,7 +68,9 @@ export function PlanEntitlementsProvider({ children }: { children: ReactNode }) 
   const refresh = useCallback(() => setTick((t) => t + 1), []);
 
   return (
-    <Ctx.Provider value={{ tier, entitlements, usage, loading, refresh }}>
+    <Ctx.Provider
+      value={{ tier, entitlements, usage, billingQuarterly, loading, refresh }}
+    >
       {children}
     </Ctx.Provider>
   );

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase-server";
 import { fetchMlProductMetaForStoredListItem } from "@/lib/mercadolivre/fetch-meta-for-stored-list-item";
 import { parseMlExtensionSessionToCookieHeader } from "@/lib/mercadolivre/ml-session-cookie";
 import { effectiveListaOfferPromoPrice } from "@/lib/lista-ofertas-effective-promo";
+import { gateMercadoLivre } from "@/lib/require-entitlements";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -85,11 +86,10 @@ async function refreshOneMlRow(
  */
 export async function POST(req: Request) {
   try {
+    const gate = await gateMercadoLivre();
+    if (!gate.allowed) return gate.response;
+    const user = { id: gate.userId };
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
     const mlCookieHeader =

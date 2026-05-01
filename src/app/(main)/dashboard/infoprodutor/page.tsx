@@ -43,6 +43,7 @@ import MpSalesDashboard from "./MpSalesDashboard";
 import MpOrdersSection from "./MpOrdersSection";
 import AdPerformanceTable from "./AdPerformanceTable";
 import InfoprodGrupoMessagePreview from "./InfoprodGrupoMessagePreview";
+import ProFeatureGate from "../ProFeatureGate";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type ProductProvider = "manual" | "mercadopago";
@@ -149,6 +150,14 @@ const ALLOWED_TYPES = new Set([
 type TabKey = "produtos" | "vendas" | "trackeamento" | "custom-checkout";
 
 export default function InfoprodutorPage() {
+  return (
+    <ProFeatureGate feature="infoprodutor">
+      <InfoprodutorPageInner />
+    </ProFeatureGate>
+  );
+}
+
+function InfoprodutorPageInner() {
   // ─── Navegação entre abas ─────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabKey>("produtos");
 

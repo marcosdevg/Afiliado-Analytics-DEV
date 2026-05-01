@@ -24,6 +24,7 @@ import {
   X,
   Info,
   AlertTriangle,
+  type LucideIcon,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import LoadingOverlay from "@/app/components/ui/LoadingOverlay";
@@ -107,7 +108,7 @@ function FieldLabel({ children, hint }: { children: React.ReactNode; hint?: stri
   );
 }
 
-function SectionBox({ title, icon: Icon, children }: { title: string; icon: React.ElementType; children: React.ReactNode }) {
+function SectionBox({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: React.ReactNode }) {
   return (
     <div className="rounded-xl border border-dark-border/60 bg-dark-bg/40 p-4 space-y-4">
       <div className="flex items-center gap-2 border-l-2 border-shopee-orange/60 pl-2">

@@ -5,7 +5,7 @@
 export const MERCADOLIVRE_UX_COMING_SOON = false;
 
 export function isGruposVendaMlOfferBlocked(
-  source: "shopee" | "ml" | "crossover" | "infoprodutor",
+  source: "shopee" | "ml" | "amazon" | "crossover" | "infoprodutor",
 ): boolean {
   if (!MERCADOLIVRE_UX_COMING_SOON) return false;
   return source === "ml" || source === "crossover";

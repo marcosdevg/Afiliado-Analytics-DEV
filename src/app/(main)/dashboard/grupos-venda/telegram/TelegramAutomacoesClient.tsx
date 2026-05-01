@@ -29,6 +29,7 @@ import {
   PlusCircle,
   CheckCheck,
   Zap,
+  Lock,
   ListChecks as ListIcon,
 } from "lucide-react";
 import { GeradorPaginationBar } from "@/app/components/shopee/GeradorPaginationBar";
@@ -40,6 +41,9 @@ import {
   SHOIA_LIST_LEADING_IMAGE_SRC,
   stripShoiaListNamePrefix,
 } from "@/lib/shopee/shoia-list-label";
+import { UpgradePlanNotice } from "@/app/components/plan/UpgradePlanNotice";
+import { subscriptionToneForPlanTier } from "@/lib/plan-entitlements";
+import { usePlanEntitlements } from "../../PlanEntitlementsContext";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type TelegramBot = {
@@ -73,6 +77,8 @@ type AutomacaoRow = {
   listaOfertasNome: string | null;
   listaOfertasMlId: string | null;
   listaOfertasMlNome: string | null;
+  listaOfertasAmazonId: string | null;
+  listaOfertasAmazonNome: string | null;
   listaOfertasInfoId: string | null;
   listaOfertasInfoNome: string | null;
   keywords: string[];
@@ -88,7 +94,7 @@ type AutomacaoRow = {
 };
 
 type ContentMode = "keywords" | "list";
-type OfferSource = "shopee" | "ml" | "crossover" | "infoprodutor";
+type OfferSource = "shopee" | "ml" | "amazon" | "crossover" | "infoprodutor";
 
 const WIZARD_STEPS = [
   { id: 1, label: "Bot" },
@@ -102,14 +108,35 @@ function cn(...c: (string | false | undefined | null)[]): string {
   return c.filter(Boolean).join(" ");
 }
 
-function detectPlatformFromAutomacao(c: AutomacaoRow): { showShopee: boolean; showMl: boolean; showInfo: boolean } {
+/** Crossover: fontes com lista escolhida entram no rolê (mín. 2). */
+function countCrossoverListasTelegram(opts: {
+  shopeeId: string;
+  mlId: string;
+  amazonId: string;
+  infoId: string;
+  canMl: boolean;
+  canAmazon: boolean;
+  canInfo: boolean;
+}) {
+  return (
+    (opts.shopeeId.trim() ? 1 : 0) +
+    (opts.canMl && opts.mlId.trim() ? 1 : 0) +
+    (opts.canAmazon && opts.amazonId.trim() ? 1 : 0) +
+    (opts.canInfo && opts.infoId.trim() ? 1 : 0)
+  );
+}
+
+function detectPlatformFromAutomacao(c: AutomacaoRow): { showShopee: boolean; showMl: boolean; showAmazon: boolean; showInfo: boolean } {
   const hasShopeeList = !!c.listaOfertasId;
   const hasMlList = !!c.listaOfertasMlId;
+  const hasAmazonList = !!c.listaOfertasAmazonId;
   const hasInfoList = !!c.listaOfertasInfoId;
-  const keywordsAsShopee = c.keywords.length > 0 && !hasShopeeList && !hasMlList && !hasInfoList;
+  const keywordsAsShopee =
+    c.keywords.length > 0 && !hasShopeeList && !hasMlList && !hasAmazonList && !hasInfoList;
   return {
     showShopee: hasShopeeList || keywordsAsShopee,
     showMl: hasMlList,
+    showAmazon: hasAmazonList,
     showInfo: hasInfoList,
   };
 }
@@ -118,6 +145,12 @@ function detectPlatformFromAutomacao(c: AutomacaoRow): { showShopee: boolean; sh
 // Componente principal
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function TelegramAutomacoesClient() {
+  // Entitlements: Inicial só vê Shopee, Padrão+ vê ML/Amazon/Crossover/Infoprodutor.
+  const { entitlements } = usePlanEntitlements();
+  const canUseMlSource = Boolean(entitlements?.mercadoLivre);
+  const canUseAmazonSource = Boolean(entitlements?.amazon);
+  const canUseInfoSource = Boolean(entitlements?.infoprodutor);
+
   const [view, setView] = useState<"panel" | "wizard">("panel");
 
   const [bots, setBots] = useState<TelegramBot[]>([]);
@@ -136,6 +169,11 @@ export default function TelegramAutomacoesClient() {
   const [listSearch, setListSearch] = useState("");
   const [contentMode, setContentMode] = useState<ContentMode>("keywords");
   const [offerSource, setOfferSource] = useState<OfferSource>("shopee");
+
+  // Banner de upgrade ao clicar em uma origem bloqueada (cadeado).
+  // Mantém o botão visível como gatilho de venda; click não troca a source.
+  const [lockedSourcePrompt, setLockedSourcePrompt] = useState<null | "ml" | "amazon" | "info">(null);
+
   const [keywords, setKeywords] = useState("");
   const [subId1, setSubId1] = useState("");
   const [subId2, setSubId2] = useState("");
@@ -144,15 +182,35 @@ export default function TelegramAutomacoesClient() {
   const [horaFim, setHoraFim] = useState("22:00");
   const [selectedListaShopeeId, setSelectedListaShopeeId] = useState("");
   const [selectedListaMlId, setSelectedListaMlId] = useState("");
+  const [selectedListaAmazonId, setSelectedListaAmazonId] = useState("");
   const [selectedListaInfoId, setSelectedListaInfoId] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Downgrade de plano: limpa seleções e origens que o plano não cobre mais (crossover permanece se outras fontes válidas).
+  useEffect(() => {
+    if (!entitlements) return;
+    if (!canUseMlSource) {
+      setSelectedListaMlId("");
+      if (offerSource === "ml") setOfferSource("shopee");
+    }
+    if (!canUseAmazonSource) {
+      setSelectedListaAmazonId("");
+      if (offerSource === "amazon") setOfferSource("shopee");
+    }
+    if (!canUseInfoSource) {
+      setSelectedListaInfoId("");
+      if (offerSource === "infoprodutor") setOfferSource("shopee");
+    }
+  }, [entitlements, offerSource, canUseMlSource, canUseAmazonSource, canUseInfoSource]);
 
   // Listas de ofertas
   const [listasOfertasShopee, setListasOfertasShopee] = useState<OfertaListaItem[]>([]);
   const [listasOfertasMl, setListasOfertasMl] = useState<OfertaListaItem[]>([]);
+  const [listasOfertasAmazon, setListasOfertasAmazon] = useState<OfertaListaItem[]>([]);
   const [listasOfertasInfo, setListasOfertasInfo] = useState<OfertaListaItem[]>([]);
   const [loadingShopee, setLoadingShopee] = useState(false);
   const [loadingMl, setLoadingMl] = useState(false);
+  const [loadingAmazon, setLoadingAmazon] = useState(false);
   const [loadingInfo, setLoadingInfo] = useState(false);
 
   // Painel
@@ -250,19 +308,23 @@ export default function TelegramAutomacoesClient() {
     try {
       setLoadingShopee(true);
       setLoadingMl(true);
+      setLoadingAmazon(true);
       setLoadingInfo(true);
-      const [rs, rm, ri] = await Promise.all([
+      const [rs, rm, ra, ri] = await Promise.all([
         fetch("/api/shopee/minha-lista-ofertas/listas"),
         fetch("/api/mercadolivre/minha-lista-ofertas/listas"),
+        fetch("/api/amazon/minha-lista-ofertas/listas"),
         fetch("/api/infoprodutor/minha-lista-ofertas/listas"),
       ]);
-      const [js, jm, ji] = await Promise.all([rs.json(), rm.json(), ri.json()]);
+      const [js, jm, ja, ji] = await Promise.all([rs.json(), rm.json(), ra.json(), ri.json()]);
       setListasOfertasShopee(Array.isArray(js.data) ? js.data : []);
       setListasOfertasMl(Array.isArray(jm.data) ? jm.data : []);
+      setListasOfertasAmazon(Array.isArray(ja.data) ? ja.data : []);
       setListasOfertasInfo(Array.isArray(ji.data) ? ji.data : []);
     } finally {
       setLoadingShopee(false);
       setLoadingMl(false);
+      setLoadingAmazon(false);
       setLoadingInfo(false);
     }
   }, []);
@@ -307,6 +369,7 @@ export default function TelegramAutomacoesClient() {
     setHoraFim("22:00");
     setSelectedListaShopeeId("");
     setSelectedListaMlId("");
+    setSelectedListaAmazonId("");
     setSelectedListaInfoId("");
   }, [bots]);
 
@@ -332,18 +395,35 @@ export default function TelegramAutomacoesClient() {
     setHoraInicio(a.horarioInicio ?? "08:00");
     setHoraFim(a.horarioFim ?? "22:00");
 
-    if (a.listaOfertasInfoId) {
+    const activeIds = [
+      a.listaOfertasId,
+      a.listaOfertasMlId,
+      a.listaOfertasAmazonId,
+      a.listaOfertasInfoId,
+    ].filter(Boolean).length;
+
+    if (activeIds >= 2) {
+      setContentMode("list");
+      setOfferSource("crossover");
+      setSelectedListaShopeeId(a.listaOfertasId ?? "");
+      setSelectedListaMlId(a.listaOfertasMlId ?? "");
+      setSelectedListaAmazonId(a.listaOfertasAmazonId ?? "");
+      setSelectedListaInfoId(a.listaOfertasInfoId ?? "");
+      setKeywords("");
+    } else if (a.listaOfertasInfoId) {
       setContentMode("list");
       setOfferSource("infoprodutor");
       setSelectedListaInfoId(a.listaOfertasInfoId);
       setSelectedListaShopeeId("");
       setSelectedListaMlId("");
+      setSelectedListaAmazonId("");
       setKeywords("");
-    } else if (a.listaOfertasId && a.listaOfertasMlId) {
+    } else if (a.listaOfertasAmazonId) {
       setContentMode("list");
-      setOfferSource("crossover");
-      setSelectedListaShopeeId(a.listaOfertasId);
-      setSelectedListaMlId(a.listaOfertasMlId);
+      setOfferSource("amazon");
+      setSelectedListaAmazonId(a.listaOfertasAmazonId);
+      setSelectedListaShopeeId("");
+      setSelectedListaMlId("");
       setSelectedListaInfoId("");
       setKeywords("");
     } else if (a.listaOfertasMlId) {
@@ -351,6 +431,7 @@ export default function TelegramAutomacoesClient() {
       setOfferSource("ml");
       setSelectedListaMlId(a.listaOfertasMlId);
       setSelectedListaShopeeId("");
+      setSelectedListaAmazonId("");
       setSelectedListaInfoId("");
       setKeywords("");
     } else if (a.listaOfertasId) {
@@ -358,6 +439,7 @@ export default function TelegramAutomacoesClient() {
       setOfferSource("shopee");
       setSelectedListaShopeeId(a.listaOfertasId);
       setSelectedListaMlId("");
+      setSelectedListaAmazonId("");
       setSelectedListaInfoId("");
       setKeywords("");
     } else {
@@ -366,6 +448,7 @@ export default function TelegramAutomacoesClient() {
       setKeywords((a.keywords ?? []).join("\n"));
       setSelectedListaShopeeId("");
       setSelectedListaMlId("");
+      setSelectedListaAmazonId("");
       setSelectedListaInfoId("");
     }
 
@@ -420,10 +503,28 @@ export default function TelegramAutomacoesClient() {
           setAlertContentOpen(true);
           return;
         }
-        if (offerSource === "crossover" && (!selectedListaShopeeId || !selectedListaMlId)) {
-          setAlertContentMsg("No Crossover, selecione uma lista Shopee e uma lista Mercado Livre.");
+        if (offerSource === "amazon" && !selectedListaAmazonId) {
+          setAlertContentMsg("Selecione uma lista de ofertas Amazon.");
           setAlertContentOpen(true);
           return;
+        }
+        if (offerSource === "crossover") {
+          const sourcesAtivas = countCrossoverListasTelegram({
+            shopeeId: selectedListaShopeeId,
+            mlId: selectedListaMlId,
+            amazonId: selectedListaAmazonId,
+            infoId: selectedListaInfoId,
+            canMl: canUseMlSource,
+            canAmazon: canUseAmazonSource,
+            canInfo: canUseInfoSource,
+          });
+          if (sourcesAtivas < 2) {
+            setAlertContentMsg(
+              "No crossover, selecione ao menos 2 listas em fontes diferentes."
+            );
+            setAlertContentOpen(true);
+            return;
+          }
         }
         if (offerSource === "infoprodutor" && !selectedListaInfoId) {
           setAlertContentMsg("Selecione uma lista do Infoprodutor.");
@@ -450,10 +551,27 @@ export default function TelegramAutomacoesClient() {
     setError(null);
     try {
       const keywordsList = keywords.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
-      const useShopee = contentMode === "list" && (offerSource === "shopee" || offerSource === "crossover");
-      const useMl = contentMode === "list" && (offerSource === "ml" || offerSource === "crossover");
-      const useInfo = contentMode === "list" && offerSource === "infoprodutor";
-      const useListaOfertas = useShopee || useMl || useInfo;
+      const isList = contentMode === "list";
+      const useShopee =
+        isList &&
+        !!selectedListaShopeeId.trim() &&
+        (offerSource === "shopee" || offerSource === "crossover");
+      const useMl =
+        isList &&
+        !!selectedListaMlId.trim() &&
+        canUseMlSource &&
+        (offerSource === "ml" || offerSource === "crossover");
+      const useAmazon =
+        isList &&
+        !!selectedListaAmazonId.trim() &&
+        canUseAmazonSource &&
+        (offerSource === "amazon" || offerSource === "crossover");
+      const useInfo =
+        isList &&
+        !!selectedListaInfoId.trim() &&
+        canUseInfoSource &&
+        (offerSource === "infoprodutor" || offerSource === "crossover");
+      const useListaOfertas = useShopee || useMl || useAmazon || useInfo;
 
       const payload: Record<string, unknown> = {
         listaId: selectedListaId,
@@ -463,6 +581,7 @@ export default function TelegramAutomacoesClient() {
         subId3,
         listaOfertasId: useShopee ? selectedListaShopeeId : "",
         listaOfertasMlId: useMl ? selectedListaMlId : "",
+        listaOfertasAmazonId: useAmazon ? selectedListaAmazonId : "",
         listaOfertasInfoId: useInfo ? selectedListaInfoId : "",
         horarioInicio: horaInicio,
         horarioFim: horaFim,
@@ -503,6 +622,7 @@ export default function TelegramAutomacoesClient() {
             listaId: a.listaId,
             listaOfertasId: a.listaOfertasId,
             listaOfertasMlId: a.listaOfertasMlId,
+            listaOfertasAmazonId: a.listaOfertasAmazonId,
             listaOfertasInfoId: a.listaOfertasInfoId,
             keywords: a.keywords,
             subId1: a.subId1,
@@ -759,18 +879,27 @@ export default function TelegramAutomacoesClient() {
           setHoraFim={setHoraFim}
           listasOfertasShopee={listasOfertasShopee}
           listasOfertasMl={listasOfertasMl}
+          listasOfertasAmazon={listasOfertasAmazon}
           listasOfertasInfo={listasOfertasInfo}
           loadingShopee={loadingShopee}
           loadingMl={loadingMl}
+          loadingAmazon={loadingAmazon}
           loadingInfo={loadingInfo}
           selectedListaShopeeId={selectedListaShopeeId}
           selectedListaMlId={selectedListaMlId}
+          selectedListaAmazonId={selectedListaAmazonId}
           selectedListaInfoId={selectedListaInfoId}
           setSelectedListaShopeeId={setSelectedListaShopeeId}
           setSelectedListaMlId={setSelectedListaMlId}
+          setSelectedListaAmazonId={setSelectedListaAmazonId}
           setSelectedListaInfoId={setSelectedListaInfoId}
           deletingListaId={deletingListaId}
           saving={saving}
+          canUseMlSource={canUseMlSource}
+          canUseAmazonSource={canUseAmazonSource}
+          canUseInfoSource={canUseInfoSource}
+          lockedSourcePrompt={lockedSourcePrompt}
+          setLockedSourcePrompt={setLockedSourcePrompt}
           onClose={closeWizard}
           onBack={goBack}
           onAdvance={advanceStep}
@@ -1060,13 +1189,17 @@ function DisparoCardTelegram({
   onTest: (id: string) => void;
 }) {
   const isActive = c.ativo;
-  const { showShopee, showMl, showInfo } = detectPlatformFromAutomacao(c);
-  const showPlatformLogos = showShopee || showMl || showInfo;
-  const platformTitle =
-    showShopee && showMl ? "Shopee e Mercado Livre"
-      : showInfo ? "Infoprodutor"
-        : showMl ? "Mercado Livre"
-          : "Shopee";
+  const { showShopee, showMl, showAmazon, showInfo } = detectPlatformFromAutomacao(c);
+  const showPlatformLogos = showShopee || showMl || showAmazon || showInfo;
+  const activePlatforms = [
+    showShopee && "Shopee",
+    showMl && "Mercado Livre",
+    showAmazon && "Amazon",
+    showInfo && "Infoprodutor",
+  ].filter(Boolean) as string[];
+  const platformTitle = activePlatforms.length > 1
+    ? activePlatforms.join(" + ")
+    : activePlatforms[0] ?? "Shopee";
 
   return (
     <div
@@ -1122,6 +1255,18 @@ function DisparoCardTelegram({
               className="h-[18px] w-auto max-w-[40px] object-contain"
             />
           )}
+          {(showShopee || showMl) && showAmazon && (
+            <span className="text-[#5c5c5c] font-bold text-[9px]" aria-hidden>+</span>
+          )}
+          {showAmazon && (
+            <Image
+              src="/amazonlogo.webp"
+              alt="Amazon"
+              width={48}
+              height={48}
+              className="h-[18px] w-[18px] object-contain shrink-0"
+            />
+          )}
           {showInfo && (
             <span className="inline-flex items-center gap-1 text-[8px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-md">
               Infoprodutor
@@ -1172,6 +1317,14 @@ function DisparoCardTelegram({
             <Layers className="w-2.5 h-2.5 text-amber-400 shrink-0 mt-0.5" />
             <span className="break-words">
               Lista ML: <span className="text-white">{c.listaOfertasMlNome}</span>
+            </span>
+          </div>
+        )}
+        {c.listaOfertasAmazonNome && (
+          <div className="flex items-start gap-1.5 text-[9px] text-[#a0a0a0] min-w-0">
+            <Layers className="w-2.5 h-2.5 text-orange-400 shrink-0 mt-0.5" />
+            <span className="break-words">
+              Lista Amazon: <span className="text-white">{c.listaOfertasAmazonNome}</span>
             </span>
           </div>
         )}
@@ -1305,18 +1458,30 @@ type WizardProps = {
   setHoraFim: (v: string) => void;
   listasOfertasShopee: OfertaListaItem[];
   listasOfertasMl: OfertaListaItem[];
+  listasOfertasAmazon: OfertaListaItem[];
   listasOfertasInfo: OfertaListaItem[];
   loadingShopee: boolean;
   loadingMl: boolean;
+  loadingAmazon: boolean;
   loadingInfo: boolean;
   selectedListaShopeeId: string;
   selectedListaMlId: string;
+  selectedListaAmazonId: string;
   selectedListaInfoId: string;
   setSelectedListaShopeeId: (v: string) => void;
   setSelectedListaMlId: (v: string) => void;
+  setSelectedListaAmazonId: (v: string) => void;
   setSelectedListaInfoId: (v: string) => void;
   deletingListaId: string | null;
   saving: boolean;
+  /** Flags de plano: Inicial só vê Shopee, Padrão+ vê ML/Amazon/Crossover/Infoprodutor.
+   * Os botões continuam SEMPRE visíveis (gatilho de upgrade); cadeado quando bloqueado. */
+  canUseMlSource: boolean;
+  canUseAmazonSource: boolean;
+  canUseInfoSource: boolean;
+  /** Banner inline de upgrade exibido quando o user clica numa origem bloqueada. */
+  lockedSourcePrompt: null | "ml" | "amazon" | "info";
+  setLockedSourcePrompt: (v: null | "ml" | "amazon" | "info") => void;
   onClose: () => void;
   onBack: () => void;
   onAdvance: () => void;
@@ -1686,6 +1851,7 @@ function StepLista(p: WizardProps) {
 
 // ─── Step 3: Conteúdo + Sub IDs ────────────────────────────────────────────────
 function StepConteudo(p: WizardProps) {
+  const { tier, billingQuarterly } = usePlanEntitlements();
   const keywordCount = p.keywords.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean).length;
   const showSubIdsRastreamento =
     p.contentMode === "keywords" || (p.contentMode === "list" && p.offerSource === "shopee");
@@ -1732,35 +1898,71 @@ function StepConteudo(p: WizardProps) {
         ) : (
           <div className="min-w-0">
             <FormLabel>Origem da lista</FormLabel>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 rounded-xl overflow-hidden border border-[#2c2c32] mb-3">
+            {/*
+              Todos os 4 botões ficam SEMPRE visíveis como gatilho de venda.
+              ML/Crossover ficam bloqueados (cadeado) pra Inicial/Trial.
+              Infoprodutor idem. Click no bloqueado abre banner de upgrade
+              e NÃO troca a source.
+            */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-0 rounded-xl overflow-hidden border border-[#2c2c32] mb-3">
               <button
                 type="button"
                 onClick={() => {
                   p.setOfferSource("shopee");
                   p.setSelectedListaMlId("");
+                  p.setSelectedListaAmazonId("");
                   p.setSelectedListaInfoId("");
+                  p.setLockedSourcePrompt(null);
                 }}
                 className={cn(
                   "flex items-center justify-center gap-2 px-3 py-2.5 text-[10px] font-bold transition-all sm:border-r border-[#2c2c32]",
                   p.offerSource === "shopee" ? "bg-[#e24c30]/15 text-[#e24c30]" : "bg-[#222228] text-[#a0a0a0] hover:text-white"
                 )}
               >
-                Shopee
+                <Image
+                  src="/icons-integracoes/shopee-icon-laranja2.svg"
+                  alt=""
+                  width={12}
+                  height={12}
+                  className="h-3 w-3 object-contain shrink-0"
+                  aria-hidden
+                />
+                <span className="text-center leading-tight">Shopee</span>
               </button>
               <button
                 type="button"
+                aria-disabled={!p.canUseMlSource}
                 onClick={() => {
+                  if (!p.canUseMlSource) {
+                    p.setLockedSourcePrompt("ml");
+                    return;
+                  }
                   p.setOfferSource("ml");
                   p.setSelectedListaShopeeId("");
+                  p.setSelectedListaAmazonId("");
                   p.setSelectedListaInfoId("");
+                  p.setLockedSourcePrompt(null);
                 }}
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 px-2 py-2.5 text-[10px] font-bold transition-all border-l sm:border-l border-[#2c2c32] sm:flex-row sm:gap-2 sm:px-3",
-                  p.offerSource === "ml" ? "bg-amber-500/15 text-amber-400" : "bg-[#222228] text-[#a0a0a0] hover:text-white"
+                  "flex flex-col items-center justify-center gap-1 px-2 py-2.5 text-[10px] font-bold transition-all border-l sm:border-l border-[#2c2c32] sm:flex-row sm:gap-2 sm:px-3 relative",
+                  p.offerSource === "ml" && p.canUseMlSource
+                    ? "bg-amber-500/15 text-amber-400"
+                    : "bg-[#222228] text-[#a0a0a0] hover:text-white",
+                  !p.canUseMlSource && "opacity-60 cursor-not-allowed"
                 )}
               >
+                <Image
+                  src="/ml.png"
+                  alt=""
+                  width={24}
+                  height={24}
+                  className="h-3 w-3 object-contain shrink-0"
+                  aria-hidden
+                />
                 <span className="text-center leading-tight">Mercado Livre</span>
-                {MERCADOLIVRE_UX_COMING_SOON ? (
+                {!p.canUseMlSource ? (
+                  <Lock className="w-3 h-3 shrink-0 text-shopee-orange" aria-hidden="true" />
+                ) : MERCADOLIVRE_UX_COMING_SOON ? (
                   <span className="shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">
                     Em breve
                   </span>
@@ -1768,149 +1970,437 @@ function StepConteudo(p: WizardProps) {
               </button>
               <button
                 type="button"
+                aria-disabled={!p.canUseAmazonSource}
                 onClick={() => {
-                  p.setOfferSource("crossover");
+                  if (!p.canUseAmazonSource) {
+                    p.setLockedSourcePrompt("amazon");
+                    return;
+                  }
+                  p.setOfferSource("amazon");
+                  p.setSelectedListaShopeeId("");
+                  p.setSelectedListaMlId("");
                   p.setSelectedListaInfoId("");
+                  p.setLockedSourcePrompt(null);
                 }}
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 px-2 py-2.5 text-[10px] font-bold transition-all border-t sm:border-t-0 sm:border-l border-[#2c2c32] sm:flex-row sm:gap-2 sm:px-3",
+                  "flex flex-col items-center justify-center gap-1 px-2 py-2.5 text-[10px] font-bold transition-all border-t sm:border-t-0 sm:border-l border-[#2c2c32] sm:flex-row sm:gap-2 sm:px-3 relative",
+                  p.offerSource === "amazon" && p.canUseAmazonSource
+                    ? "bg-orange-500/15 text-orange-400"
+                    : "bg-[#222228] text-[#a0a0a0] hover:text-white",
+                  !p.canUseAmazonSource && "opacity-60 cursor-not-allowed"
+                )}
+              >
+                <Image
+                  src="/amazonlogo.webp"
+                  alt="Amazon"
+                  width={24}
+                  height={24}
+                  className="h-3 w-3 object-contain shrink-0"
+                />
+                <span className="text-center leading-tight">Amazon</span>
+                {!p.canUseAmazonSource && (
+                  <Lock className="w-3 h-3 shrink-0 text-shopee-orange" aria-hidden="true" />
+                )}
+              </button>
+              <button
+                type="button"
+                aria-disabled={!(p.canUseMlSource || p.canUseAmazonSource || p.canUseInfoSource)}
+                onClick={() => {
+                  const anySecondary = p.canUseMlSource || p.canUseAmazonSource || p.canUseInfoSource;
+                  if (!anySecondary) {
+                    p.setLockedSourcePrompt("ml");
+                    return;
+                  }
+                  p.setOfferSource("crossover");
+                  p.setLockedSourcePrompt(null);
+                }}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-1 px-2 py-2.5 text-[10px] font-bold transition-all border-t sm:border-t-0 sm:border-l border-[#2c2c32] sm:flex-row sm:gap-2 sm:px-3 relative",
                   p.offerSource === "crossover"
                     ? "bg-gradient-to-br from-[#e24c30]/20 to-amber-500/15 text-white ring-1 ring-inset ring-amber-500/30"
-                    : "bg-[#222228] text-[#a0a0a0] hover:text-white"
+                    : "bg-[#222228] text-[#a0a0a0] hover:text-white",
+                  !(p.canUseMlSource || p.canUseAmazonSource || p.canUseInfoSource) && "opacity-60 cursor-not-allowed"
                 )}
               >
                 <span className="text-center leading-tight">Crossover</span>
-                {MERCADOLIVRE_UX_COMING_SOON ? (
-                  <span className="shrink-0 rounded bg-red-600 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">
-                    Em breve
-                  </span>
-                ) : null}
+                {!(p.canUseMlSource || p.canUseAmazonSource || p.canUseInfoSource) && (
+                  <Lock className="w-3 h-3 shrink-0 text-shopee-orange" aria-hidden="true" />
+                )}
               </button>
               <button
                 type="button"
+                aria-disabled={!p.canUseInfoSource}
                 onClick={() => {
+                  if (!p.canUseInfoSource) {
+                    p.setLockedSourcePrompt("info");
+                    return;
+                  }
                   p.setOfferSource("infoprodutor");
                   p.setSelectedListaShopeeId("");
                   p.setSelectedListaMlId("");
+                  p.setSelectedListaAmazonId("");
+                  p.setLockedSourcePrompt(null);
                 }}
                 className={cn(
-                  "flex items-center justify-center gap-2 px-3 py-2.5 text-[10px] font-bold transition-all border-t sm:border-t-0 border-l border-[#2c2c32]",
-                  p.offerSource === "infoprodutor" ? "bg-emerald-500/15 text-emerald-400" : "bg-[#222228] text-[#a0a0a0] hover:text-white"
+                  "flex items-center justify-center gap-2 px-3 py-2.5 text-[10px] font-bold transition-all border-t sm:border-t-0 border-l border-[#2c2c32] relative",
+                  p.offerSource === "infoprodutor" && p.canUseInfoSource
+                    ? "bg-emerald-500/15 text-emerald-400"
+                    : "bg-[#222228] text-[#a0a0a0] hover:text-white",
+                  !p.canUseInfoSource && "opacity-60 cursor-not-allowed"
                 )}
               >
                 <span className="text-center leading-tight">Infoprodutor</span>
+                {!p.canUseInfoSource && (
+                  <Lock className="w-3 h-3 shrink-0 text-shopee-orange" aria-hidden="true" />
+                )}
               </button>
             </div>
+            {p.lockedSourcePrompt && (
+              <div className="mb-3">
+                <UpgradePlanNotice
+                  title={
+                    p.lockedSourcePrompt === "ml"
+                      ? "Mercado Livre e Crossover são exclusivos do Plano Padrão"
+                      : p.lockedSourcePrompt === "amazon"
+                        ? "Amazon é exclusivo do Plano Padrão"
+                        : "Infoprodutor é exclusivo do Plano Padrão"
+                  }
+                  description={`Faça upgrade pra desbloquear listas ${
+                    p.lockedSourcePrompt === "ml"
+                      ? "do Mercado Livre, mix Shopee+ML+Amazon (Crossover)"
+                      : p.lockedSourcePrompt === "amazon"
+                        ? "da Amazon, mix com Shopee/ML/Infoprodutor (Crossover)"
+                        : "de Infoprodutor"
+                  } e muito mais.`}
+                  onClose={() => p.setLockedSourcePrompt(null)}
+                  currentPlanToneForPricing={subscriptionToneForPlanTier(tier)}
+                  userSubscriptionBillingQuarterly={billingQuarterly}
+                />
+              </div>
+            )}
 
             {!isGruposVendaMlOfferBlocked(p.offerSource) && (
               <>
-                {(p.offerSource === "shopee" || p.offerSource === "crossover") && (
-                  <div className="mb-3 min-w-0">
-                    <FormLabel>Lista Shopee</FormLabel>
-                    {p.loadingShopee ? (
-                      <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando listas…
+                {p.offerSource === "crossover" ? (
+                  <div className="mb-3 min-w-0 space-y-2">
+                    <p className="text-[10px] text-[#a0a0a0] leading-relaxed">
+                      Selecione ao menos <span className="font-semibold text-white">2 listas</span>. Só entram no disparo as fontes em que você escolher uma lista.
+                    </p>
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+                      <div className="min-w-0 rounded-lg border border-[#2c2c32] bg-[#18181c]/40 p-3">
+                        <FormLabel>Lista</FormLabel>
+                        <p className="text-[11px] font-semibold text-white mb-2">Shopee</p>
+                        {p.loadingShopee ? (
+                          <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando…
+                          </div>
+                        ) : (
+                          <MetaSearchablePicker
+                            value={p.selectedListaShopeeId}
+                            onChange={p.setSelectedListaShopeeId}
+                            options={[
+                              {
+                                value: "",
+                                label: "—",
+                                description: "Não usar Shopee neste crossover",
+                              },
+                              ...p.listasOfertasShopee.map((l) => ({
+                                value: l.id,
+                                label: stripShoiaListNamePrefix(l.nome),
+                                description: `${l.totalItens ?? 0} ${l.totalItens === 1 ? "item" : "itens"}`,
+                                ...(isShoiaListName(l.nome)
+                                  ? { leadingImageSrc: SHOIA_LIST_LEADING_IMAGE_SRC, leadingImageAlt: "" }
+                                  : {}),
+                              })),
+                            ]}
+                            modalTitle="Lista de ofertas Shopee"
+                            modalDescription="Lista salva em Minha Lista de Ofertas (Shopee)."
+                            searchPlaceholder="Filtrar listas…"
+                            emptyButtonLabel="Escolher lista"
+                            emptyAsTag
+                            emptyTagLabel="Buscar"
+                            emptyOptionsMessage="Nenhuma lista cadastrada."
+                            className="w-full max-w-full"
+                          />
+                        )}
                       </div>
-                    ) : (
-                      <MetaSearchablePicker
-                        value={p.selectedListaShopeeId}
-                        onChange={p.setSelectedListaShopeeId}
-                        options={[
-                          {
-                            value: "",
-                            label: "Sem lista de ofertas (usa keywords)",
-                            description: "Envio por keywords em vez de produtos fixos",
-                          },
-                          ...p.listasOfertasShopee.map((l) => ({
-                            value: l.id,
-                            label: stripShoiaListNamePrefix(l.nome),
-                            description: `${l.totalItens ?? 0} ${l.totalItens === 1 ? "item" : "itens"}`,
-                            ...(isShoiaListName(l.nome)
-                              ? { leadingImageSrc: SHOIA_LIST_LEADING_IMAGE_SRC, leadingImageAlt: "" }
-                              : {}),
-                          })),
-                        ]}
-                        modalTitle="Lista de ofertas Shopee"
-                        modalDescription="Lista salva em Minha Lista de Ofertas (Shopee)."
-                        searchPlaceholder="Filtrar listas…"
-                        emptyButtonLabel="Escolher lista de ofertas"
-                        emptyAsTag
-                        emptyTagLabel="Selecionar Lista"
-                        emptyOptionsMessage="Nenhuma lista cadastrada."
-                        className="w-full max-w-full"
-                      />
-                    )}
-                  </div>
-                )}
-                {(p.offerSource === "ml" || p.offerSource === "crossover") && (
-                  <div className="mb-1 min-w-0">
-                    <FormLabel>Lista Mercado Livre</FormLabel>
-                    {p.loadingMl ? (
-                      <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando listas ML…
+                      <div
+                        className={cn(
+                          "min-w-0 rounded-lg border border-[#2c2c32] bg-[#18181c]/40 p-3",
+                          !p.canUseMlSource && "opacity-60",
+                        )}
+                      >
+                        <FormLabel>Lista</FormLabel>
+                        <p className="text-[11px] font-semibold text-white mb-2 flex items-center gap-1">
+                          Mercado Livre
+                          {!p.canUseMlSource && <Lock className="w-3 h-3 text-shopee-orange" aria-hidden />}
+                        </p>
+                        {p.loadingMl ? (
+                          <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando…
+                          </div>
+                        ) : (
+                          <MetaSearchablePicker
+                            value={p.selectedListaMlId}
+                            onChange={p.setSelectedListaMlId}
+                            options={[
+                              {
+                                value: "",
+                                label: "—",
+                                description: "Não usar ML neste crossover",
+                              },
+                              ...p.listasOfertasMl.map((l) => ({
+                                value: l.id,
+                                label: l.nome,
+                                description: `${l.totalItens ?? 0} ${l.totalItens === 1 ? "item" : "itens"}`,
+                              })),
+                            ]}
+                            modalTitle="Lista de ofertas Mercado Livre"
+                            modalDescription="Listas com links de afiliado já convertidos (página Lista de Ofertas - ML)."
+                            searchPlaceholder="Filtrar listas…"
+                            emptyButtonLabel="Escolher lista"
+                            emptyAsTag
+                            emptyTagLabel="Buscar"
+                            emptyOptionsMessage="Nenhuma lista ML cadastrada."
+                            disabled={!p.canUseMlSource}
+                            className="w-full max-w-full"
+                          />
+                        )}
                       </div>
-                    ) : (
-                      <MetaSearchablePicker
-                        value={p.selectedListaMlId}
-                        onChange={p.setSelectedListaMlId}
-                        options={[
-                          {
-                            value: "",
-                            label: "Selecione uma lista ML",
-                            description: "Crie em Lista de Ofertas - ML",
-                          },
-                          ...p.listasOfertasMl.map((l) => ({
-                            value: l.id,
-                            label: l.nome,
-                            description: `${l.totalItens ?? 0} ${l.totalItens === 1 ? "item" : "itens"}`,
-                          })),
-                        ]}
-                        modalTitle="Lista de ofertas Mercado Livre"
-                        modalDescription="Listas com links de afiliado já convertidos (página Lista de Ofertas - ML)."
-                        searchPlaceholder="Filtrar listas…"
-                        emptyButtonLabel="Escolher lista ML"
-                        emptyAsTag
-                        emptyTagLabel="Selecionar Lista ML"
-                        emptyOptionsMessage="Nenhuma lista ML cadastrada."
-                        className="w-full max-w-full"
-                      />
-                    )}
-                  </div>
-                )}
-                {p.offerSource === "infoprodutor" && (
-                  <div className="mb-1 min-w-0">
-                    <FormLabel>Lista Infoprodutor</FormLabel>
-                    {p.loadingInfo ? (
-                      <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando listas…
+                      <div
+                        className={cn(
+                          "min-w-0 rounded-lg border border-[#2c2c32] bg-[#18181c]/40 p-3",
+                          !p.canUseAmazonSource && "opacity-60",
+                        )}
+                      >
+                        <FormLabel>Lista</FormLabel>
+                        <p className="text-[11px] font-semibold text-white mb-2 flex items-center gap-1">
+                          Amazon
+                          {!p.canUseAmazonSource && <Lock className="w-3 h-3 text-shopee-orange" aria-hidden />}
+                        </p>
+                        {p.loadingAmazon ? (
+                          <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando…
+                          </div>
+                        ) : (
+                          <MetaSearchablePicker
+                            value={p.selectedListaAmazonId}
+                            onChange={p.setSelectedListaAmazonId}
+                            options={[
+                              {
+                                value: "",
+                                label: "—",
+                                description: "Não usar Amazon neste crossover",
+                              },
+                              ...p.listasOfertasAmazon.map((l) => ({
+                                value: l.id,
+                                label: l.nome,
+                                description: `${l.totalItens ?? 0} ${l.totalItens === 1 ? "item" : "itens"}`,
+                              })),
+                            ]}
+                            modalTitle="Lista de ofertas Amazon"
+                            modalDescription="Listas com links de afiliado já convertidos (página Lista de Ofertas - Amazon)."
+                            searchPlaceholder="Filtrar listas…"
+                            emptyButtonLabel="Escolher lista"
+                            emptyAsTag
+                            emptyTagLabel="Buscar"
+                            emptyOptionsMessage="Nenhuma lista Amazon cadastrada."
+                            disabled={!p.canUseAmazonSource}
+                            className="w-full max-w-full"
+                          />
+                        )}
                       </div>
-                    ) : (
-                      <MetaSearchablePicker
-                        value={p.selectedListaInfoId}
-                        onChange={p.setSelectedListaInfoId}
-                        options={[
-                          {
-                            value: "",
-                            label: "Selecione uma lista Infoprodutor",
-                            description: "Crie em Infoprodutor",
-                          },
-                          ...p.listasOfertasInfo.map((l) => ({
-                            value: l.id,
-                            label: l.nome,
-                            description: `${l.totalItens ?? 0} ${l.totalItens === 1 ? "item" : "itens"}`,
-                          })),
-                        ]}
-                        modalTitle="Lista do Infoprodutor"
-                        modalDescription="Listas com produtos cadastrados por você na página Infoprodutor."
-                        searchPlaceholder="Filtrar listas…"
-                        emptyButtonLabel="Escolher lista Infoprodutor"
-                        emptyAsTag
-                        emptyTagLabel="Selecionar Lista"
-                        emptyOptionsMessage="Nenhuma lista cadastrada."
-                        className="w-full max-w-full"
-                      />
-                    )}
+                      <div
+                        className={cn(
+                          "min-w-0 rounded-lg border border-[#2c2c32] bg-[#18181c]/40 p-3",
+                          !p.canUseInfoSource && "opacity-60",
+                        )}
+                      >
+                        <FormLabel>Lista</FormLabel>
+                        <p className="text-[11px] font-semibold text-white mb-2 flex items-center gap-1">
+                          Infoprodutor
+                          {!p.canUseInfoSource && <Lock className="w-3 h-3 text-shopee-orange" aria-hidden />}
+                        </p>
+                        {p.loadingInfo ? (
+                          <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando…
+                          </div>
+                        ) : (
+                          <MetaSearchablePicker
+                            value={p.selectedListaInfoId}
+                            onChange={p.setSelectedListaInfoId}
+                            options={[
+                              {
+                                value: "",
+                                label: "—",
+                                description: "Não usar Infoprodutor neste crossover",
+                              },
+                              ...p.listasOfertasInfo.map((l) => ({
+                                value: l.id,
+                                label: l.nome,
+                                description: `${l.totalItens ?? 0} ${l.totalItens === 1 ? "item" : "itens"}`,
+                              })),
+                            ]}
+                            modalTitle="Lista do Infoprodutor"
+                            modalDescription="Listas com produtos cadastrados por você na página Infoprodutor."
+                            searchPlaceholder="Filtrar listas…"
+                            emptyButtonLabel="Escolher lista"
+                            emptyAsTag
+                            emptyTagLabel="Buscar"
+                            emptyOptionsMessage="Nenhuma lista cadastrada."
+                            disabled={!p.canUseInfoSource}
+                            className="w-full max-w-full"
+                          />
+                        )}
+                      </div>
+                    </div>
                   </div>
+                ) : (
+                  <>
+                    {p.offerSource === "shopee" && (
+                      <div className="mb-3 min-w-0">
+                        <FormLabel>Lista Shopee</FormLabel>
+                        {p.loadingShopee ? (
+                          <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando listas…
+                          </div>
+                        ) : (
+                          <MetaSearchablePicker
+                            value={p.selectedListaShopeeId}
+                            onChange={p.setSelectedListaShopeeId}
+                            options={[
+                              {
+                                value: "",
+                                label: "Sem lista de ofertas (usa keywords)",
+                                description: "Envio por keywords em vez de produtos fixos",
+                              },
+                              ...p.listasOfertasShopee.map((l) => ({
+                                value: l.id,
+                                label: stripShoiaListNamePrefix(l.nome),
+                                description: `${l.totalItens ?? 0} ${l.totalItens === 1 ? "item" : "itens"}`,
+                                ...(isShoiaListName(l.nome)
+                                  ? { leadingImageSrc: SHOIA_LIST_LEADING_IMAGE_SRC, leadingImageAlt: "" }
+                                  : {}),
+                              })),
+                            ]}
+                            modalTitle="Lista de ofertas Shopee"
+                            modalDescription="Lista salva em Minha Lista de Ofertas (Shopee)."
+                            searchPlaceholder="Filtrar listas…"
+                            emptyButtonLabel="Escolher lista de ofertas"
+                            emptyAsTag
+                            emptyTagLabel="Selecionar Lista"
+                            emptyOptionsMessage="Nenhuma lista cadastrada."
+                            className="w-full max-w-full"
+                          />
+                        )}
+                      </div>
+                    )}
+                    {p.offerSource === "ml" && (
+                      <div className="mb-3 min-w-0">
+                        <FormLabel>Lista Mercado Livre</FormLabel>
+                        {p.loadingMl ? (
+                          <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando listas ML…
+                          </div>
+                        ) : (
+                          <MetaSearchablePicker
+                            value={p.selectedListaMlId}
+                            onChange={p.setSelectedListaMlId}
+                            options={[
+                              {
+                                value: "",
+                                label: "Selecione uma lista ML",
+                                description: "Crie em Lista de Ofertas - ML",
+                              },
+                              ...p.listasOfertasMl.map((l) => ({
+                                value: l.id,
+                                label: l.nome,
+                                description: `${l.totalItens ?? 0} ${l.totalItens === 1 ? "item" : "itens"}`,
+                              })),
+                            ]}
+                            modalTitle="Lista de ofertas Mercado Livre"
+                            modalDescription="Listas com links de afiliado já convertidos (página Lista de Ofertas - ML)."
+                            searchPlaceholder="Filtrar listas…"
+                            emptyButtonLabel="Escolher lista ML"
+                            emptyAsTag
+                            emptyTagLabel="Selecionar Lista ML"
+                            emptyOptionsMessage="Nenhuma lista ML cadastrada."
+                            className="w-full max-w-full"
+                          />
+                        )}
+                      </div>
+                    )}
+                    {p.offerSource === "amazon" && (
+                      <div className="mb-3 min-w-0">
+                        <FormLabel>Lista Amazon</FormLabel>
+                        {p.loadingAmazon ? (
+                          <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando listas Amazon…
+                          </div>
+                        ) : (
+                          <MetaSearchablePicker
+                            value={p.selectedListaAmazonId}
+                            onChange={p.setSelectedListaAmazonId}
+                            options={[
+                              {
+                                value: "",
+                                label: "Selecione uma lista Amazon",
+                                description: "Crie em Lista de Ofertas - Amazon",
+                              },
+                              ...p.listasOfertasAmazon.map((l) => ({
+                                value: l.id,
+                                label: l.nome,
+                                description: `${l.totalItens ?? 0} ${l.totalItens === 1 ? "item" : "itens"}`,
+                              })),
+                            ]}
+                            modalTitle="Lista de ofertas Amazon"
+                            modalDescription="Listas com links de afiliado já convertidos (página Lista de Ofertas - Amazon)."
+                            searchPlaceholder="Filtrar listas…"
+                            emptyButtonLabel="Escolher lista Amazon"
+                            emptyAsTag
+                            emptyTagLabel="Selecionar Lista Amazon"
+                            emptyOptionsMessage="Nenhuma lista Amazon cadastrada."
+                            className="w-full max-w-full"
+                          />
+                        )}
+                      </div>
+                    )}
+                    {p.offerSource === "infoprodutor" && (
+                      <div className="mb-1 min-w-0">
+                        <FormLabel>Lista Infoprodutor</FormLabel>
+                        {p.loadingInfo ? (
+                          <div className="flex items-center gap-2 text-[#a0a0a0] text-xs py-2">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando listas…
+                          </div>
+                        ) : (
+                          <MetaSearchablePicker
+                            value={p.selectedListaInfoId}
+                            onChange={p.setSelectedListaInfoId}
+                            options={[
+                              {
+                                value: "",
+                                label: "Selecione uma lista Infoprodutor",
+                                description: "Crie em Infoprodutor",
+                              },
+                              ...p.listasOfertasInfo.map((l) => ({
+                                value: l.id,
+                                label: l.nome,
+                                description: `${l.totalItens ?? 0} ${l.totalItens === 1 ? "item" : "itens"}`,
+                              })),
+                            ]}
+                            modalTitle="Lista do Infoprodutor"
+                            modalDescription="Listas com produtos cadastrados por você na página Infoprodutor."
+                            searchPlaceholder="Filtrar listas…"
+                            emptyButtonLabel="Escolher lista Infoprodutor"
+                            emptyAsTag
+                            emptyTagLabel="Selecionar Lista"
+                            emptyOptionsMessage="Nenhuma lista cadastrada."
+                            className="w-full max-w-full"
+                          />
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -1959,10 +2449,20 @@ function StepAtivar(p: WizardProps) {
   if (p.contentMode === "keywords") {
     conteudo = `${keywordCount} keyword${keywordCount !== 1 ? "s" : ""}`;
   } else if (p.offerSource === "crossover") {
-    conteudo = "Crossover (Shopee + Mercado Livre)";
+    const ativos = [
+      p.selectedListaShopeeId.trim() && "Shopee",
+      p.canUseMlSource && p.selectedListaMlId.trim() && "Mercado Livre",
+      p.canUseAmazonSource && p.selectedListaAmazonId.trim() && "Amazon",
+      p.canUseInfoSource && p.selectedListaInfoId.trim() && "Infoprodutor",
+    ].filter(Boolean) as string[];
+    conteudo =
+      ativos.length > 0 ? `Crossover (${ativos.join(" + ")})` : "Crossover — escolha ao menos 2 listas";
   } else if (p.offerSource === "ml") {
     const lst = p.listasOfertasMl.find((l) => l.id === p.selectedListaMlId);
     conteudo = `Lista Mercado Livre: ${lst?.nome ?? "—"}`;
+  } else if (p.offerSource === "amazon") {
+    const lst = p.listasOfertasAmazon.find((l) => l.id === p.selectedListaAmazonId);
+    conteudo = `Lista Amazon: ${lst?.nome ?? "—"}`;
   } else if (p.offerSource === "infoprodutor") {
     const lst = p.listasOfertasInfo.find((l) => l.id === p.selectedListaInfoId);
     conteudo = `Lista Infoprodutor: ${lst?.nome ?? "—"}`;

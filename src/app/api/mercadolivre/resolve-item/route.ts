@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase-server";
 import { fetchMlProductMetaByMlbId, fetchMlProductMetaFromUrl } from "@/lib/mercadolivre/fetch-product-meta";
 import { expandMercadoLivreAffiliateLink } from "@/lib/mercadolivre/expand-affiliate-link";
 import { parseMlExtensionSessionToCookieHeader } from "@/lib/mercadolivre/ml-session-cookie";
 import { isMlSocialListsProfileUrl } from "@/lib/mercadolivre/site-search";
+import { gateMercadoLivre } from "@/lib/require-entitlements";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +14,8 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: Request) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    const gate = await gateMercadoLivre();
+    if (!gate.allowed) return gate.response;
 
     const body = await req.json().catch(() => ({}));
     const productUrl = String(body?.productUrl ?? body?.product_url ?? "").trim();

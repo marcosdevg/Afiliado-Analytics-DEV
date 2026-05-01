@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
 import { useLoginModal } from '@/app/components/auth/LoginModalProvider'
+import type { SubscriptionPlanTone } from '@/lib/plan-entitlements'
 
 /** Alterna /voando1.png e /voando2.png a cada 500 ms (efeito GIF). */
 function AlternatingAstronaut() {
@@ -58,7 +59,7 @@ type SubscriptionPlan = {
   valorMensal: string
   valorTrimestral: string
   popular: boolean
-  tone: 'padrao' | 'pro'
+  tone: 'inicial' | 'padrao' | 'pro'
   features: string[]
   /** Substitui o % OFF calculado no badge trimestral (ex.: marketing 10% vs ~11,1% matemático). */
   quarterlySavePctOverride?: number
@@ -77,25 +78,59 @@ type CustomPlan = {
 
 const subscriptionPlans: SubscriptionPlan[] = [
   {
+    name: 'Inicial',
+    monthly: 47.9,
+    monthlyAnchor: 67.9,
+    quarterlyTotal: 127.9,
+    ctaMonthly: 'Começar no Inicial',
+    ctaQuarterly: 'Garantir Inicial trimestral',
+    valorMensal: 'https://pay.kiwify.com.br/k3DTSRU',
+    valorTrimestral: 'https://pay.kiwify.com.br/2Q1D0ob',
+    popular: false,
+    tone: 'inicial',
+    features: [
+      'Análise de comissões',
+      'Análise de cliques',
+      'Redirecionador de Links',
+      'Gerador de links Shopee',
+      'Site de captura: 1',
+      'Automação de Grupos: 1 grupo',
+      'Instâncias conectadas: 1',
+      'Minha lista de oferta',
+      'Automação Telegram: ilimitado',
+      'Apenas Shopee',
+    ],
+  },
+  {
     name: 'Padrão',
-    monthly: 79.9,
-    monthlyAnchor: 97.9,
-    quarterlyTotal: 207.9,
+    monthly: 127.9,
+    monthlyAnchor: 167.9,
+    quarterlyTotal: 297.9,
     ctaMonthly: 'Começar no Padrão',
-    ctaQuarterly: 'Garantir Padrão com economia',
-    valorMensal: 'https://pay.kiwify.com.br/Q1eE7t8',
-    valorTrimestral: 'https://pay.kiwify.com.br/jGMeK6e',
+    ctaQuarterly: 'Garantir Padrão trimestral',
+    valorMensal: 'https://pay.kiwify.com.br/DzMLl6Q',
+    valorTrimestral: 'https://pay.kiwify.com.br/bh2PrXd',
     popular: false,
     tone: 'padrao',
     features: [
       'Análise de comissões',
       'Análise de cliques',
       'Redirecionador de Links',
-      'Calculadora GPL Manual',
       'Gerador de links Shopee',
-      'Automação de Grupos: 1 grupo',
-      'Site de captura: 1',
-      'Instâncias conectadas: 1',
+      'Tráfego Inteligente (ATI)',
+      'Custo Real de Leads do WhatsApp',
+      'Criar campanha no Meta',
+      'Automação de Grupos: ilimitado',
+      'Disparos de ofertas: ilimitado',
+      'Espelhamento de Grupos: 10',
+      'Site de captura: 5',
+      'Instâncias conectadas: 2',
+      'Infoprodutor',
+      'Minha lista de oferta',
+      'Shopee, Amazon e Mercado Livre',
+      'Análise de ofertas relâmpago',
+      'Automação Telegram: ilimitado',
+      'Tendências Shopee',
     ],
   },
   {
@@ -113,15 +148,10 @@ const subscriptionPlans: SubscriptionPlan[] = [
     tone: 'pro',
     features: [
       'Tudo do plano Padrão',
-      'Tráfego Inteligente (ATI)',
       'Gerador de Criativo: 2 vídeos',
-      'Custo Real de Leads do WhatsApp',
-      'Criar campanha no Meta',
-      'Automação de Grupos: 10 grupos',
-      'Espelhamento de Grupos: 10 Espelhamentos',
-      'Site de captura: 5',
-      'Instâncias conectadas: 2',
       'Gerador de Especialistas: 100 Afiliado Coins',
+      'Disparos de ofertas: ilimitado',
+      'Espelhamento de Grupos: ilimitado',
     ],
   },
 ]
@@ -175,6 +205,11 @@ const freeTrialFeatures = [
   'Redirecionador de Links',
   'Gerador de links Shopee',
   'Site de captura: 1',
+  'Automação de Grupos: 1 grupo',
+  'Instâncias conectadas: 1',
+  'Minha lista de oferta',
+  'Automação Telegram: ilimitado',
+  'Apenas Shopee',
 ]
 
 function FreeTrialCard({ onStart, index }: { onStart: () => void; index: number }) {
@@ -186,11 +221,11 @@ function FreeTrialCard({ onStart, index }: { onStart: () => void; index: number 
       transition={{ duration: 0.5, delay: index * 0.12, ease: 'easeOut' }}
       className="h-full"
     >
-      <div className="group relative flex h-full flex-col overflow-hidden rounded-[24px] border border-[rgba(52,211,153,0.22)] bg-[linear-gradient(180deg,rgba(255,255,255,0.07)_0%,rgba(6,78,59,0.20)_100%)] px-[28px] py-[34px] shadow-[0_10px_40px_rgba(0,0,0,0.22)] backdrop-blur-[16px] transition-all duration-300 ease-in hover:-translate-y-[6px] hover:border-[rgba(52,211,153,0.35)] hover:shadow-[0_24px_50px_rgba(16,185,129,0.12)]">
+      <div className="group relative flex h-full flex-col overflow-hidden rounded-[24px] border border-[rgba(52,211,153,0.22)] bg-[linear-gradient(180deg,rgba(255,255,255,0.07)_0%,rgba(6,78,59,0.20)_100%)] px-[22px] py-[28px] shadow-[0_10px_40px_rgba(0,0,0,0.22)] backdrop-blur-[16px] transition-all duration-300 ease-in hover:-translate-y-[6px] hover:border-[rgba(52,211,153,0.35)] hover:shadow-[0_24px_50px_rgba(16,185,129,0.12)]">
         <div className="pointer-events-none absolute left-[18px] right-[18px] top-0 h-[2px] rounded-[999px] bg-[linear-gradient(90deg,rgba(52,211,153,0),rgba(52,211,153,0.55),rgba(226,76,48,0.12),rgba(52,211,153,0))]" />
         <div className="relative mb-[16px] flex min-h-[46px] flex-col gap-1">
           <h3 className="font-[var(--font-space-grotesk)] text-[22px] font-extrabold text-[#fff]">
-            Plano gratuito
+            Trial 7 dias
           </h3>
 
         </div>
@@ -203,7 +238,7 @@ function FreeTrialCard({ onStart, index }: { onStart: () => void; index: number 
             <span className="font-[var(--font-space-grotesk)] text-[clamp(2.1rem,4vw,2.8rem)] font-black text-[#fff]">
               R$ 0
             </span>
-            <span className="pb-1 font-['Inter'] text-[14px] text-[rgba(255,255,255,0.72)]">/ trial</span>
+            <span className="pb-1 font-['Inter'] text-[14px] text-[rgba(255,255,255,0.72)]">/ 7 dias</span>
           </div>
         </div>
 
@@ -212,7 +247,7 @@ function FreeTrialCard({ onStart, index }: { onStart: () => void; index: number 
           onClick={onStart}
           className="relative mb-[22px] flex min-h-[54px] w-full items-center justify-center rounded-[14px] border border-[rgba(52,211,153,0.35)] bg-[linear-gradient(180deg,rgba(16,185,129,0.22)_0%,rgba(6,95,70,0.35)_100%)] px-[15px] text-center font-['Inter'] text-[15px] font-bold text-[#fff] transition-all duration-[220ms] ease-in hover:-translate-y-[3px] hover:border-[rgba(52,211,153,0.5)]"
         >
-          Começar no Gratuito
+          Começar no Trial
         </button>
 
         <div className="relative mb-[16px] flex items-center gap-[8px]">
@@ -222,11 +257,11 @@ function FreeTrialCard({ onStart, index }: { onStart: () => void; index: number 
           </p>
         </div>
 
-        <ul className="m-0 flex list-none flex-col gap-[10px] p-0">
+        <ul className="m-0 flex list-none flex-col gap-[8px] p-0">
           {freeTrialFeatures.map((feature, j) => (
             <li
               key={j}
-              className="flex gap-[10px] font-['Inter'] text-[14px] leading-[1.55] text-[rgba(255,255,255,0.88)]"
+              className="flex gap-[8px] font-['Inter'] text-[13.5px] leading-[1.5] text-[rgba(255,255,255,0.88)]"
             >
               <span className="mt-[1px] shrink-0 font-black text-[rgba(52,211,153,0.9)]">✓</span>
               {feature}
@@ -242,19 +277,29 @@ function BillingSelector({
   quarterly,
   setQuarterly,
   biggestSaving,
+  compact = false,
 }: {
   quarterly: boolean
   setQuarterly: (value: boolean) => void
   biggestSaving: number
+  compact?: boolean
 }) {
+  const btnMin = compact ? 'min-h-[46px] py-[7px]' : 'min-h-[58px] py-[10px]'
+  const labelMain = compact ? 'text-[13px]' : 'text-[14px]'
+  const labelSub = compact ? 'mt-[2px]' : 'mt-[3px]'
+
   return (
     <div className="flex justify-center">
-      <div className="w-full max-w-[440px]">
-        <p className="mb-[10px] text-center font-['Inter'] text-[12px] font-semibold uppercase tracking-[0.14em] text-[rgba(255, 255, 255, 0.65)]">
+      <div className={compact ? 'w-full max-w-[400px]' : 'w-full max-w-[440px]'}>
+        <p
+          className={`${compact ? 'mb-[6px]' : 'mb-[10px]'} text-center font-['Inter'] ${compact ? 'text-[11px]' : 'text-[12px]'} font-semibold uppercase tracking-[0.14em] text-[rgba(255, 255, 255, 0.65)]`}
+        >
           Escolha entre mensal e trimestral.
         </p>
 
-        <div className="relative grid grid-cols-2 rounded-[18px] border border-[rgba(255,255,255,0.12)] bg-[linear-gradient(180deg,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0.03)_100%)] p-[4px] shadow-[0_10px_30px_rgba(0,0,0,0.20)] backdrop-blur-[16px]">
+        <div
+          className={`relative grid grid-cols-2 rounded-[18px] border border-[rgba(255,255,255,0.12)] bg-[linear-gradient(180deg,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0.03)_100%)] ${compact ? 'p-[3px]' : 'p-[4px]'} shadow-[0_10px_30px_rgba(0,0,0,0.20)] backdrop-blur-[16px]`}
+        >
           <motion.div
             aria-hidden="true"
             initial={false}
@@ -269,11 +314,11 @@ function BillingSelector({
             type="button"
             onClick={() => setQuarterly(false)}
             aria-pressed={!quarterly}
-            className={`relative z-[1] flex min-h-[58px] flex-col items-center justify-center rounded-[14px] px-[14px] py-[10px] text-center transition-all duration-300 ${!quarterly ? 'scale-[0.985]' : ''
+            className={`relative z-[1] flex ${btnMin} flex-col items-center justify-center rounded-[14px] px-[14px] text-center transition-all duration-300 ${!quarterly ? 'scale-[0.985]' : ''
               }`}
           >
             <span
-              className={`inline-flex items-center gap-[7px] font-['Inter'] text-[14px] font-extrabold transition-all duration-300 ${!quarterly ? 'text-[#fff]' : 'text-[rgba(255,255,255,0.72)]'
+              className={`inline-flex items-center gap-[7px] font-['Inter'] ${labelMain} font-extrabold transition-all duration-300 ${!quarterly ? 'text-[#fff]' : 'text-[rgba(255,255,255,0.72)]'
                 }`}
             >
               <span
@@ -287,7 +332,7 @@ function BillingSelector({
             </span>
 
             <span
-              className={`mt-[3px] font-['Inter'] text-[11px] transition-all duration-300 ${!quarterly
+              className={`${labelSub} font-['Inter'] text-[11px] transition-all duration-300 ${!quarterly
                   ? 'text-[rgba(255,255,255,0.80)]'
                   : 'text-[rgba(255,255,255,0.42)]'
                 }`}
@@ -300,11 +345,11 @@ function BillingSelector({
             type="button"
             onClick={() => setQuarterly(true)}
             aria-pressed={quarterly}
-            className={`relative z-[1] flex min-h-[58px] flex-col items-center justify-center rounded-[14px] px-[14px] py-[10px] text-center transition-all duration-300 ${quarterly ? 'scale-[0.985]' : ''
+            className={`relative z-[1] flex ${btnMin} flex-col items-center justify-center rounded-[14px] px-[14px] text-center transition-all duration-300 ${quarterly ? 'scale-[0.985]' : ''
               }`}
           >
             <span
-              className={`inline-flex items-center gap-[7px] font-['Inter'] text-[14px] font-extrabold transition-all duration-300 ${quarterly ? 'text-[#fff]' : 'text-[rgba(255,255,255,0.72)]'
+              className={`inline-flex items-center gap-[7px] font-['Inter'] ${labelMain} font-extrabold transition-all duration-300 ${quarterly ? 'text-[#fff]' : 'text-[rgba(255,255,255,0.72)]'
                 }`}
             >
               <span
@@ -318,7 +363,7 @@ function BillingSelector({
             </span>
 
             <span
-              className={`mt-[3px] inline-flex items-center rounded-full px-[8px] py-[3px] font-['Inter'] text-[10px] font-extrabold uppercase tracking-[0.04em] transition-all duration-300 ${quarterly
+              className={`${labelSub} inline-flex items-center rounded-full px-[8px] py-[3px] font-['Inter'] ${compact ? 'text-[9px]' : 'text-[10px]'} font-extrabold uppercase tracking-[0.04em] transition-all duration-300 ${quarterly
                   ? 'bg-[linear-gradient(135deg,#e24c30,#ff7a54)] text-[#fff] shadow-[0_8px_18px_rgba(226,76,48,0.24)]'
                   : 'bg-[rgba(251,146,60,0.10)] text-[#ffb38f]'
                 }`}
@@ -336,10 +381,15 @@ function PlanCard({
   plan,
   quarterly,
   index,
+  locked = false,
+  compact = false,
 }: {
   plan: SubscriptionPlan
   quarterly: boolean
   index: number
+  locked?: boolean
+  /** Modal Minha Conta: menos padding e tipografia pra caber sem scroll interno. */
+  compact?: boolean
 }) {
   const meta = getPlanMeta(plan)
   const quarterlyOffPct =
@@ -349,14 +399,56 @@ function PlanCard({
   const isPopular = plan.popular
 
   const priceToneClass =
-    plan.tone === 'padrao'
+    plan.tone === 'inicial'
+      ? 'bg-[rgba(52,211,153,0.12)] text-[#8be9c0]'
+      : plan.tone === 'padrao'
       ? 'bg-[rgba(168,85,247,0.14)] text-[#d9b8ff]'
       : 'bg-[rgba(6,182,212,0.12)] text-[#8be9f8]'
 
   const bulletToneClass =
-    plan.tone === 'padrao'
+    plan.tone === 'inicial'
+      ? 'text-[rgba(52,211,153,0.78)]'
+      : plan.tone === 'padrao'
       ? 'text-[rgba(168,85,247,0.72)]'
       : 'text-[rgba(6,182,212,0.68)]'
+
+  const pcPad = compact ? 'px-[14px] py-[16px]' : 'px-[24px] py-[28px]'
+  const pcPadNorm = compact ? 'px-[14px] py-[16px]' : 'px-[22px] py-[28px]'
+  const pcRoundOut = compact ? 'rounded-[18px]' : 'rounded-[26px]'
+  const pcRoundOutPx = compact ? 'p-[1px]' : 'p-[2px]'
+  const pcRoundIn = compact ? 'rounded-[20px]' : 'rounded-[24px]'
+  const pcRoundNorm = compact ? 'rounded-[18px]' : 'rounded-[24px]'
+  const pcTitlePop = compact ? 'text-[21px]' : 'text-[31px]'
+  const pcTitleNorm = compact ? 'text-[18px]' : 'text-[24px]'
+  const pcPriceBox = compact
+    ? 'relative mb-[10px] flex flex-col justify-center rounded-[14px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] p-[11px]'
+    : 'relative mb-[24px] flex flex-col justify-center min-h-[130px] rounded-[18px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] p-[18px]'
+  const pcPriceBoxNorm = compact
+    ? 'relative mb-[12px] flex flex-col justify-center rounded-[14px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] p-[11px]'
+    : 'relative mb-[24px] flex flex-col justify-center min-h-[130px] rounded-[18px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] p-[18px]'
+  const pcPriceNum = compact
+    ? 'font-[var(--font-space-grotesk)] text-[clamp(1.45rem,3vw,1.85rem)] font-black text-[#fff]'
+    : 'font-[var(--font-space-grotesk)] text-[clamp(2.3rem,5vw,3rem)] font-black text-[#fff]'
+  const pcPriceNumNorm = compact
+    ? 'font-[var(--font-space-grotesk)] text-[clamp(1.45rem,3vw,1.8rem)] font-black text-[#fff]'
+    : 'font-[var(--font-space-grotesk)] text-[clamp(2rem,4vw,2.55rem)] font-black text-[#fff]'
+  const pcMbHead = compact ? 'mb-[10px]' : 'mb-[20px]'
+  const pcMinHead = compact ? 'min-h-0' : 'min-h-[46px]'
+  const pcCtaMb = compact ? 'mb-[12px]' : 'mb-[24px]'
+  const pcCtaH = compact ? 'min-h-[42px]' : 'min-h-[54px]'
+  const pcCtaTxt = compact ? 'text-[14px]' : 'text-[16px]'
+  const pcCtaTxtNorm = compact ? 'text-[13px]' : 'text-[15px]'
+  const pcFeatHeadMb = compact ? 'mb-[8px]' : 'mb-[18px]'
+  const pcFeatGap = compact ? 'gap-[4px]' : 'gap-[8px]'
+  const pcFeatLi = compact
+    ? "flex gap-[6px] font-['Inter'] text-[12px] leading-[1.35] text-[rgba(255,255,255,0.86)]"
+    : "flex gap-[8px] font-['Inter'] text-[13.5px] leading-[1.5] text-[rgba(255,255,255,0.86)]"
+  const pcFeatLiPop = compact
+    ? "flex gap-[6px] font-['Inter'] text-[12px] leading-[1.35] text-[rgba(255,255,255,0.9)]"
+    : "flex gap-[8px] font-['Inter'] text-[13.5px] leading-[1.5] text-[rgba(255,255,255,0.9)]"
+  const pcBadge = compact
+    ? "shrink-0 rounded-full bg-[linear-gradient(135deg,#e24c30,#ff7a54)] px-[8px] py-[4px] font-['Inter'] text-[9px] font-extrabold tracking-[0.05em] text-[#fff] shadow-[0_8px_24px_rgba(226,76,48,0.28)]"
+    : "shrink-0 rounded-full bg-[linear-gradient(135deg,#e24c30,#ff7a54)] px-[14px] py-[6px] font-['Inter'] text-[11px] font-extrabold tracking-[0.05em] text-[#fff] shadow-[0_8px_24px_rgba(226,76,48,0.28)]"
 
   if (isPopular) {
     return (
@@ -368,43 +460,49 @@ function PlanCard({
         className="h-full"
       >
         {/* Pro Card: Adicionado as classes group, transition-all, duration-300, ease-in, hover:-translate-y-[6px] e hover:shadow para dar o efeito de subir */}
-        <div className="group relative h-full rounded-[26px] bg-[linear-gradient(135deg,rgba(226,76,48,0.98)_0%,rgba(168,85,247,0.92)_50%,rgba(226,76,48,0.95)_100%)] p-[2px] shadow-[0_0_45px_rgba(226,76,48,0.20),0_0_90px_rgba(124,58,237,0.14)] transition-all duration-300 ease-in hover:-translate-y-[6px] hover:shadow-[0_24px_50px_rgba(226,76,48,0.25)]">
-          <div className="relative flex h-full flex-col overflow-hidden rounded-[24px] border border-[rgba(255,255,255,0.08)] bg-[#242431] px-[30px] py-[34px]">
+        <div
+          className={`group relative h-full ${pcRoundOut} bg-[linear-gradient(135deg,rgba(226,76,48,0.98)_0%,rgba(168,85,247,0.92)_50%,rgba(226,76,48,0.95)_100%)] ${pcRoundOutPx} shadow-[0_0_45px_rgba(226,76,48,0.20),0_0_90px_rgba(124,58,237,0.14)] transition-all duration-300 ease-in hover:-translate-y-[6px] hover:shadow-[0_24px_50px_rgba(226,76,48,0.25)]`}
+        >
+          <div className={`relative flex h-full flex-col overflow-hidden ${pcRoundIn} border border-[rgba(255,255,255,0.08)] bg-[#242431] ${pcPad}`}>
             <div className="pointer-events-none absolute inset-[1px] rounded-[23px] bg-[linear-gradient(180deg,rgba(255,255,255,0.03)_0%,rgba(255,255,255,0.008)_100%)]" />
             <div className="pointer-events-none absolute -right-[80px] -top-[80px] h-[220px] w-[220px] rounded-full bg-[radial-gradient(circle,rgba(226,76,48,0.16)_0%,transparent_70%)]" />
             <div className="pointer-events-none absolute -bottom-[60px] -left-[60px] h-[180px] w-[180px] rounded-full bg-[radial-gradient(circle,rgba(124,58,237,0.12)_0%,transparent_70%)]" />
 
-            <div className="relative mb-[20px] flex min-h-[46px] items-center justify-between gap-[12px]">
-              <h3 className="font-[var(--font-space-grotesk)] text-[31px] font-extrabold bg-[linear-gradient(90deg,#ffffff_0%,#ffd9cf_20%,#ffffff_40%,#ffffff_100%)] [background-size:220%_100%] bg-clip-text text-transparent [animation:shimmer_3s_linear_infinite]">
+            <div className={`relative ${pcMbHead} flex ${pcMinHead} items-center justify-between gap-[12px]`}>
+              <h3
+                className={`font-[var(--font-space-grotesk)] ${pcTitlePop} font-extrabold bg-[linear-gradient(90deg,#ffffff_0%,#ffd9cf_20%,#ffffff_40%,#ffffff_100%)] [background-size:220%_100%] bg-clip-text text-transparent [animation:shimmer_3s_linear_infinite] light:!animate-none light:!bg-none light:bg-clip-border light:!text-zinc-900`}
+              >
                 {plan.name}
               </h3>
 
-              <div className="shrink-0 rounded-full bg-[linear-gradient(135deg,#e24c30,#ff7a54)] px-[14px] py-[6px] font-['Inter'] text-[11px] font-extrabold tracking-[0.05em] text-[#fff] shadow-[0_8px_24px_rgba(226,76,48,0.28)]">
-                ⭐ MAIS POPULAR
-              </div>
+              <div className={pcBadge}>⭐ MAIS POPULAR</div>
             </div>
 
-            <div className="relative mb-[24px] flex flex-col justify-center min-h-[130px] rounded-[18px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] p-[18px]">
+            <div className={pcPriceBox}>
               {quarterly ? (
                 <>
-                  <p className="mb-[8px] font-['Inter'] text-[12px] font-semibold uppercase tracking-[0.08em] text-[rgba(255,255,255,0.68)]">
+                  <p
+                    className={`${compact ? 'mb-[4px]' : 'mb-[8px]'} font-['Inter'] ${compact ? 'text-[11px]' : 'text-[12px]'} font-semibold uppercase tracking-[0.08em] text-[rgba(255,255,255,0.68)]`}
+                  >
                     Cobrança trimestral
                   </p>
 
-                  <p className="font-['Inter'] text-[13px] text-[rgba(255,255,255,0.48)] line-through">
+                  <p className={`font-['Inter'] ${compact ? 'text-[12px]' : 'text-[13px]'} text-[rgba(255,255,255,0.48)] line-through`}>
                     De {formatBRL(meta.quarterlyCompare)}
                   </p>
 
                   <div className="mt-[2px] flex flex-wrap items-end gap-[6px]">
-                    <span className="font-[var(--font-space-grotesk)] text-[clamp(2.3rem,5vw,3rem)] font-black text-[#fff]">
-                      {formatBRL(plan.quarterlyTotal)}
-                    </span>
-                    <span className="pb-[7px] font-['Inter'] text-[14px] text-[rgba(255,255,255,0.82)]">
+                    <span className={pcPriceNum}>{formatBRL(plan.quarterlyTotal)}</span>
+                    <span
+                      className={`${compact ? 'pb-[4px] text-[12px]' : 'pb-[7px] text-[14px]'} font-['Inter'] text-[rgba(255,255,255,0.82)]`}
+                    >
                       por 3 meses
                     </span>
                   </div>
 
-                  <p className="mt-[8px] font-['Inter'] text-[14px] text-[rgba(255,255,255,0.82)]">
+                  <p
+                    className={`${compact ? 'mt-[4px] text-[12px]' : 'mt-[8px] text-[14px]'} font-['Inter'] text-[rgba(255,255,255,0.82)]`}
+                  >
                     Equivale a{' '}
                     {formatBRL(
                       plan.quarterlyEquivalentMonthly ?? meta.equivalentMonthly
@@ -412,25 +510,29 @@ function PlanCard({
                     /mês
                   </p>
 
-                  <div className="mt-[12px] inline-flex rounded-full bg-[rgba(255,255,255,0.08)] px-[12px] py-[7px] font-['Inter'] text-[12px] font-extrabold text-[#ffd7cb] w-fit">
+                  <div
+                    className={`${compact ? 'mt-[6px] px-[10px] py-[5px] text-[11px]' : 'mt-[12px] px-[12px] py-[7px] text-[12px]'} inline-flex rounded-full bg-[rgba(255,255,255,0.08)] font-['Inter'] font-extrabold text-[#ffd7cb] w-fit`}
+                  >
                     Economize {formatBRL(meta.quarterlySave)} no trimestre ({formatPercent(quarterlyOffPct)}% OFF)
                   </div>
                 </>
               ) : (
                 <>
-                  <p className="mb-[8px] font-['Inter'] text-[12px] font-semibold uppercase tracking-[0.08em] text-[rgba(255,255,255,0.68)]">
+                  <p
+                    className={`${compact ? 'mb-[4px]' : 'mb-[8px]'} font-['Inter'] ${compact ? 'text-[11px]' : 'text-[12px]'} font-semibold uppercase tracking-[0.08em] text-[rgba(255,255,255,0.68)]`}
+                  >
                     Cobrança mensal
                   </p>
 
-                  <p className="font-['Inter'] text-[13px] text-[rgba(255,255,255,0.48)] line-through">
+                  <p className={`font-['Inter'] ${compact ? 'text-[12px]' : 'text-[13px]'} text-[rgba(255,255,255,0.48)] line-through`}>
                     De {formatBRL(plan.monthlyAnchor)}
                   </p>
 
                   <div className="mt-[2px] flex flex-wrap items-end gap-[6px]">
-                    <span className="font-[var(--font-space-grotesk)] text-[clamp(2.3rem,5vw,3rem)] font-black text-[#fff]">
-                      {formatBRL(plan.monthly)}
-                    </span>
-                    <span className="pb-[7px] font-['Inter'] text-[14px] text-[rgba(255,255,255,0.82)]">
+                    <span className={pcPriceNum}>{formatBRL(plan.monthly)}</span>
+                    <span
+                      className={`${compact ? 'pb-[4px] text-[12px]' : 'pb-[7px] text-[14px]'} font-['Inter'] text-[rgba(255,255,255,0.82)]`}
+                    >
                       /mês
                     </span>
                   </div>
@@ -439,26 +541,35 @@ function PlanCard({
             </div>
 
             {/* Ajuste do botão: min-h-[54px] e flex centralizado para garantir mesma altura em ambos */}
-            <a
-              href={currentHref}
-              className="relative mb-[24px] flex min-h-[54px] items-center justify-center rounded-[14px] bg-[linear-gradient(135deg,#e24c30,#ff7a54)] px-[15px] text-center font-['Inter'] text-[16px] font-extrabold text-[#fff] shadow-[0_12px_30px_rgba(226,76,48,0.35)] no-underline transition-all duration-[220ms] ease-in hover:-translate-y-[3px]"
-            >
-              {currentCTA}
-            </a>
+            {locked ? (
+              <div
+                role="status"
+                aria-label="Este é o seu plano atual"
+                className={`relative ${pcCtaMb} flex ${pcCtaH} cursor-not-allowed items-center justify-center rounded-[12px] border border-white/20 bg-white/[0.06] px-[12px] text-center font-['Inter'] ${compact ? 'text-[13px]' : 'text-[15px]'} font-semibold text-[rgba(255,255,255,0.45)]`}
+              >
+                Plano atual
+              </div>
+            ) : (
+              <a
+                href={currentHref}
+                className={`relative ${pcCtaMb} flex ${pcCtaH} items-center justify-center rounded-[12px] bg-[linear-gradient(135deg,#e24c30,#ff7a54)] px-[12px] text-center font-['Inter'] ${pcCtaTxt} font-extrabold text-[#fff] shadow-[0_12px_30px_rgba(226,76,48,0.35)] no-underline transition-all duration-[220ms] ease-in hover:-translate-y-[3px]`}
+              >
+                {currentCTA}
+              </a>
+            )}
 
-            <div className="relative mb-[18px] flex items-center gap-[8px]">
-              <span className="h-[8px] w-[8px] rounded-full bg-[#fb923c]" />
-              <p className="font-['Inter'] text-[11px] uppercase tracking-[0.12em] text-[rgba(255,255,255,0.8)]">
+            <div className={`relative ${pcFeatHeadMb} flex items-center gap-[8px]`}>
+              <span className={`${compact ? 'h-[6px] w-[6px]' : 'h-[8px] w-[8px]'} rounded-full bg-[#fb923c]`} />
+              <p
+                className={`font-['Inter'] ${compact ? 'text-[10px]' : 'text-[11px]'} uppercase tracking-[0.12em] text-[rgba(255,255,255,0.8)]`}
+              >
                 O que você recebe
               </p>
             </div>
 
-            <ul className="relative m-0 flex list-none flex-col gap-[11px] p-0">
+            <ul className={`relative m-0 flex list-none flex-col ${pcFeatGap} p-0`}>
               {plan.features.map((feature, j) => (
-                <li
-                  key={j}
-                  className="flex gap-[10px] font-['Inter'] text-[14px] leading-[1.55] text-[rgba(255,255,255,0.9)]"
-                >
+                <li key={j} className={pcFeatLiPop}>
                   <span className="mt-[1px] shrink-0 font-black text-[#fb923c]">✓</span>
                   {feature}
                 </li>
@@ -478,76 +589,90 @@ function PlanCard({
       transition={{ duration: 0.5, delay: index * 0.15, ease: 'easeOut' }}
       className="h-full"
     >
-      {/* Padrão Card: py-[34px] para igualar com o Pro */}
+      {/* Subscription Card (não-popular): paddings reduzidos pra caber Padrão (16 features). */}
       <div
-        className={`group relative flex h-full flex-col overflow-hidden rounded-[24px] border px-[28px] py-[34px] backdrop-blur-[16px] transition-all duration-300 ease-in hover:-translate-y-[6px] hover:border-[rgba(255,255,255,0.16)] hover:shadow-[0_24px_50px_rgba(0,0,0,0.35)] shadow-[0_10px_40px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.03)] ${plan.tone === 'padrao'
+        className={`group relative flex h-full flex-col overflow-hidden ${pcRoundNorm} border ${pcPadNorm} backdrop-blur-[16px] transition-all duration-300 ease-in hover:-translate-y-[6px] hover:border-[rgba(255,255,255,0.16)] hover:shadow-[0_24px_50px_rgba(0,0,0,0.35)] shadow-[0_10px_40px_rgba(0,0,0,0.22),inset_0_1px_0_rgba(255,255,255,0.03)] ${plan.tone === 'inicial'
+            ? 'border-[rgba(52,211,153,0.12)] bg-[linear-gradient(180deg,rgba(255,255,255,0.065)_0%,rgba(6,78,59,0.18)_100%)]'
+            : plan.tone === 'padrao'
             ? 'border-[rgba(168,85,247,0.12)] bg-[linear-gradient(180deg,rgba(255,255,255,0.065)_0%,rgba(44,28,78,0.18)_100%)]'
             : 'border-[rgba(34,211,238,0.10)] bg-[linear-gradient(180deg,rgba(255,255,255,0.065)_0%,rgba(31,63,89,0.14)_100%)]'
           }`}
       >
         <div
-          className={`pointer-events-none absolute left-[18px] right-[18px] top-0 h-[2px] rounded-[999px] ${plan.tone === 'padrao'
+          className={`pointer-events-none absolute left-[18px] right-[18px] top-0 h-[2px] rounded-[999px] ${plan.tone === 'inicial'
+              ? 'bg-[linear-gradient(90deg,rgba(52,211,153,0),rgba(52,211,153,0.55),rgba(226,76,48,0.12),rgba(52,211,153,0))]'
+              : plan.tone === 'padrao'
               ? 'bg-[linear-gradient(90deg,rgba(168,85,247,0),rgba(168,85,247,0.55),rgba(226,76,48,0.18),rgba(168,85,247,0))]'
               : 'bg-[linear-gradient(90deg,rgba(6,182,212,0),rgba(6,182,212,0.45),rgba(168,85,247,0.15),rgba(6,182,212,0))]'
             }`}
         />
 
         <div
-          className={`pointer-events-none absolute -right-[40px] -top-[60px] h-[140px] w-[140px] rounded-full ${plan.tone === 'padrao'
+          className={`pointer-events-none absolute -right-[40px] -top-[60px] h-[140px] w-[140px] rounded-full ${plan.tone === 'inicial'
+              ? 'bg-[radial-gradient(circle,rgba(52,211,153,0.10)_0%,transparent_70%)]'
+              : plan.tone === 'padrao'
               ? 'bg-[radial-gradient(circle,rgba(168,85,247,0.10)_0%,transparent_70%)]'
               : 'bg-[radial-gradient(circle,rgba(6,182,212,0.08)_0%,transparent_70%)]'
             }`}
         />
 
-        <div className="relative mb-[20px] flex min-h-[46px] items-center">
-          <h3 className="font-[var(--font-space-grotesk)] text-[24px] font-extrabold text-[#fff]">
+        <div className={`relative ${pcMbHead} flex ${pcMinHead} items-center`}>
+          <h3 className={`font-[var(--font-space-grotesk)] ${pcTitleNorm} font-extrabold text-[#fff]`}>
             {plan.name}
           </h3>
         </div>
 
-        <div className="relative mb-[24px] flex flex-col justify-center min-h-[130px] rounded-[18px] border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.03)] p-[18px]">
+        <div className={pcPriceBoxNorm}>
           {quarterly ? (
             <>
-              <p className="mb-[8px] font-['Inter'] text-[12px] font-semibold uppercase tracking-[0.08em] text-[rgba(255,255,255,0.66)]">
+              <p
+                className={`${compact ? 'mb-[4px]' : 'mb-[8px]'} font-['Inter'] ${compact ? 'text-[11px]' : 'text-[12px]'} font-semibold uppercase tracking-[0.08em] text-[rgba(255,255,255,0.66)]`}
+              >
                 Cobrança trimestral
               </p>
 
-              <p className="font-['Inter'] text-[13px] text-[rgba(255,255,255,0.45)] line-through">
+              <p className={`font-['Inter'] ${compact ? 'text-[12px]' : 'text-[13px]'} text-[rgba(255,255,255,0.45)] line-through`}>
                 De {formatBRL(meta.quarterlyCompare)}
               </p>
 
               <div className="mt-[2px] flex flex-wrap items-end gap-[6px]">
-                <span className="font-[var(--font-space-grotesk)] text-[clamp(2rem,4vw,2.55rem)] font-black text-[#fff]">
-                  {formatBRL(plan.quarterlyTotal)}
-                </span>
-                <span className="pb-[5px] font-['Inter'] text-[14px] text-[rgba(255,255,255,0.76)]">
+                <span className={pcPriceNumNorm}>{formatBRL(plan.quarterlyTotal)}</span>
+                <span
+                  className={`${compact ? 'pb-[3px] text-[12px]' : 'pb-[5px] text-[14px]'} font-['Inter'] text-[rgba(255,255,255,0.76)]`}
+                >
                   por 3 meses
                 </span>
               </div>
 
-              <p className="mt-[8px] font-['Inter'] text-[14px] text-[rgba(255,255,255,0.78)]">
+              <p
+                className={`${compact ? 'mt-[4px] text-[12px]' : 'mt-[8px] text-[14px]'} font-['Inter'] text-[rgba(255,255,255,0.78)]`}
+              >
                 Equivale a {formatBRL(meta.equivalentMonthly)}/mês
               </p>
 
-              <div className={`mt-[12px] inline-flex rounded-full px-[10px] py-[6px] font-['Inter'] text-[12px] font-bold w-fit ${priceToneClass}`}>
+              <div
+                className={`${compact ? 'mt-[6px] px-[8px] py-[4px] text-[11px]' : 'mt-[12px] px-[10px] py-[6px] text-[12px]'} inline-flex rounded-full font-['Inter'] font-bold w-fit ${priceToneClass}`}
+              >
                 Economize {formatBRL(meta.quarterlySave)} ({formatPercent(quarterlyOffPct)}% OFF)
               </div>
             </>
           ) : (
             <>
-              <p className="mb-[8px] font-['Inter'] text-[12px] font-semibold uppercase tracking-[0.08em] text-[rgba(255,255,255,0.66)]">
+              <p
+                className={`${compact ? 'mb-[4px]' : 'mb-[8px]'} font-['Inter'] ${compact ? 'text-[11px]' : 'text-[12px]'} font-semibold uppercase tracking-[0.08em] text-[rgba(255,255,255,0.66)]`}
+              >
                 Cobrança mensal
               </p>
 
-              <p className="font-['Inter'] text-[13px] text-[rgba(255,255,255,0.45)] line-through">
+              <p className={`font-['Inter'] ${compact ? 'text-[12px]' : 'text-[13px]'} text-[rgba(255,255,255,0.45)] line-through`}>
                 De {formatBRL(plan.monthlyAnchor)}
               </p>
 
               <div className="mt-[2px] flex flex-wrap items-end gap-[6px]">
-                <span className="font-[var(--font-space-grotesk)] text-[clamp(2rem,4vw,2.55rem)] font-black text-[#fff]">
-                  {formatBRL(plan.monthly)}
-                </span>
-                <span className="pb-[5px] font-['Inter'] text-[14px] text-[rgba(255,255,255,0.72)]">
+                <span className={pcPriceNumNorm}>{formatBRL(plan.monthly)}</span>
+                <span
+                  className={`${compact ? 'pb-[3px] text-[12px]' : 'pb-[5px] text-[14px]'} font-['Inter'] text-[rgba(255,255,255,0.72)]`}
+                >
                   /mês
                 </span>
               </div>
@@ -556,29 +681,42 @@ function PlanCard({
         </div>
 
         {/* Ajuste do botão: min-h-[54px] e flex centralizado para garantir mesma altura */}
-        <a
-          href={currentHref}
-          className={`relative mb-[24px] flex min-h-[54px] items-center justify-center rounded-[14px] border px-[15px] text-center font-['Inter'] text-[15px] font-bold text-[#fff] no-underline transition-all duration-[220ms] ease-in hover:-translate-y-[3px] hover:border-[rgba(255,255,255,0.22)] hover:bg-[rgba(255,255,255,0.14)] ${plan.tone === 'padrao'
-              ? 'border-[rgba(168,85,247,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(168,85,247,0.08)_100%)]'
-              : 'border-[rgba(6,182,212,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(6,182,212,0.06)_100%)]'
-            }`}
-        >
-          {currentCTA}
-        </a>
+        {locked ? (
+          <div
+            role="status"
+            aria-label="Este é o seu plano atual"
+            className={`relative ${pcCtaMb} flex ${pcCtaH} cursor-not-allowed items-center justify-center ${compact ? 'rounded-[12px]' : 'rounded-[14px]'} border border-white/15 bg-white/[0.05] px-[12px] text-center font-['Inter'] ${pcCtaTxtNorm} font-semibold text-[rgba(255,255,255,0.45)]`}
+          >
+            Plano atual
+          </div>
+        ) : (
+          <a
+            href={currentHref}
+            className={`relative ${pcCtaMb} flex ${pcCtaH} items-center justify-center ${compact ? 'rounded-[12px]' : 'rounded-[14px]'} border px-[12px] text-center font-['Inter'] ${pcCtaTxtNorm} font-bold text-[#fff] no-underline transition-all duration-[220ms] ease-in hover:-translate-y-[3px] hover:border-[rgba(255,255,255,0.22)] hover:bg-[rgba(255,255,255,0.14)] ${plan.tone === 'inicial'
+                ? 'border-[rgba(52,211,153,0.18)] bg-[linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(16,185,129,0.10)_100%)]'
+                : plan.tone === 'padrao'
+                ? 'border-[rgba(168,85,247,0.16)] bg-[linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(168,85,247,0.08)_100%)]'
+                : 'border-[rgba(6,182,212,0.14)] bg-[linear-gradient(180deg,rgba(255,255,255,0.08)_0%,rgba(6,182,212,0.06)_100%)]'
+              }`}
+          >
+            {currentCTA}
+          </a>
+        )}
 
-        <div className="relative mb-[18px] flex items-center gap-[8px]">
-          <span className={`h-[8px] w-[8px] rounded-full ${plan.tone === 'padrao' ? 'bg-[#a855f7]' : 'bg-[#22d3ee]'}`} />
-          <p className="font-['Inter'] text-[11px] uppercase tracking-[0.12em] text-[rgba(255,255,255,0.8)]">
+        <div className={`relative ${pcFeatHeadMb} flex items-center gap-[8px]`}>
+          <span
+            className={`${compact ? 'h-[6px] w-[6px]' : 'h-[8px] w-[8px]'} rounded-full ${plan.tone === 'inicial' ? 'bg-[#34d399]' : plan.tone === 'padrao' ? 'bg-[#a855f7]' : 'bg-[#22d3ee]'}`}
+          />
+          <p
+            className={`font-['Inter'] ${compact ? 'text-[10px]' : 'text-[11px]'} uppercase tracking-[0.12em] text-[rgba(255,255,255,0.8)]`}
+          >
             O que você recebe
           </p>
         </div>
 
-        <ul className="m-0 flex list-none flex-col gap-[10px] p-0">
+        <ul className={`m-0 flex list-none flex-col ${pcFeatGap} p-0`}>
           {plan.features.map((feature, j) => (
-            <li
-              key={j}
-              className="flex gap-[10px] font-['Inter'] text-[14px] leading-[1.55] text-[rgba(255,255,255,0.84)]"
-            >
+            <li key={j} className={pcFeatLi}>
               <span className={`mt-[1px] shrink-0 font-black ${bulletToneClass}`}>✓</span>
               {feature}
             </li>
@@ -589,7 +727,29 @@ function PlanCard({
   )
 }
 
-export default function Pricing() {
+export type PricingPlansEmbedProps = {
+  /** Quando coincide com `plan.tone`, o CTA vira “Plano atual” (sem link). */
+  currentPlanTone?: SubscriptionPlanTone | null
+  /**
+   * Se a assinatura ativa (mesmo tier) é mensal ou trimestral.
+   * `null` = não inferido → não trava por período (permite ex.: mensal→trimestral no mesmo plano).
+   */
+  userSubscriptionBillingQuarterly?: boolean | null
+  /** Assinantes logados: oculta o card Trial 7 dias. */
+  hideFreeTrial?: boolean
+  /** Layout mais denso (modal Minha Conta), sem scroll interno na maioria dos viewports. */
+  compact?: boolean
+  className?: string
+}
+
+/** Mesmos cartões e toggle mensal/trimestral da home — para reutilizar em modal (ex.: Minha Conta). */
+export function PricingPlansEmbed({
+  currentPlanTone = null,
+  userSubscriptionBillingQuarterly = null,
+  hideFreeTrial = false,
+  compact = false,
+  className = '',
+}: PricingPlansEmbedProps) {
   const [quarterly, setQuarterly] = useState(false)
   const { openTrialSignup } = useLoginModal()
 
@@ -599,6 +759,42 @@ export default function Pricing() {
   }, [])
 
   return (
+    <div className={className}>
+      <BillingSelector
+        quarterly={quarterly}
+        setQuarterly={setQuarterly}
+        biggestSaving={biggestSaving}
+        compact={compact}
+      />
+      <div
+        className={`mx-auto grid w-full min-w-0 grid-cols-1 items-stretch ${compact && hideFreeTrial ? 'md:grid-cols-3' : 'sm:grid-cols-2 xl:grid-cols-4'} ${compact ? 'mt-4 gap-[12px]' : 'mt-6 gap-[20px]'}`}
+      >
+        {!hideFreeTrial && <FreeTrialCard onStart={openTrialSignup} index={0} />}
+        {subscriptionPlans.map((plan, index) => {
+          const sameTone = currentPlanTone != null && plan.tone === currentPlanTone
+          const billingKnown = userSubscriptionBillingQuarterly !== null
+          const locked =
+            sameTone &&
+            billingKnown &&
+            userSubscriptionBillingQuarterly === quarterly
+          return (
+            <PlanCard
+              key={plan.name}
+              plan={plan}
+              quarterly={quarterly}
+              index={hideFreeTrial ? index : index + 1}
+              locked={locked}
+              compact={compact}
+            />
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+export default function Pricing() {
+  return (
     <section
       id="pricing"
       className="relative px-[28px] py-10 sm:py-18 bg-dark-bg transition-colors duration-500"
@@ -607,7 +803,7 @@ export default function Pricing() {
       <div className="pointer-events-none absolute left-1/2 top-[30%] h-[600px] w-[1000px] -translate-x-1/2 -translate-y-1/2 rounded-[50%] bg-[radial-gradient(ellipse,rgba(124,58,237,0.12)_0%,transparent_65%)] blur-[40px]" />
 
 
-      <div className="relative mx-auto max-w-[1120px]">
+      <div className="relative mx-auto max-w-[1480px]">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -641,21 +837,9 @@ export default function Pricing() {
           <p className="relative z-10 mx-auto mb-[35px] max-w-[560px] font-['Inter'] text-[17px] leading-[1.7] text-[rgba(255,255,255,0.64)]">
             Você tem 7 dias de garantia incondicional ou seu dinheiro de volta.
           </p>
-          
 
-          <BillingSelector
-            quarterly={quarterly}
-            setQuarterly={setQuarterly}
-            biggestSaving={biggestSaving}
-          />
+          <PricingPlansEmbed currentPlanTone={null} hideFreeTrial={false} />
         </motion.div>
-
-        <div className="mx-auto grid max-w-[1280px] grid-cols-1 items-stretch gap-[22px] md:grid-cols-2 xl:grid-cols-3">
-          <FreeTrialCard onStart={openTrialSignup} index={0} />
-          {subscriptionPlans.map((plan, index) => (
-            <PlanCard key={plan.name} plan={plan} quarterly={quarterly} index={index + 1} />
-          ))}
-        </div>
 
         <motion.div
           initial={{ opacity: 0, y: 30 }}

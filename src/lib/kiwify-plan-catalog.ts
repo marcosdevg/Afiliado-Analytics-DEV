@@ -4,28 +4,51 @@
  * Os CHECKOUT LINKS são os códigos curtos que vêm no campo `checkout_link`
  * do payload do webhook Kiwify (ex.: "Q1eE7t8").
  *
- * Para adicionar novos planos: basta incluir os IDs/links nos arrays abaixo.
+ * Tiers ativos: pro > padrao > inicial. (legacy/staff/trial não vêm via Kiwify.)
+ *
+ * Mapeamento histórico: os slugs do antigo "padrao" hoje correspondem ao
+ * "inicial" (mesmas features). Eles continuam ativos por contas existentes.
+ *
+ * Para adicionar novos planos: incluir os IDs/links nos arrays abaixo.
  */
 
 import type { PlanTier } from "./plan-entitlements";
 
 // ── Checkout links Kiwify ─────────────────────────────────────────────────────
-// Produto Principal
-const PADRAO_CHECKOUT_LINKS_PRINCIPAL = ["Q1eE7t8", "jGMeK6e"];
+
+// INICIAL (R$ 47,90/mês) — novos slugs do plano de entrada
+const INICIAL_CHECKOUT_LINKS_PRINCIPAL = ["k3DTSRU", "2Q1D0ob"];
+const INICIAL_CHECKOUT_LINKS_SECUNDARIO = ["AsmPxQv", "JlH396G"];
+
+// INICIAL — slugs históricos (antigo "padrao"). Mantidos ativos: contas existentes
+// vão revalidar via webhook e continuam no nível de features que pagaram.
+const LEGACY_PADRAO_CHECKOUT_LINKS_PRINCIPAL = ["Q1eE7t8", "jGMeK6e"];
+const LEGACY_PADRAO_CHECKOUT_LINKS_SECUNDARIO = ["M2qUkd9", "HijcSN1"];
+
+// PADRÃO (R$ 127,90/mês) — novo plano intermediário
+const PADRAO_CHECKOUT_LINKS_PRINCIPAL = ["DzMLl6Q", "bh2PrXd"];
+const PADRAO_CHECKOUT_LINKS_SECUNDARIO = ["hzhlBau", "6dNguFg"];
+
+// PRO (R$ 197,90/mês)
 const PRO_CHECKOUT_LINKS_PRINCIPAL = [
   "4fAAtkD",
   "TndnsLB",
   "y7I4SuT",
   "y7QHrMp",
 ];
-// Produto Secundário
-const PADRAO_CHECKOUT_LINKS_SECUNDARIO = ["M2qUkd9", "HijcSN1"];
 const PRO_CHECKOUT_LINKS_SECUNDARIO = [
   "0mRaPls",
   "xaX0Ryx",
   "Kqrzgpp",
   "tdDRvEF",
 ];
+
+const ALL_INICIAL_CHECKOUT_LINKS = new Set([
+  ...INICIAL_CHECKOUT_LINKS_PRINCIPAL,
+  ...INICIAL_CHECKOUT_LINKS_SECUNDARIO,
+  ...LEGACY_PADRAO_CHECKOUT_LINKS_PRINCIPAL,
+  ...LEGACY_PADRAO_CHECKOUT_LINKS_SECUNDARIO,
+]);
 
 const ALL_PADRAO_CHECKOUT_LINKS = new Set([
   ...PADRAO_CHECKOUT_LINKS_PRINCIPAL,
@@ -37,8 +60,21 @@ const ALL_PRO_CHECKOUT_LINKS = new Set([
   ...PRO_CHECKOUT_LINKS_SECUNDARIO,
 ]);
 
+/** Slugs Kiwify do checkout trimestral (par a par com o mensal no catálogo). */
+const KIWIFY_TRIMESTRAL_CHECKOUT_SLUGS = new Set<string>([
+  ...INICIAL_CHECKOUT_LINKS_PRINCIPAL.slice(1, 2),
+  ...INICIAL_CHECKOUT_LINKS_SECUNDARIO.slice(1, 2),
+  ...LEGACY_PADRAO_CHECKOUT_LINKS_PRINCIPAL.slice(1, 2),
+  ...LEGACY_PADRAO_CHECKOUT_LINKS_SECUNDARIO.slice(1, 2),
+  ...PADRAO_CHECKOUT_LINKS_PRINCIPAL.slice(1, 2),
+  ...PADRAO_CHECKOUT_LINKS_SECUNDARIO.slice(1, 2),
+  ...PRO_CHECKOUT_LINKS_PRINCIPAL.filter((_, i) => i % 2 === 1),
+  ...PRO_CHECKOUT_LINKS_SECUNDARIO.filter((_, i) => i % 2 === 1),
+]);
+
 // ── Plan IDs / Product IDs legados (existentes nas subscriptions atuais) ──────
-// Esses eram usados antes dos novos planos; tratamos todos como "padrao"
+// Esses eram emitidos quando o tier de entrada se chamava "padrao"; hoje
+// correspondem ao "inicial" (mesmas features).
 const LEGACY_PLAN_IDS = new Set([
   "cd0e2638-5fee-4bc4-bf69-50d4a262c645",
   "7291b77e-33b2-41f6-9c71-f8f06f5c8d81",
@@ -66,6 +102,10 @@ function getProPlanIds(): Set<string> {
 
 function getPadraoPlanIds(): Set<string> {
   return parseEnvIdSet("KIWIFY_PADRAO_PLAN_IDS");
+}
+
+function getInicialPlanIds(): Set<string> {
+  return parseEnvIdSet("KIWIFY_INICIAL_PLAN_IDS");
 }
 
 // ── Normaliza um ID removendo espaços ─────────────────────────────────────────
@@ -101,6 +141,26 @@ export function normalizeKiwifyCheckoutSlug(
  * Resolve o tier a partir do checkout_link do webhook.
  * Retorna null se o checkout_link não for reconhecido.
  */
+/**
+ * Se o slug for de um checkout conhecido: true = trimestral, false = mensal.
+ * Slug desconhecido → null (não travar CTAs por período).
+ */
+export function subscriptionBillingIsQuarterlyFromCheckoutSlug(
+  checkoutLink: string | null | undefined
+): boolean | null {
+  const cl = normalizeKiwifyCheckoutSlug(checkoutLink);
+  if (!cl) return null;
+  if (KIWIFY_TRIMESTRAL_CHECKOUT_SLUGS.has(cl)) return true;
+  if (
+    ALL_INICIAL_CHECKOUT_LINKS.has(cl) ||
+    ALL_PADRAO_CHECKOUT_LINKS.has(cl) ||
+    ALL_PRO_CHECKOUT_LINKS.has(cl)
+  ) {
+    return false;
+  }
+  return null;
+}
+
 export function resolveTierFromCheckoutLink(
   checkoutLink: string | null | undefined
 ): PlanTier | null {
@@ -108,6 +168,7 @@ export function resolveTierFromCheckoutLink(
   if (!cl) return null;
   if (ALL_PRO_CHECKOUT_LINKS.has(cl)) return "pro";
   if (ALL_PADRAO_CHECKOUT_LINKS.has(cl)) return "padrao";
+  if (ALL_INICIAL_CHECKOUT_LINKS.has(cl)) return "inicial";
   return null;
 }
 
@@ -127,31 +188,36 @@ export function resolveTierFromKiwifyIds(opts: {
   const pid = norm(opts.planId);
   const prodId = norm(opts.productId);
 
-  // 2) Env-based Pro/Padrao plan IDs
+  // 2) Env-based Pro/Padrao/Inicial plan IDs
   const proPlanIds = getProPlanIds();
   const padraoPlanIds = getPadraoPlanIds();
+  const inicialPlanIds = getInicialPlanIds();
 
   if (pid && proPlanIds.has(pid)) return "pro";
   if (pid && padraoPlanIds.has(pid)) return "padrao";
+  if (pid && inicialPlanIds.has(pid)) return "inicial";
 
-  // 3) Legacy plan IDs → padrao
-  if (pid && LEGACY_PLAN_IDS.has(pid)) return "padrao";
+  // 3) Legacy plan IDs → inicial (eram emitidos quando o tier de entrada
+  //    se chamava "padrao"; hoje correspondem ao "inicial")
+  if (pid && LEGACY_PLAN_IDS.has(pid)) return "inicial";
 
-  // 4) Legacy product IDs → padrao
-  if (prodId && LEGACY_PRODUCT_IDS.has(prodId)) return "padrao";
+  // 4) Legacy product IDs → inicial
+  if (prodId && LEGACY_PRODUCT_IDS.has(prodId)) return "inicial";
 
-  // 5) Default: padrao (nunca "legacy" para novos)
-  return "padrao";
+  // 5) Default: inicial (entrada)
+  return "inicial";
 }
 
 /**
  * Dado uma lista de tiers, retorna o mais alto.
- * pro > padrao > legacy
+ * pro > padrao > inicial > legacy
  */
 export function bestPlanTier(tiers: PlanTier[]): PlanTier {
   if (tiers.includes("pro")) return "pro";
   if (tiers.includes("padrao")) return "padrao";
-  return "padrao";
+  if (tiers.includes("inicial")) return "inicial";
+  if (tiers.includes("legacy")) return "legacy";
+  return "inicial";
 }
 
 /** Checkout links Kiwify → pacotes Afiliado Coins (campo `checkout_link` do webhook). */
