@@ -1187,6 +1187,53 @@ body {
   border-radius: inherit;
 }
 
+/* Telefone tocando — leve sacudida lateral seguida de pausa.
+   Ciclo total 3s: ~0.8s tremendo + ~2.2s parado. Pivô na base pra parecer
+   que o aparelho está vibrando na mão. */
+@keyframes phone-ring {
+
+  0%,
+  73%,
+  100% {
+    transform: rotate(0deg);
+  }
+
+  77% {
+    transform: rotate(-12deg);
+  }
+
+  81% {
+    transform: rotate(10deg);
+  }
+
+  85% {
+    transform: rotate(-8deg);
+  }
+
+  89% {
+    transform: rotate(6deg);
+  }
+
+  93% {
+    transform: rotate(-3deg);
+  }
+
+  97% {
+    transform: rotate(2deg);
+  }
+}
+
+.animate-phone-ring {
+  animation: phone-ring 3s ease-in-out infinite;
+  transform-origin: 50% 65%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-phone-ring {
+    animation: none;
+  }
+}
+
 /* Card selecionado: brilho laranja forte nas bordas + leve pulsação */
 @keyframes selected-card-glow {
 

@@ -9,7 +9,7 @@ export function Footer() {
           uma prática comum em rodapés.
         */}
         <p className="text-text-secondary/70">&copy; {currentYear} Afiliado Analytics. Todos os direitos reservados.</p>
-        <p className="text-text-secondary/70 text-xs mt-1">
+        <p className="text-text-secondary/70 text-[10px] mt-1">
           Desenvolvido por{" "}
           <a
             href="https://codenxt.online"

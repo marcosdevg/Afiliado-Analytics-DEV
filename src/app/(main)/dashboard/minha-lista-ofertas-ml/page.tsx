@@ -1724,7 +1724,7 @@ function MinhaListaOfertasMlPageInner() {
           </p>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <a
-              href="https://codenxt.online/extensao"
+              href="https://chromewebstore.google.com/detail/afiliado-analytics/ogfmdnpbcglgppaakmiemaohgofailal"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center rounded-lg bg-amber-500/25 hover:bg-amber-500/35 border border-amber-400/40 px-3 py-1.5 text-[11px] font-semibold text-amber-50 no-underline transition light:bg-orange-200/90 light:hover:bg-orange-200 light:border-orange-300/70 light:text-amber-950"

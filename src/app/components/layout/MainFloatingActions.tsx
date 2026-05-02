@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Download, ExternalLink } from "lucide-react";
+import { Download, ExternalLink, Phone } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
 import PwaInstallHintModal from "@/app/components/PwaInstallHintModal";
 import { runPwaInstallFlow } from "@/lib/pwa-install-flow";
@@ -248,14 +247,10 @@ export default function MainFloatingActions() {
             motion ? "" : "animate-fade-in-up",
           ].join(" ")}
         >
-          <Image
-            src="/favicon-32x32.png"
-            alt=""
-            width={32}
-            height={32}
-            className="h-8 w-8 rounded-md object-contain"
-            priority
-            unoptimized
+          <Phone
+            className="h-7 w-7 text-shopee-orange animate-phone-ring"
+            strokeWidth={2.5}
+            aria-hidden
           />
           <span
             className={[
