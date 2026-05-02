@@ -117,7 +117,7 @@ export function Header({ onLoginClick }: HeaderProps) {
               <Link
                 key={item.href}
                 href={item.href}
-                className="text-[14px] font-medium text-white/60 no-underline transition-colors duration-200 ease-in hover:text-white"
+                className="text-[14px] font-medium text-white/60 light:text-zinc-600 no-underline transition-colors duration-200 ease-in hover:text-white light:hover:text-zinc-900"
               >
                 {item.label}
               </Link>
@@ -137,7 +137,7 @@ export function Header({ onLoginClick }: HeaderProps) {
             {/* Menu Hamburguer Mobile */}
             <button
               onClick={() => setIsLandingMenuOpen(!isLandingMenuOpen)}
-              className="md:hidden flex items-center justify-center text-white/80 hover:text-white transition-colors"
+              className="md:hidden flex items-center justify-center text-white/80 light:text-zinc-700 hover:text-white light:hover:text-zinc-900 transition-colors"
               aria-label="Alternar menu mobile"
             >
               {isLandingMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -147,18 +147,18 @@ export function Header({ onLoginClick }: HeaderProps) {
 
         {/* Dropdown Menu Mobile */}
         {isLandingMenuOpen && (
-          <div className="absolute top-[68px] left-0 w-full bg-[#18181b]/95 backdrop-blur-xl border-b border-white/10 md:hidden flex flex-col items-center py-8 gap-6 shadow-2xl animate-in fade-in slide-in-from-top-5 duration-200">
+          <div className="absolute top-[68px] left-0 w-full bg-[#18181b]/95 light:bg-white/95 backdrop-blur-xl border-b border-white/10 light:border-zinc-200 md:hidden flex flex-col items-center py-8 gap-6 shadow-2xl light:shadow-[0_8px_32px_rgba(24,24,27,0.08)] animate-in fade-in slide-in-from-top-5 duration-200">
             {publicLinks.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setIsLandingMenuOpen(false)}
-                className="text-base font-medium text-white/80 hover:text-white transition-colors"
+                className="text-base font-medium text-white/80 light:text-zinc-700 hover:text-white light:hover:text-zinc-900 transition-colors"
               >
                 {item.label}
               </Link>
             ))}
-            
+
             <button
               onClick={() => {
                 setIsLandingMenuOpen(false);

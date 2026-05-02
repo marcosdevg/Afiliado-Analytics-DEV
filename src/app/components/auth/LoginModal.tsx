@@ -8,6 +8,7 @@ import InfoModal from '@/app/components/ui/InfoModal'
 import PwaInstallHintModal from '@/app/components/PwaInstallHintModal'
 import { runPwaInstallFlow } from '@/lib/pwa-install-flow'
 import { DEFAULT_TRIAL_COUPON_CODE } from '@/lib/trial-coupons-catalog'
+import { applyCpfMask, isValidCpf, normalizeCpf } from '@/lib/cpf'
 import type { LoginModalMode } from './login-modal-types'
 
 type LoginModalProps = {
@@ -29,6 +30,7 @@ export default function LoginModal({ onClose, initialMode = 'login' }: LoginModa
   const [installHint, setInstallHint] = useState<'standalone' | 'browser' | null>(null)
   const [panel, setPanel] = useState<LoginModalMode>(initialMode)
   const [whatsapp, setWhatsapp] = useState('')
+  const [cpf, setCpf] = useState('')
   const [coupon, setCoupon] = useState(DEFAULT_TRIAL_COUPON_CODE)
 
   useEffect(() => {
@@ -70,6 +72,15 @@ export default function LoginModal({ onClose, initialMode = 'login' }: LoginModa
   const handleTrialSignup = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (submitting) return
+
+    // Valida CPF antes de fazer request — feedback imediato pro usuário
+    // sem desperdiçar uma chamada ao backend.
+    const cpfDigits = normalizeCpf(cpf)
+    if (!cpfDigits || !isValidCpf(cpfDigits)) {
+      setError('CPF inválido. Verifique os dígitos.')
+      return
+    }
+
     setSubmitting(true)
     setError(null)
     try {
@@ -80,6 +91,7 @@ export default function LoginModal({ onClose, initialMode = 'login' }: LoginModa
           email,
           password,
           whatsapp,
+          cpf: cpfDigits,
           coupon_code: coupon.trim(),
         }),
       })
@@ -297,6 +309,26 @@ export default function LoginModal({ onClose, initialMode = 'login' }: LoginModa
                       className="block w-full rounded-[12px] border border-white/10 bg-black/20 light:border-zinc-200 light:bg-zinc-50 px-4 py-3 font-['Inter'] text-[14px] text-white light:text-zinc-900 placeholder-white/30 light:placeholder-zinc-400 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 light:focus:border-shopee-orange/60 light:focus:bg-white focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
                       disabled={submitting}
                       placeholder="79999999999"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="trial-cpf" className="mb-1.5 block font-['Inter'] text-[13px] font-medium text-white/70">
+                      CPF
+                    </label>
+                    <input
+                      id="trial-cpf"
+                      name="cpf"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      required
+                      maxLength={14}
+                      value={cpf}
+                      onChange={(e) => setCpf(applyCpfMask(e.target.value))}
+                      className="block w-full rounded-[12px] border border-white/10 bg-black/20 light:border-zinc-200 light:bg-zinc-50 px-4 py-3 font-['Inter'] text-[14px] text-white light:text-zinc-900 placeholder-white/30 light:placeholder-zinc-400 outline-none transition-all focus:border-[#e24c30]/50 focus:bg-black/30 light:focus:border-shopee-orange/60 light:focus:bg-white focus:ring-1 focus:ring-[#e24c30]/50 disabled:opacity-50"
+                      disabled={submitting}
+                      placeholder="000.000.000-00"
                     />
                   </div>
 

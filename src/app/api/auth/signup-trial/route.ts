@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { isValidCpf, normalizeCpf } from "@/lib/cpf";
+import {
+  checkAndIncrementSignupRateLimit,
+  getClientIp,
+} from "@/lib/signup-rate-limit";
 
 function normalizeCoupon(code: unknown): string {
   return String(code ?? "")
@@ -28,6 +33,7 @@ export async function POST(req: Request) {
     const password = String(body?.password ?? "");
     const whatsapp = normalizeWhatsapp(body?.whatsapp);
     const couponCode = normalizeCoupon(body?.coupon_code);
+    const cpfRaw = body?.cpf;
 
     if (!email || !email.includes("@")) {
       return NextResponse.json({ error: "E-mail inválido." }, { status: 400 });
@@ -42,7 +48,59 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Informe o cupom." }, { status: 400 });
     }
 
+    // Valida CPF via algoritmo dos dígitos verificadores. Bloqueia também
+    // sequências repetidas (`11111111111`, etc.) que passariam no módulo 11.
+    const cpf = normalizeCpf(cpfRaw);
+    if (!cpf || !isValidCpf(cpf)) {
+      return NextResponse.json(
+        { error: "CPF inválido. Verifique os dígitos." },
+        { status: 400 },
+      );
+    }
+
     const supabase = admin();
+
+    // Rate limit por IP — defensa contra criação massiva de contas.
+    // Defaults (5 tentativas / 1h) definidos em `signup-rate-limit.ts`.
+    const clientIp = getClientIp(req);
+    if (clientIp) {
+      const rl = await checkAndIncrementSignupRateLimit(supabase, clientIp);
+      if (!rl.allowed) {
+        const minutes = Math.ceil(rl.retryAfterSeconds / 60);
+        return NextResponse.json(
+          {
+            error: `Muitas tentativas de cadastro deste IP. Aguarde ${minutes} minuto${minutes !== 1 ? "s" : ""} e tente novamente.`,
+          },
+          {
+            status: 429,
+            headers: { "Retry-After": String(rl.retryAfterSeconds) },
+          },
+        );
+      }
+    }
+
+    // CPF unique — bloqueia usuário que já fez trial de criar conta nova
+    // com o mesmo CPF (mesmo que mude e-mail / WhatsApp / IP).
+    const { data: existingByCpf, error: cpfQueryErr } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("cpf", cpf)
+      .maybeSingle();
+    if (cpfQueryErr) {
+      return NextResponse.json(
+        { error: "Erro ao validar CPF. Tente novamente." },
+        { status: 500 },
+      );
+    }
+    if (existingByCpf) {
+      return NextResponse.json(
+        {
+          error:
+            "Este CPF já tem uma conta cadastrada. Entre na sua conta existente ou fale com o suporte.",
+        },
+        { status: 409 },
+      );
+    }
 
     const { data: couponRow, error: cErr } = await supabase
       .from("trial_coupons")
@@ -87,12 +145,24 @@ export async function POST(req: Request) {
         plan_name: "Trial gratuito (cupom)",
         trial_access_until: trialUntil.toISOString(),
         whatsapp_phone: whatsapp,
+        cpf,
         account_setup_pending: false,
       },
     ]);
 
     if (profErr) {
       await supabase.auth.admin.deleteUser(userId);
+      // Race condition: CPF criado por outro signup paralelo entre o check
+      // e o insert. Mensagem clara pro user em vez do erro cru do Postgres.
+      if (/duplicate key|unique/i.test(profErr.message)) {
+        return NextResponse.json(
+          {
+            error:
+              "Este CPF já tem uma conta cadastrada. Entre na sua conta existente ou fale com o suporte.",
+          },
+          { status: 409 },
+        );
+      }
       return NextResponse.json({ error: profErr.message }, { status: 500 });
     }
 
