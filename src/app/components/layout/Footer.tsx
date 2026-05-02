@@ -9,6 +9,17 @@ export function Footer() {
           uma prática comum em rodapés.
         */}
         <p className="text-text-secondary/70">&copy; {currentYear} Afiliado Analytics. Todos os direitos reservados.</p>
+        <p className="text-text-secondary/70 text-xs mt-1">
+          Desenvolvido por{" "}
+          <a
+            href="https://codenxt.online"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline"
+          >
+            CODENXT
+          </a>
+        </p>
       </div>
     </footer>
   )

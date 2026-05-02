@@ -38,7 +38,9 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// 5min cobre folga até ~10k subscriptions com concurrency 50.
+// (1000 subs ÷ 50 paralelos × 300ms = ~6s; 10k × 300ms ÷ 50 = ~60s.)
+export const maxDuration = 300;
 
 const VALID_SLUGS: ScheduledPushSlug[] = [
   "bom-dia",
@@ -57,16 +59,16 @@ function isValidSlug(s: string): s is ScheduledPushSlug {
 async function dispatch(slug: ScheduledPushSlug): Promise<SendResult> {
   switch (slug) {
     case "bom-dia":
-      return sendPushBroadcast(payloadBomDia());
+      return sendPushBroadcast(payloadBomDia(), { logSlug: slug });
     case "relatorio-shopee":
-      return sendPushBroadcast(payloadRelatorioShopee());
+      return sendPushBroadcast(payloadRelatorioShopee(), { logSlug: slug });
     case "tendencias-manha":
     case "tendencias-tarde":
-      return sendPushBroadcast(payloadTendencias());
+      return sendPushBroadcast(payloadTendencias(), { logSlug: slug });
     case "bom-almoco":
-      return sendPushBroadcast(payloadBomAlmoco());
+      return sendPushBroadcast(payloadBomAlmoco(), { logSlug: slug });
     case "campanha-direta":
-      return sendPushBroadcast(payloadCampanhaDireta());
+      return sendPushBroadcast(payloadCampanhaDireta(), { logSlug: slug });
     case "comissao-total":
       return sendComissaoTotal();
     default: {
@@ -91,13 +93,16 @@ async function sendComissaoTotal(): Promise<SendResult> {
   }
 
   const cache = new Map<string, PushPayload>();
-  return sendPushPerUser((userId) => {
-    const cached = cache.get(userId);
-    if (cached) return cached;
-    const payload = payloadComissaoTotal(map.get(userId) ?? null);
-    cache.set(userId, payload);
-    return payload;
-  });
+  return sendPushPerUser(
+    (userId) => {
+      const cached = cache.get(userId);
+      if (cached) return cached;
+      const payload = payloadComissaoTotal(map.get(userId) ?? null);
+      cache.set(userId, payload);
+      return payload;
+    },
+    { logSlug: "comissao-total" },
+  );
 }
 
 export async function GET(req: NextRequest) {

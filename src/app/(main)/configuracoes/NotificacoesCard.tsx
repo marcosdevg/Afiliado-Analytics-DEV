@@ -54,6 +54,7 @@ export default function NotificacoesCard() {
   const [standalone, setStandalone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingComissao, setTestingComissao] = useState(false);
   const [feedback, setFeedback] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [installHint, setInstallHint] = useState<PwaInstallFlowResult | null>(null);
 
@@ -157,6 +158,37 @@ export default function NotificacoesCard() {
       });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const onTestComissao = async () => {
+    setTestingComissao(true);
+    setFeedback(null);
+    try {
+      const res = await fetch("/api/push/test-comissao", { method: "POST" });
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        comissaoTotal?: number | null;
+      };
+      if (!res.ok) {
+        throw new Error(json?.error ?? "Falha ao enviar teste de comissão");
+      }
+      // Se o user nunca abriu o dashboard, comissaoTotal pode vir null e o
+      // payload usa o texto fallback. Avisa pra ele saber porque não veio
+      // valor em R$.
+      const text =
+        json.comissaoTotal == null
+          ? "Notificação de comissão enviada (sem valor — abra o dashboard pelo menos uma vez pra registrar)."
+          : "Notificação de comissão enviada. Verifique a bandeja em alguns segundos.";
+      setFeedback({ kind: "ok", text });
+    } catch (err) {
+      setFeedback({
+        kind: "error",
+        text:
+          err instanceof Error ? err.message : "Falha ao enviar teste de comissão.",
+      });
+    } finally {
+      setTestingComissao(false);
     }
   };
 
@@ -286,19 +318,37 @@ export default function NotificacoesCard() {
           </div>
 
           {isGranted && (
-            <div className="flex flex-wrap items-center gap-3 pt-1">
-              <button
-                type="button"
-                onClick={onTest}
-                disabled={testing}
-                className="inline-flex items-center gap-2 rounded-md bg-shopee-orange px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-              >
-                <Send className="h-4 w-4" />
-                {testing ? "Enviando teste..." : "Enviar notificação de teste"}
-              </button>
-              <span className="text-xs text-text-secondary/80">
-                Útil pra confirmar que a tela inicial está recebendo.
-              </span>
+            <div className="flex flex-col gap-3 pt-1">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={onTest}
+                  disabled={testing || testingComissao}
+                  className="inline-flex items-center gap-2 rounded-md bg-shopee-orange px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                >
+                  <Send className="h-4 w-4" />
+                  {testing ? "Enviando teste..." : "Enviar notificação de teste"}
+                </button>
+                <span className="text-xs text-text-secondary/80">
+                  Útil pra confirmar que a tela inicial está recebendo.
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={onTestComissao}
+                  disabled={testing || testingComissao}
+                  className="inline-flex items-center gap-2 rounded-md border border-shopee-orange/40 bg-shopee-orange/10 px-4 py-2 text-sm font-semibold text-shopee-orange transition-opacity hover:opacity-90 disabled:opacity-60"
+                >
+                  <Send className="h-4 w-4" />
+                  {testingComissao
+                    ? "Enviando comissão..."
+                    : "Enviar notificação de comissão (teste)"}
+                </button>
+                <span className="text-xs text-text-secondary/80">
+                  Mesma notificação que o cron diário envia, com seu valor real.
+                </span>
+              </div>
             </div>
           )}
 
