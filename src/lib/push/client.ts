@@ -134,6 +134,24 @@ export async function requestPermissionAndSubscribe(): Promise<NotificationPermi
   return permission;
 }
 
+/**
+ * Retorna `true` se o navegador tem uma `PushSubscription` ativa registrada.
+ * Útil pra UI saber se as notificações estão de fato ligadas — não dá pra
+ * confiar só em `Notification.permission`, que continua `"granted"` mesmo
+ * depois do user clicar em "Desativar notificações".
+ */
+export async function hasActiveSubscription(): Promise<boolean> {
+  if (!isPushSupported()) return false;
+  if (Notification.permission !== "granted") return false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    return !!sub;
+  } catch {
+    return false;
+  }
+}
+
 export async function unsubscribeFromPush(): Promise<boolean> {
   if (!isPushSupported()) return false;
   try {

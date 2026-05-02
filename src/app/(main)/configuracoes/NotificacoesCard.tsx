@@ -26,6 +26,7 @@ import {
 import {
   detectPushSupport,
   ensureSubscribed,
+  hasActiveSubscription,
   requestPermissionAndSubscribe,
   unsubscribeFromPush,
 } from "@/lib/push/client";
@@ -49,8 +50,14 @@ function readStandalone(): boolean {
   return nav.standalone === true;
 }
 
-export default function NotificacoesCard() {
+type NotificacoesCardProps = {
+  /** Avisa o pai quando o estado real (push subscription viva) muda. */
+  onActiveChange?: (active: boolean) => void;
+};
+
+export default function NotificacoesCard({ onActiveChange }: NotificacoesCardProps = {}) {
   const [permission, setPermission] = useState<PermissionState>("default");
+  const [subscribed, setSubscribed] = useState<boolean>(false);
   const [standalone, setStandalone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -61,6 +68,7 @@ export default function NotificacoesCard() {
   useEffect(() => {
     setPermission(readPermission());
     setStandalone(readStandalone());
+    hasActiveSubscription().then(setSubscribed).catch(() => {});
 
     if (typeof window === "undefined") return;
     const mq = window.matchMedia("(display-mode: standalone)");
@@ -73,13 +81,28 @@ export default function NotificacoesCard() {
   // (idempotente). Cobre o caso de o usuário ter aceito antes do login.
   useEffect(() => {
     if (permission === "granted") {
-      ensureSubscribed().catch(() => {});
+      ensureSubscribed()
+        .then((ok) => {
+          if (ok) setSubscribed(true);
+        })
+        .catch(() => {});
     }
   }, [permission]);
 
   const isUnsupported = permission === "unsupported";
   const isGranted = permission === "granted";
   const isDenied = permission === "denied";
+  // Estado real do botão: só fica "ativo" quando a permissão foi concedida
+  // E existe uma `PushSubscription` viva. Depois do `unsubscribeFromPush()`
+  // a permissão segue `"granted"` no navegador, então usar só `isGranted`
+  // deixa a UI travada no botão "Desativar".
+  const isActive = isGranted && subscribed;
+
+  // Propaga pro pai (`ConfiguracoesClient`) pra ele atualizar o badge
+  // "Ativadas / Desativadas" no card da grelha em tempo real.
+  useEffect(() => {
+    onActiveChange?.(isActive);
+  }, [isActive, onActiveChange]);
 
   const onInstall = async () => {
     const result = await runPwaInstallFlow();
@@ -103,6 +126,7 @@ export default function NotificacoesCard() {
       const result = await requestPermissionAndSubscribe();
       setPermission(result as PermissionState);
       if (result === "granted") {
+        setSubscribed(true);
         setFeedback({ kind: "ok", text: "Notificações ativadas com sucesso." });
       } else if (result === "denied") {
         setFeedback({
@@ -129,6 +153,7 @@ export default function NotificacoesCard() {
       const ok = await unsubscribeFromPush();
       if (ok) {
         setPermission(readPermission());
+        setSubscribed(false);
         setFeedback({ kind: "ok", text: "Notificações desativadas neste dispositivo." });
       } else {
         setFeedback({ kind: "error", text: "Não foi possível desativar agora." });
@@ -202,14 +227,14 @@ export default function NotificacoesCard() {
 
           <span
             className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
-              isGranted
+              isActive
                 ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
                 : isDenied
                   ? "border-red-500/30 bg-red-500/10 text-red-300"
                   : "border-dark-border bg-dark-bg text-text-secondary"
             }`}
           >
-            {isGranted ? (
+            {isActive ? (
               <>
                 <CheckCircle2 className="h-3 w-3" /> Ativadas
               </>
@@ -270,7 +295,7 @@ export default function NotificacoesCard() {
             </button>
 
             {/* Ativar / desativar notificações */}
-            {isGranted ? (
+            {isActive ? (
               <button
                 type="button"
                 onClick={onDisable}
@@ -317,7 +342,7 @@ export default function NotificacoesCard() {
             )}
           </div>
 
-          {isGranted && (
+          {isActive && (
             <div className="flex flex-col gap-3 pt-1">
               <div className="flex flex-wrap items-center gap-3">
                 <button
@@ -327,11 +352,9 @@ export default function NotificacoesCard() {
                   className="inline-flex items-center gap-2 rounded-md bg-shopee-orange px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
                 >
                   <Send className="h-4 w-4" />
-                  {testing ? "Enviando teste..." : "Enviar notificação de teste"}
+                  {testing ? "Enviando teste..." : "Testar notificação!"}
                 </button>
-                <span className="text-xs text-text-secondary/80">
-                  Útil pra confirmar que a tela inicial está recebendo.
-                </span>
+               
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <button
@@ -343,11 +366,9 @@ export default function NotificacoesCard() {
                   <Send className="h-4 w-4" />
                   {testingComissao
                     ? "Enviando comissão..."
-                    : "Enviar notificação de comissão (teste)"}
+                    : "Testar Notficação de Comissão"}
                 </button>
-                <span className="text-xs text-text-secondary/80">
-                  Mesma notificação que o cron diário envia, com seu valor real.
-                </span>
+               
               </div>
             </div>
           )}

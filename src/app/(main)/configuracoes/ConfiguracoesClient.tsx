@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
-import { Bell, ChevronRight, Wallet, Lock, type LucideIcon } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Bell, BellOff, ChevronRight, Wallet, Lock, type LucideIcon } from "lucide-react";
 import { UpgradePlanNotice } from "@/app/components/plan/UpgradePlanNotice";
+import { hasActiveSubscription } from "@/lib/push/client";
 import type { SubscriptionPlanTone } from "@/lib/plan-entitlements";
 import ShopeeIntegrationCard from "./ShopeeIntegrationCard";
 import MetaIntegrationCard from "./MetaIntegrationCard";
@@ -188,7 +189,20 @@ export default function ConfiguracoesClient({
   );
   // Banner inline mostrado quando o user clica num card bloqueado por entitlement.
   const [lockedCardPrompt, setLockedCardPrompt] = useState<null | "mercadolivre" | "amazon" | "meta" | "mercadopago">(null);
+  // Estado real do push (subscription viva), usado pra mostrar o badge
+  // "Ativadas / Desativadas" no card da grelha mesmo com o dropdown fechado.
+  const [notifActive, setNotifActive] = useState<boolean>(false);
   const visibleCards = CARDS.filter((c) => !c.hidden);
+
+  // Lê o estado inicial uma vez no mount; o `NotificacoesCard` depois mantém
+  // o pai sincronizado via `onActiveChange` quando o user enable/disable.
+  useEffect(() => {
+    hasActiveSubscription().then(setNotifActive).catch(() => {});
+  }, []);
+
+  const handleNotifActiveChange = useCallback((active: boolean) => {
+    setNotifActive(active);
+  }, []);
 
   // Mapa: card -> está bloqueado pra esse plano? (mas continua visível).
   const cardLocked = (key: SectionKey): boolean => {
@@ -269,6 +283,25 @@ export default function ConfiguracoesClient({
                 <p className="flex flex-wrap items-center gap-2 font-semibold text-text-primary">
                   <span>{title}</span>
                 </p>
+                {key === "notificacoes" && (
+                  <span
+                    className={`mt-1 inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                      notifActive
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                        : "border-dark-border bg-dark-bg text-text-secondary"
+                    }`}
+                  >
+                    {notifActive ? (
+                      <>
+                        <Bell className="h-3 w-3" /> Ativadas
+                      </>
+                    ) : (
+                      <>
+                        <BellOff className="h-3 w-3" /> Desativadas
+                      </>
+                    )}
+                  </span>
+                )}
                 <p className="text-xs text-text-secondary mt-0.5">{description}</p>
               </div>
               {locked ? (
@@ -352,7 +385,7 @@ export default function ConfiguracoesClient({
       )}
       {openSection === "notificacoes" && (
         <div className="animate-in fade-in duration-200">
-          <NotificacoesCard />
+          <NotificacoesCard onActiveChange={handleNotifActiveChange} />
         </div>
       )}
     </div>
