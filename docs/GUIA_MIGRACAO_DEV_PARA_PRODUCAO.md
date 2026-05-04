@@ -2,7 +2,7 @@
 
 Este guia foi feito para quem nao mexe muito com Git.
 
-Objetivo:
+Objetivo
 
 - Pegar os arquivos do repo **DEV**
 - Apagar o que existe dentro da pasta `afiliado-analytics/` do repo **producao**
