@@ -36,6 +36,7 @@ const COLLECT_CONCURRENCY = 8;
 
 type EligibleUser = {
   user_id: string;
+  email: string | null;
   shopee_app_id: string;
   shopee_api_key: string;
 };
@@ -92,9 +93,12 @@ export async function GET(req: NextRequest) {
 
   // Filtra direto no Supabase: `active` + chaves preenchidas. Reduz tráfego
   // e evita iterar sobre milhares de profiles inativos.
+  // `email` vem junto pra denormalizar em push_user_state.email no upsert
+  // (facilita conferência manual no Table Editor — protegido pelo RLS
+  // existente da tabela).
   const { data: profiles, error: profErr } = await admin
     .from("profiles")
-    .select("id, shopee_app_id, shopee_api_key")
+    .select("id, email, shopee_app_id, shopee_api_key")
     .eq("subscription_status", "active")
     .not("shopee_app_id", "is", null)
     .not("shopee_api_key", "is", null);
@@ -104,10 +108,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: profErr.message }, { status: 500 });
   }
 
-  type ProfileRow = { id: string; shopee_app_id: string | null; shopee_api_key: string | null };
+  type ProfileRow = {
+    id: string;
+    email: string | null;
+    shopee_app_id: string | null;
+    shopee_api_key: string | null;
+  };
   const eligible: EligibleUser[] = ((profiles ?? []) as ProfileRow[])
     .map((p) => ({
       user_id: p.id,
+      email: p.email,
       shopee_app_id: (p.shopee_app_id ?? "").trim(),
       shopee_api_key: (p.shopee_api_key ?? "").trim(),
     }))
@@ -136,6 +146,7 @@ export async function GET(req: NextRequest) {
         .upsert(
           {
             user_id: user.user_id,
+            email: user.email,
             comissao_ontem: totalCommission,
             comissao_ontem_data: dateBrt,
             updated_at: new Date().toISOString(),
